@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useEffect } from 'react';
+import { ParentDashboard } from '@/components/ParentDashboard';
 
 export default function Home() {
   const { questions } = useGameStore();
@@ -29,6 +30,7 @@ export default function Home() {
 
       <SettingsModal />
       <MistakeNotebook />
+      <ParentDashboard />
 
       <div className="relative z-10 container mx-auto px-4 py-8 min-h-screen flex flex-col">
         <header className="text-center mb-12 pt-8">

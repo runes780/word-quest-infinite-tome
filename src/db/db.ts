@@ -1,12 +1,20 @@
 
 import Dexie, { Table } from 'dexie';
 
+export interface SkillStatSlice {
+    correct: number;
+    total: number;
+}
+
 export interface HistoryRecord {
     id?: number;
     timestamp: number;
     score: number;
     totalQuestions: number;
     levelTitle: string;
+    totalCorrect?: number;
+    accuracy?: number;
+    skillStats?: Record<string, SkillStatSlice>;
 }
 
 export type StoredQuestionType = 'vocab' | 'grammar' | 'reading' | undefined;

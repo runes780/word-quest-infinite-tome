@@ -22,15 +22,19 @@ export function MissionReport() {
     const [historyLogged, setHistoryLogged] = useState(false);
 
     useEffect(() => {
-        if (historyLogged || questions.length === 0) return;
+        if (historyLogged || questions.length === 0 || userAnswers.length === 0) return;
         const title = context?.trim() ? context.trim().split('\n')[0].slice(0, 60) : 'Custom Mission';
+        const totalCorrect = userAnswers.filter((answer) => answer.isCorrect).length;
         logMissionHistory({
             score,
             totalQuestions: questions.length,
-            levelTitle: title
+            levelTitle: title,
+            skillStats,
+            totalCorrect,
+            accuracy: questions.length ? totalCorrect / questions.length : 0
         });
         setHistoryLogged(true);
-    }, [historyLogged, questions.length, score, context]);
+    }, [historyLogged, questions.length, score, context, skillStats, userAnswers]);
 
     const skillEntries = useMemo(() => {
         return Object.entries(skillStats).map(([key, stats]) => ({

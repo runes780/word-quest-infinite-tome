@@ -17,4 +17,4 @@
 
 ## Multi-sensory Support & Stakeholder Views
 - [x] Build on `lib/audio.ts` with TTS (SpeechSynthesis or cloud) so prompts, hints, and explanations can be read aloud with captions and pacing bars for accessibility.
-- [ ] Create a parent/teacher dashboard that queries the persisted history, breaks accuracy down by date and skill, and exports a PDF or image report for homework accountability.
+- [x] Create a parent/teacher dashboard that queries the persisted history, breaks accuracy down by date and skill, and exports a PDF or image report for homework accountability.
