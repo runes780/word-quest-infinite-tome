@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useGameStore, Monster } from '@/store/gameStore';
+import { useGameStore, BOSS_COMBO_THRESHOLD } from '@/store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Shield, Sword, HelpCircle, Trophy, RotateCcw, Lightbulb, ShoppingBag, Coins, Zap, Flame } from 'lucide-react';
 import { MentorOverlay } from './MentorOverlay';
@@ -35,7 +35,8 @@ export function BattleInterface() {
         context,
         inventory,
         useItem,
-        generateRewards
+        generateRewards,
+        bossShieldProgress
 
     } = useGameStore();
 
@@ -207,10 +208,13 @@ export function BattleInterface() {
 
         // Check for Boss Reward
         if (currentQuestion.isBoss) {
-            generateRewards('boss');
-        } else {
-            nextQuestion();
+            if (currentMonsterHp <= 0) {
+                generateRewards('boss');
+            }
+            return;
         }
+
+        nextQuestion();
     };
 
     if (!currentQuestion) return null;
@@ -484,6 +488,20 @@ export function BattleInterface() {
                                     </div>
                                 )}
 
+                                {currentQuestion.isBoss && (
+                                    <div className="absolute -top-14 left-1/2 -translate-x-1/2 flex gap-1">
+                                        {Array.from({ length: BOSS_COMBO_THRESHOLD }).map((_, idx) => (
+                                            <div
+                                                key={idx}
+                                                className={cn(
+                                                    'w-3 h-1.5 rounded-full border border-yellow-400/60',
+                                                    idx < bossShieldProgress ? 'bg-yellow-300 shadow-[0_0_6px_rgba(250,204,21,0.7)]' : 'bg-transparent'
+                                                )}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
                                 {/* Damage Text */}
                                 <AnimatePresence>
                                     {damageText.map((d) => (
@@ -596,6 +614,11 @@ export function BattleInterface() {
                                             {isCorrect ? `✨ ${t.battle.victory} ` : `💥 ${t.battle.defeat} `}
                                         </h4>
                                         <p className="text-sm font-medium opacity-90 leading-relaxed text-balance">{resultMessage}</p>
+                                        {currentQuestion.isBoss && currentMonsterHp > 0 && (
+                                            <p className="text-xs text-muted-foreground mt-2">
+                                                {t.battle.shieldProgress}: {bossShieldProgress}/{BOSS_COMBO_THRESHOLD}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="flex flex-col gap-2 shrink-0">
                                         {!isCorrect && (

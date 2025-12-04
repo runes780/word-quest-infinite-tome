@@ -6,7 +6,7 @@
 - [x] Upgrade `MissionReport` with visual skill charts and an option to push wrong items into a "Revenge Queue" that auto-preloads next session, approximating a lightweight SRS loop.
 
 ## Gameplay & Motivation
-- [ ] Deliver on the TODO inside `gameStore.nextQuestion`: design true multi-stage bosses (e.g., three chained questions or shield points) so HP bars matter and the UI shows segmented shields that only drop after consecutive correct answers.
+- [x] Deliver on the TODO inside `gameStore.nextQuestion`: design true multi-stage bosses (e.g., three chained questions or shield points) so HP bars matter and the UI shows segmented shields that only drop after consecutive correct answers.
 - [ ] Finish the inventory/shop promise by implementing real effects for `potion_clarity` (remove two distractors or show context hints) plus the passive perks for `relic_midas` and `relic_scholar`, and surface active status in `BattleInterface`.
 - [ ] Broaden rewards: let `generateRewards` emit knowledge cards or root fragments based on streaks and skill scarcity, then tie those collectibles back into the review loop above.
 

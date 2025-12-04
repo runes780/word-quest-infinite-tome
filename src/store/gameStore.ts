@@ -138,26 +138,8 @@ const reorderBySkill = (questions: Monster[], currentIndex: number, stats: Recor
     return [...head, ...tail];
 };
 
-const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
+export const BOSS_COMBO_THRESHOLD = 2;
 
-const accuracyFor = (stats: Record<string, { correct: number; total: number }>, question: Monster) => {
-    const key = getSkillKey(question);
-    const data = stats[key];
-    if (!data || data.total === 0) return 0;
-    return data.correct / data.total;
-};
-
-const reorderBySkill = (
-    questions: Monster[],
-    currentIndex: number,
-    stats: Record<string, { correct: number; total: number }>
-) => {
-    if (currentIndex >= questions.length - 1) return questions;
-    const before = questions.slice(0, currentIndex + 1);
-    const tail = [...questions.slice(currentIndex + 1)];
-    tail.sort((a, b) => accuracyFor(stats, a) - accuracyFor(stats, b));
-    return [...before, ...tail];
-};
 
 export interface UserAnswer {
     questionId: number;
@@ -187,6 +169,7 @@ interface GameState {
     skillStats: Record<string, { correct: number; total: number }>;
     revengeQueue: RevengeEntry[];
     addToRevengeQueue: (question: Monster) => void;
+    bossShieldProgress: number;
 
 
     // Actions
@@ -230,6 +213,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     showRewardScreen: false,
     skillStats: {},
     revengeQueue: loadInitialRevengeQueue(),
+    bossShieldProgress: 0,
 
     startGame: (questions, context) => {
         const revengeEntries = [...get().revengeQueue];
@@ -253,13 +237,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             pendingRewards: [],
             showRewardScreen: false,
             skillStats: {},
-            revengeQueue: []
+            revengeQueue: [],
+            bossShieldProgress: 0
         });
         persistRevengeQueue([]);
     },
 
     answerQuestion: (optionIndex) => {
-        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats } = get();
+        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
         const skillKey = getSkillKey(currentQuestion);
@@ -285,6 +270,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         let damageDealt = 0;
         let isCritical = false;
         let isSuperEffective = false; // Simplified for now
+        let nextBossShieldProgress = bossShieldProgress;
+        let nextMonsterHp = currentMonsterHp;
 
         const reorderedQuestions = reorderBySkill(questions, currentIndex, updatedSkillStats);
 
@@ -298,9 +285,21 @@ export const useGameStore = create<GameState>((set, get) => ({
             if (isCritical) baseDamage += 1;
             if (isSuperEffective) baseDamage += 1;
 
-            damageDealt = baseDamage;
-
-            const newMonsterHp = Math.max(0, currentMonsterHp - damageDealt);
+            if (currentQuestion.isBoss) {
+                nextBossShieldProgress = bossShieldProgress + 1;
+                damageDealt = 0;
+                if (nextBossShieldProgress >= BOSS_COMBO_THRESHOLD) {
+                    damageDealt = 1; // boss shields block boosted damage; only segments matter
+                    nextBossShieldProgress = 0;
+                    nextMonsterHp = Math.max(0, currentMonsterHp - damageDealt);
+                } else {
+                    nextMonsterHp = currentMonsterHp;
+                }
+            } else {
+                damageDealt = baseDamage;
+                nextMonsterHp = Math.max(0, currentMonsterHp - damageDealt);
+                nextBossShieldProgress = 0;
+            }
 
             // XP Calculation
             const xpGain = 20 + (isCritical ? 10 : 0);
@@ -319,7 +318,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
             set({
                 score: score + 10 + (isCritical ? 5 : 0) + (isSuperEffective ? 5 : 0),
-                currentMonsterHp: newMonsterHp,
+                currentMonsterHp: nextMonsterHp,
                 playerStats: {
                     ...playerStats,
                     xp: newXp,
@@ -329,7 +328,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                     gold: playerStats.gold + Math.floor((15 + (isCritical ? 10 : 0)) * (playerStats.gold > 0 && get().inventory.some(i => i.type === 'relic_midas') ? 1.5 : 1))
                 },
                 skillStats: updatedSkillStats,
-                questions: reorderedQuestions
+                questions: reorderedQuestions,
+                bossShieldProgress: nextBossShieldProgress
             });
 
             // Trigger Vampire Fangs
@@ -346,7 +346,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                     streak: 0
                 },
                 skillStats: updatedSkillStats,
-                questions: reorderedQuestions
+                questions: reorderedQuestions,
+                bossShieldProgress: currentQuestion.isBoss ? 0 : bossShieldProgress
             });
 
             logMistake({
@@ -373,19 +374,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     addQuestions: (newQuestions) => {
         const { questions } = get();
         // Process new questions to add RPG stats
-        const processedQuestions = newQuestions.map(q => ({
-            ...q,
-            hp: q.isBoss ? 3 : 1,
-            maxHp: q.isBoss ? 3 : 1,
-            element: (q.type === 'grammar' ? 'water' : q.type === 'vocab' ? 'fire' : 'grass') as 'fire' | 'water' | 'grass',
-            skillTag: q.skillTag || `${q.type}_core`,
-            difficulty: q.difficulty || 'medium'
-        }));
+        const processedQuestions = newQuestions.map(q => applyQuestionDefaults(q));
         set({ questions: [...questions, ...processedQuestions] });
     },
 
     nextQuestion: () => {
         const { currentIndex, questions, currentMonsterHp } = get();
+        const currentQuestion = questions[currentIndex];
+        if (currentQuestion?.isBoss && currentMonsterHp > 0) {
+            return;
+        }
 
         // Only proceed if monster is defeated (HP <= 0) or if it was a wrong answer (game flow choice)
         // Actually, for this game, we usually move on after feedback. 
@@ -410,7 +408,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             const nextMonster = questions[nextIndex];
             set({
                 currentIndex: nextIndex,
-                currentMonsterHp: nextMonster.hp || 1
+                currentMonsterHp: nextMonster.hp || 1,
+                bossShieldProgress: 0
             });
         } else {
             // Endless Mode Trigger would go here
@@ -421,7 +420,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     injectQuestion: (question) => {
         const { questions, currentIndex } = get();
         const newQuestions = [...questions];
-        newQuestions.splice(currentIndex + 1, 0, question);
+        newQuestions.splice(currentIndex + 1, 0, applyQuestionDefaults(question));
         set({ questions: newQuestions });
     },
 
@@ -484,7 +483,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         isGameOver: false,
         isVictory: false,
         pendingRewards: [],
-        showRewardScreen: false
+        showRewardScreen: false,
+        bossShieldProgress: 0
     }),
 
     generateRewards: (type) => {

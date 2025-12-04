@@ -35,7 +35,8 @@ export const translations = {
             continue: "Continue",
             critical: "CRITICAL!",
             weakness: "WEAKNESS!",
-            combo: "COMBO"
+            combo: "COMBO",
+            shieldProgress: "Shield charge"
         },
         shop: {
             title: "Merchant",
@@ -144,7 +145,8 @@ export const translations = {
             continue: "继续",
             critical: "暴击！",
             weakness: "弱点击破！",
-            combo: "连击"
+            combo: "连击",
+            shieldProgress: "护盾充能"
         },
         shop: {
             title: "商店",
