@@ -1,4 +1,4 @@
-
+import type { UserAnswer } from '@/store/gameStore';
 export const LEVEL_GENERATOR_SYSTEM_PROMPT = `
 # Role
 You are an expert ESL teacher for Grade 5 students in China. Your goal is to create a "Battle Configuration" of 5 to 8 questions based on the provided text.
@@ -95,7 +95,7 @@ Correct Answer: "${correctAnswer}"
 `;
 }
 
-export function generateReportPrompt(score: number, total: number, history: any[]): string {
+export function generateReportPrompt(score: number, total: number, history: UserAnswer[]): string {
   return `
 Mission Score: ${score} / ${total * 10}
 Total Questions: ${total}

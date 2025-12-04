@@ -51,9 +51,10 @@ export class OpenRouterClient {
     async generate(prompt: string, systemPrompt?: string): Promise<string> {
         return new Promise((resolve, reject) => {
             const task = async () => {
+                let timeoutId: ReturnType<typeof setTimeout> | undefined;
                 try {
                     const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+                    timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
                     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                         method: "POST",
@@ -89,7 +90,9 @@ export class OpenRouterClient {
                         reject(error);
                     }
                 } finally {
-                    clearTimeout(timeout);
+                    if (timeoutId) {
+                        clearTimeout(timeoutId);
+                    }
                 }
             };
 

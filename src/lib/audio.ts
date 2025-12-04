@@ -3,12 +3,21 @@
 // https://github.com/KilledByAPixel/ZzFX
 
 // This is a minified/adapted version for our use case
-let zzfxV = 0.3; // Volume
+declare global {
+    interface Window {
+        webkitAudioContext?: typeof AudioContext;
+    }
+}
+
+const zzfxV = 0.3; // Volume
 let zzfxX: AudioContext | undefined;
 
 export const initAudio = () => {
+    if (typeof window === 'undefined') return;
     if (!zzfxX) {
-        zzfxX = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) return;
+        zzfxX = new AudioContextCtor();
     }
     if (zzfxX.state === 'suspended') {
         zzfxX.resume();
@@ -19,21 +28,16 @@ export const zzfx = (...t: (number | undefined)[]) => {
     if (!zzfxX) initAudio();
     if (!zzfxX) return;
 
-    // Create randomness for some variation
-    const randomness = 0.05;
-    const r = () => (Math.random() * 2 - 1) * randomness;
+    const volumeRaw = t[0] ?? 1;
+    const frequency = t[2] ?? 220;
+    const length = t[3] ?? 0.1;
+    const attack = t[4] ?? 0.05;
+    const slide = t[5] ?? 0;
+    const noise = t[6] ?? 0;
+    const modulation = t[7] ?? 0;
+    const modulationPhase = t[8] ?? 0;
 
-    let [
-        volume = 1,
-        randomness_unused = 0.05,
-        frequency = 220,
-        length = .1,
-        attack = .05,
-        slide = 0,
-        noise = 0,
-        modulation = 0,
-        modulationPhase = 0
-    ] = t;
+    let volume = volumeRaw;
 
     // Apply global volume
     volume *= zzfxV;

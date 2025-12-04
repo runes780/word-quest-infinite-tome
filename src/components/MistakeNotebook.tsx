@@ -56,13 +56,23 @@ export function MistakeNotebook() {
     useEffect(() => {
         if (!isOpen) return;
         let mounted = true;
-        setIsLoading(true);
-        getMistakes().then((data) => {
-            if (mounted) {
-                setMistakes(data);
-                setIsLoading(false);
+
+        const fetchMistakes = async () => {
+            setIsLoading(true);
+            try {
+                const data = await getMistakes();
+                if (mounted) {
+                    setMistakes(data);
+                }
+            } finally {
+                if (mounted) {
+                    setIsLoading(false);
+                }
             }
-        });
+        };
+
+        fetchMistakes();
+
         return () => {
             mounted = false;
         };

@@ -663,7 +663,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             set((state) => {
                 let newFragments = state.rootFragments + fragmentsToAdd;
                 let newInventory = [...state.inventory];
-                let extraRewards = [] as Reward[];
+                const extraRewards: Reward[] = [];
 
                 while (newFragments >= CRAFT_THRESHOLD) {
                     newFragments -= CRAFT_THRESHOLD;

@@ -177,7 +177,7 @@ export function MissionReport() {
                                     <span>{analysis.weakness}</span>
                                 </div>
                                 <div className="flex gap-2">
-                                    <span className="italic">"{analysis.advice}"</span>
+                                    <span className="italic">&ldquo;{analysis.advice}&rdquo;</span>
                                 </div>
                                 {analysis.mistake_analysis && (
                                     <div className="mt-4 pt-4 border-t border-primary/20">

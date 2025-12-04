@@ -19,8 +19,8 @@ describe('OpenRouterClient Rate Limiting', () => {
     test('queues requests and respects minDelay', async () => {
         jest.useFakeTimers();
 
-        const p1 = client.generate('prompt1');
-        const p2 = client.generate('prompt2');
+        client.generate('prompt1');
+        client.generate('prompt2');
 
         // First request should fire immediately
         expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -69,14 +69,14 @@ describe('OpenRouterClient Rate Limiting', () => {
         // Use a paid model name (no :free suffix)
         const paidClient = new OpenRouterClient('test-key', 'anthropic/claude-3-opus');
 
-        const p1 = paidClient.generate('prompt1');
-        const p2 = paidClient.generate('prompt2');
+        const firstPromise = paidClient.generate('prompt1');
+        paidClient.generate('prompt2');
 
         // First request fires immediately
         expect(global.fetch).toHaveBeenCalledTimes(1);
 
         // Wait for p1 to complete to ensure queue processing continues
-        await p1;
+        await firstPromise;
 
         // Advance time to cover the small delay (50ms)
         jest.advanceTimersByTime(100);
@@ -90,4 +90,3 @@ describe('OpenRouterClient Rate Limiting', () => {
         jest.useRealTimers();
     });
 });
-

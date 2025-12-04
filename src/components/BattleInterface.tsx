@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useGameStore, BOSS_COMBO_THRESHOLD, CRAFT_THRESHOLD } from '@/store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Shield, Sword, HelpCircle, Trophy, RotateCcw, Lightbulb, ShoppingBag, Coins, Zap, Flame } from 'lucide-react';
+import { Heart, Shield, Sword, HelpCircle, Lightbulb, Coins, Zap, Flame } from 'lucide-react';
 import { MentorOverlay } from './MentorOverlay';
 import { ShopModal } from './ShopModal';
 import { MissionReport } from './MissionReport';
@@ -34,7 +34,7 @@ export function BattleInterface() {
         currentMonsterHp,
         addQuestions,
         context,
-        useItem,
+        useItem: consumeItem,
         generateRewards,
         bossShieldProgress,
         clarityEffect,
@@ -615,7 +615,7 @@ export function BattleInterface() {
                                     className="overflow-hidden"
                                 >
                                     <div className="bg-yellow-500/10 border-l-4 border-yellow-500 pl-4 py-2 text-sm text-yellow-600 dark:text-yellow-400 italic mb-4">
-                                        "{currentQuestion.hint}"
+                                        &ldquo;{currentQuestion.hint}&rdquo;
                                     </div>
                                 </motion.div>
                             )}
@@ -765,10 +765,10 @@ export function BattleInterface() {
                 {inventory.length === 0 && (
                     <div className="px-4 py-2 text-xs text-muted-foreground italic">{t.battle.inventoryEmpty}</div>
                 )}
-                {inventory.map((item, i) => (
+                {inventory.map((item) => (
                     <button
                         key={item.id}
-                        onClick={() => useItem(item.id)}
+                        onClick={() => consumeItem(item.id)}
                         className="w-10 h-10 bg-slate-800 rounded-lg border border-white/20 flex items-center justify-center text-xl hover:scale-110 hover:bg-slate-700 transition-all relative group"
                         title={item.name}
                     >

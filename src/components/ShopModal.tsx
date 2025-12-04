@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Coins } from 'lucide-react';
 import { useGameStore, Item } from '@/store/gameStore';
@@ -41,11 +42,13 @@ export function ShopModal({ isOpen, onClose }: ShopModalProps) {
     const { playerStats, spendGold, addItem } = useGameStore();
     const { language } = useSettingsStore();
     const t = translations[language];
+    const purchaseCounter = useRef(0);
 
     const handleBuy = (item: typeof SHOP_ITEMS[0]) => {
         if (spendGold(item.cost)) {
-            // Generate a unique ID for the inventory instance
-            const newItem = { ...item, id: `${item.id}_${Date.now()}` };
+            purchaseCounter.current += 1;
+            const uniqueId = `${item.id}_${purchaseCounter.current}`;
+            const newItem = { ...item, id: uniqueId };
             addItem(newItem);
         }
     };
