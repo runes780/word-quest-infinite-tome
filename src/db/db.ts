@@ -26,6 +26,9 @@ export interface MistakeRecord {
     wrongAnswer: string;
     correctAnswer: string;
     explanation: string;
+    options?: string[];
+    correctIndex?: number;
+    type?: StoredQuestionType;
     timestamp: number;
     mentorAnalysis?: string;
     revengeQuestion?: StoredRevengeQuestion;

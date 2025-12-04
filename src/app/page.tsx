@@ -5,6 +5,7 @@ import { useGameStore } from '@/store/gameStore';
 import { InputSection } from '@/components/InputSection';
 import { BattleInterface } from '@/components/BattleInterface';
 import { SettingsModal } from '@/components/SettingsModal';
+import { MistakeNotebook } from '@/components/MistakeNotebook';
 import { motion } from 'framer-motion';
 
 import { useSettingsStore } from '@/store/settingsStore';
@@ -27,6 +28,7 @@ export default function Home() {
       <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 via-transparent to-purple-500/5" />
 
       <SettingsModal />
+      <MistakeNotebook />
 
       <div className="relative z-10 container mx-auto px-4 py-8 min-h-screen flex flex-col">
         <header className="text-center mb-12 pt-8">

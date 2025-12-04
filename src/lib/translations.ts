@@ -70,6 +70,16 @@ export const translations = {
             revengeReady: "Fresh intel secured.",
             noKey: "API key missing. Open settings to reconnect."
         },
+        notebook: {
+            open: "Open Mistake Notebook",
+            title: "Mistake Notebook",
+            subtitle: "Replay tricky questions anytime, even offline.",
+            loading: "Syncing archives...",
+            empty: "No mistakes logged yet. Keep exploring!",
+            correct: "Correct",
+            chosen: "Your pick",
+            queue: "Queue for Revenge"
+        },
         input: {
             title: "Mission Briefing",
             subtitle: "Upload study material to generate targets",
@@ -161,6 +171,16 @@ export const translations = {
             revengeComplete: "复仇完成！干得好！",
             revengeReady: "新的作战情报已就绪。",
             noKey: "缺少 API 密钥，请先前往设置连接。"
+        },
+        notebook: {
+            open: "打开错题本",
+            title: "错题档案",
+            subtitle: "随时复盘薄弱题目，即使离线也可练习。",
+            loading: "正在同步档案...",
+            empty: "目前还没有错题记录。继续加油！",
+            correct: "正确答案",
+            chosen: "你的选择",
+            queue: "加入复仇队列"
         },
         input: {
             title: "任务简报",

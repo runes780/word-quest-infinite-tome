@@ -7,16 +7,29 @@ import { REPORT_SYSTEM_PROMPT, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
 import { Trophy, XCircle, RotateCcw, CheckCircle2, AlertTriangle, Sparkles, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { logMissionHistory } from '@/lib/data/history';
 
 import { translations } from '@/lib/translations';
 
 export function MissionReport() {
-    const { score, questions, resetGame, isVictory, userAnswers } = useGameStore();
+    const { score, questions, resetGame, isVictory, userAnswers, context } = useGameStore();
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [historyLogged, setHistoryLogged] = useState(false);
+
+    useEffect(() => {
+        if (historyLogged || questions.length === 0) return;
+        const title = context?.trim() ? context.trim().split('\n')[0].slice(0, 60) : 'Custom Mission';
+        logMissionHistory({
+            score,
+            totalQuestions: questions.length,
+            levelTitle: title
+        });
+        setHistoryLogged(true);
+    }, [historyLogged, questions.length, score, context]);
 
     const handleAnalyze = async () => {
         if (!apiKey) return;

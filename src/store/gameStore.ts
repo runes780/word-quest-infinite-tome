@@ -240,7 +240,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                 questionText: currentQuestion.question,
                 wrongAnswer: currentQuestion.options[optionIndex],
                 correctAnswer: currentQuestion.options[currentQuestion.correct_index],
-                explanation: currentQuestion.explanation
+                explanation: currentQuestion.explanation,
+                options: currentQuestion.options,
+                correctIndex: currentQuestion.correct_index,
+                type: currentQuestion.type
             });
         }
 
