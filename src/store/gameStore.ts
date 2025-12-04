@@ -75,6 +75,69 @@ export const RELICS: Item[] = [
     }
 ];
 
+type RevengeEntry = Pick<Monster, 'id' | 'type' | 'question' | 'options' | 'correct_index' | 'explanation' | 'hint' | 'skillTag' | 'difficulty'>;
+
+const REVENGE_STORAGE_KEY = 'word-quest-revenge';
+
+const loadInitialRevengeQueue = (): RevengeEntry[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+        const raw = window.localStorage.getItem(REVENGE_STORAGE_KEY);
+        if (!raw) return [];
+        return JSON.parse(raw);
+    } catch (error) {
+        console.error('Failed to load revenge queue', error);
+        return [];
+    }
+};
+
+const persistRevengeQueue = (entries: RevengeEntry[]) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(REVENGE_STORAGE_KEY, JSON.stringify(entries));
+    } catch (error) {
+        console.error('Failed to persist revenge queue', error);
+    }
+};
+
+const sanitizeForQueue = (question: Monster): RevengeEntry => ({
+    id: Date.now(),
+    type: question.type,
+    question: question.question,
+    options: question.options,
+    correct_index: question.correct_index,
+    explanation: question.explanation,
+    hint: question.hint,
+    skillTag: question.skillTag,
+    difficulty: question.difficulty
+});
+
+const applyQuestionDefaults = (question: Partial<Monster> & { id: number; type: Monster['type']; question: string; options: string[]; correct_index: number; explanation: string; }) => ({
+    ...question,
+    skillTag: question.skillTag || `${question.type}_core`,
+    difficulty: question.difficulty || 'medium',
+    hp: question.isBoss ? 3 : 1,
+    maxHp: question.isBoss ? 3 : 1,
+    element: question.type === 'grammar' ? 'water' : question.type === 'vocab' ? 'fire' : 'grass'
+}) as Monster;
+
+const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
+
+const accuracyFor = (stats: Record<string, { correct: number; total: number }>, question: Monster) => {
+    const key = getSkillKey(question);
+    const data = stats[key];
+    if (!data || data.total === 0) return 0;
+    return data.correct / data.total;
+};
+
+const reorderBySkill = (questions: Monster[], currentIndex: number, stats: Record<string, { correct: number; total: number }>) => {
+    if (currentIndex >= questions.length - 1) return questions;
+    const head = questions.slice(0, currentIndex + 1);
+    const tail = [...questions.slice(currentIndex + 1)];
+    tail.sort((a, b) => accuracyFor(stats, a) - accuracyFor(stats, b));
+    return [...head, ...tail];
+};
+
 const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
 
 const accuracyFor = (stats: Record<string, { correct: number; total: number }>, question: Monster) => {
@@ -122,6 +185,8 @@ interface GameState {
     pendingRewards: Reward[];
     showRewardScreen: boolean;
     skillStats: Record<string, { correct: number; total: number }>;
+    revengeQueue: RevengeEntry[];
+    addToRevengeQueue: (question: Monster) => void;
 
 
     // Actions
@@ -164,30 +229,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     pendingRewards: [],
     showRewardScreen: false,
     skillStats: {},
+    revengeQueue: loadInitialRevengeQueue(),
 
-    startGame: (questions, context) => set({
-        questions: questions.map(q => ({
-            ...q,
-            hp: q.isBoss ? 3 : 1,
-            maxHp: q.isBoss ? 3 : 1,
-            element: q.type === 'grammar' ? 'water' : q.type === 'vocab' ? 'fire' : 'grass',
-            skillTag: q.skillTag || `${q.type}_core`,
-            difficulty: q.difficulty || 'medium'
-        })),
-        health: 3,
-        score: 0,
-        currentIndex: 0,
-        isGameOver: false,
-        isVictory: false,
-        playerStats: { level: 1, xp: 0, maxXp: 100, streak: 0, gold: 0 },
-        currentMonsterHp: questions[0]?.isBoss ? 3 : 1,
-        context,
-        inventory: [],
-        userAnswers: [],
-        pendingRewards: [],
-        showRewardScreen: false,
-        skillStats: {}
-    }),
+    startGame: (questions, context) => {
+        const revengeEntries = [...get().revengeQueue];
+        const preparedRevenge = revengeEntries.map((entry, idx) => applyQuestionDefaults({ ...entry, id: entry.id || Date.now() + idx }));
+        const preparedIncoming = questions.map((q) => applyQuestionDefaults(q));
+        const combined = [...preparedRevenge, ...preparedIncoming];
+        const firstHp = combined[0]?.hp || 1;
+
+        set({
+            questions: combined,
+            health: 3,
+            score: 0,
+            currentIndex: 0,
+            isGameOver: false,
+            isVictory: false,
+            playerStats: { level: 1, xp: 0, maxXp: 100, streak: 0, gold: 0 },
+            currentMonsterHp: firstHp,
+            context,
+            inventory: [],
+            userAnswers: [],
+            pendingRewards: [],
+            showRewardScreen: false,
+            skillStats: {},
+            revengeQueue: []
+        });
+        persistRevengeQueue([]);
+    },
 
     answerQuestion: (optionIndex) => {
         const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats } = get();
@@ -498,5 +567,15 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ pendingRewards: pendingRewards.filter(r => r.id !== rewardId) });
     },
 
-    closeRewardScreen: () => set({ showRewardScreen: false, pendingRewards: [] })
+    closeRewardScreen: () => set({ showRewardScreen: false, pendingRewards: [] }),
+    addToRevengeQueue: (question) => {
+        set((state) => {
+            const entry = sanitizeForQueue(question);
+            const exists = state.revengeQueue.some((q) => q.question === entry.question && q.correct_index === entry.correct_index);
+            if (exists) return state;
+            const updated = [...state.revengeQueue, entry].slice(-10);
+            persistRevengeQueue(updated);
+            return { revengeQueue: updated };
+        });
+    }
 }));

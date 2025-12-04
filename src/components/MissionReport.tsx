@@ -5,19 +5,20 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { REPORT_SYSTEM_PROMPT, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
-import { Trophy, XCircle, RotateCcw, CheckCircle2, AlertTriangle, Sparkles, FileText } from 'lucide-react';
+import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
 
 import { translations } from '@/lib/translations';
 
 export function MissionReport() {
-    const { score, questions, resetGame, isVictory, userAnswers, context } = useGameStore();
+    const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue } = useGameStore();
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set());
     const [historyLogged, setHistoryLogged] = useState(false);
 
     useEffect(() => {
@@ -30,6 +31,34 @@ export function MissionReport() {
         });
         setHistoryLogged(true);
     }, [historyLogged, questions.length, score, context]);
+
+    const skillEntries = useMemo(() => {
+        return Object.entries(skillStats).map(([key, stats]) => ({
+            key,
+            accuracy: stats.total ? (stats.correct / stats.total) : 0,
+            attempts: stats.total
+        })).sort((a, b) => a.accuracy - b.accuracy);
+    }, [skillStats]);
+
+    const wrongDetails = useMemo(() => {
+        const map = new Map(questions.map((q) => [q.id, q]));
+        return userAnswers
+            .filter((answer) => !answer.isCorrect)
+            .map((answer) => {
+                const original = map.get(answer.questionId);
+                if (!original) return null;
+                return {
+                    answer,
+                    question: original
+                };
+            })
+            .filter(Boolean) as { answer: typeof userAnswers[number]; question: typeof questions[number] }[];
+    }, [userAnswers, questions]);
+
+    const handleQueue = (questionId: number, question: typeof questions[number]) => {
+        addToRevengeQueue(question);
+        setQueuedIds((prev) => new Set(prev).add(questionId));
+    };
 
     const handleAnalyze = async () => {
         if (!apiKey) return;
@@ -99,6 +128,31 @@ export function MissionReport() {
                         </div>
                     </div>
 
+                    {skillEntries.length > 0 && (
+                        <div className="mb-8 bg-secondary/40 rounded-2xl p-6 border border-border/50">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Target className="w-5 h-5 text-primary" />
+                                <h3 className="font-bold text-primary text-sm tracking-wide uppercase">{t.report.skillAccuracy}</h3>
+                            </div>
+                            <div className="space-y-3">
+                                {skillEntries.map((entry) => (
+                                    <div key={entry.key}>
+                                        <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                            <span>{entry.key.replace(/_/g, ' ')}</span>
+                                            <span>{Math.round(entry.accuracy * 100)}% · {entry.attempts} {t.report.attempts}</span>
+                                        </div>
+                                        <div className="h-2 bg-background/20 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-primary"
+                                                style={{ width: `${Math.max(5, entry.accuracy * 100)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* AI Analysis Section */}
                     {analysis ? (
                         <motion.div
@@ -144,6 +198,37 @@ export function MissionReport() {
                             {t.report.generateAnalysis}
                         </button>
                     )}
+
+                    <div className="mt-6 bg-secondary/30 border border-border/60 rounded-2xl p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <PlusCircle className="w-5 h-5 text-primary" />
+                            <h3 className="font-semibold text-primary uppercase tracking-wide text-sm">{t.report.revengeQueue}</h3>
+                        </div>
+                        {wrongDetails.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">{t.report.noMistakes}</p>
+                        ) : (
+                            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                                {wrongDetails.map(({ answer, question }) => (
+                                    <div key={answer.questionId} className="p-3 rounded-xl border border-border bg-background/40">
+                                        <p className="text-sm font-semibold mb-1">{question.question}</p>
+                                        <p className="text-xs text-muted-foreground mb-3">{t.report.correct}: {question.options[question.correct_index]}</p>
+                                        <button
+                                            onClick={() => handleQueue(answer.questionId, question)}
+                                            disabled={queuedIds.has(answer.questionId)}
+                                            className={cn(
+                                                'text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-2',
+                                                queuedIds.has(answer.questionId)
+                                                    ? 'bg-secondary text-muted-foreground cursor-not-allowed'
+                                                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                            )}
+                                        >
+                                            {queuedIds.has(answer.questionId) ? t.report.queued : t.report.queueForNext}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
                     <button
                         onClick={resetGame}

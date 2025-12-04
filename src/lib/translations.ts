@@ -57,7 +57,14 @@ export const translations = {
             weakness: "Weakness:",
             tacticalAnalysis: "Tactical Analysis:",
             generateAnalysis: "Generate Tactical Analysis",
-            initializeNewMission: "Initialize New Mission"
+            initializeNewMission: "Initialize New Mission",
+            skillAccuracy: "Skill Accuracy",
+            attempts: "tries",
+            revengeQueue: "Revenge Queue",
+            noMistakes: "No mistakes this run!",
+            queueForNext: "Queue for next mission",
+            queued: "Queued",
+            correct: "Correct"
         },
         mentor: {
             title: "Tactical Advisor Online",
@@ -159,7 +166,14 @@ export const translations = {
             weakness: "弱点：",
             tacticalAnalysis: "战术分析：",
             generateAnalysis: "生成战术分析",
-            initializeNewMission: "开始新任务"
+            initializeNewMission: "开始新任务",
+            skillAccuracy: "技能命中率",
+            attempts: "次",
+            revengeQueue: "复仇队列",
+            noMistakes: "本轮没有错题，继续保持！",
+            queueForNext: "加入下次任务",
+            queued: "已加入",
+            correct: "正确答案"
         },
         mentor: {
             title: "战术顾问在线",

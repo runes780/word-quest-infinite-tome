@@ -3,7 +3,7 @@
 ## Learning Data & Adaptivity
 - [x] Wire the Dexie tables in `src/db/db.ts` into `useGameStore.userAnswers`, persist every mission and wrong answer, surface a "mistake notebook" view, and build an offline review queue from that data.
 - [x] Extend the `Monster` schema with `skillTag` and `difficulty`, update `LEVEL_GENERATOR_SYSTEM_PROMPT` / `generateLevelPrompt` to request those annotations, then aggregate accuracy per skill inside `answerQuestion` to drive adaptive ordering.
-- [ ] Upgrade `MissionReport` with visual skill charts and an option to push wrong items into a "Revenge Queue" that auto-preloads next session, approximating a lightweight SRS loop.
+- [x] Upgrade `MissionReport` with visual skill charts and an option to push wrong items into a "Revenge Queue" that auto-preloads next session, approximating a lightweight SRS loop.
 
 ## Gameplay & Motivation
 - [ ] Deliver on the TODO inside `gameStore.nextQuestion`: design true multi-stage bosses (e.g., three chained questions or shield points) so HP bars matter and the UI shows segmented shields that only drop after consecutive correct answers.
