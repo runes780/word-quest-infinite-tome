@@ -9,6 +9,16 @@ export interface HistoryRecord {
     levelTitle: string;
 }
 
+export type StoredQuestionType = 'vocab' | 'grammar' | 'reading' | undefined;
+
+export interface StoredRevengeQuestion {
+    question: string;
+    options: string[];
+    correct_index: number;
+    type?: StoredQuestionType;
+    explanation?: string;
+}
+
 export interface MistakeRecord {
     id?: number;
     questionId: number;
@@ -17,6 +27,8 @@ export interface MistakeRecord {
     correctAnswer: string;
     explanation: string;
     timestamp: number;
+    mentorAnalysis?: string;
+    revengeQuestion?: StoredRevengeQuestion;
 }
 
 export class WordQuestDB extends Dexie {

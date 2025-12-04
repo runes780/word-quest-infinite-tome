@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Zap, ArrowRight } from 'lucide-react';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
@@ -9,6 +9,7 @@ import { MENTOR_SYSTEM_PROMPT, generateMentorPrompt } from '@/lib/ai/prompts';
 import { useSettingsStore } from '@/store/settingsStore';
 import { Monster } from '@/store/gameStore';
 import { translations } from '@/lib/translations';
+import { cacheMentorAnalysis, loadMentorCache } from '@/lib/data/mistakes';
 
 interface MentorOverlayProps {
     isOpen: boolean;
@@ -18,42 +19,109 @@ interface MentorOverlayProps {
     onRevenge: (revengeQuestion: Monster) => void;
 }
 
+const COOLDOWN_MS = 6000;
+
 export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onRevenge }: MentorOverlayProps) {
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState('');
     const [revengeQuestion, setRevengeQuestion] = useState<Monster | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [statusMessage, setStatusMessage] = useState('');
+    const lastRequestRef = useRef(0);
 
     useEffect(() => {
-        if (isOpen && !analysis && !isLoading) {
-            const fetchMentor = async () => {
-                setIsLoading(true);
-                try {
-                    const client = new OpenRouterClient(apiKey, model);
-                    const prompt = generateMentorPrompt(question.question, wrongAnswer, question.options[question.correct_index]);
-                    const jsonStr = await client.generate(prompt, MENTOR_SYSTEM_PROMPT);
-                    const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
-                    const data = JSON.parse(cleanJson);
+        if (!isOpen || !question || !wrongAnswer) return;
 
-                    setAnalysis(data.analysis);
+        let cancelled = false;
+        setAnalysis('');
+        setRevengeQuestion(null);
+        setStatusMessage('');
+
+        const fetchMentor = async () => {
+            setIsLoading(true);
+            const cached = await loadMentorCache(question.id, wrongAnswer);
+            if (cancelled) return;
+            if (cached) {
+                setAnalysis(cached.mentorAnalysis || question.explanation);
+                if (cached.revengeQuestion) {
                     setRevengeQuestion({
-                        ...data.revenge_question,
                         id: Date.now(),
-                        type: question.type,
-                        explanation: "Revenge complete! Well done!", // Simple explanation for revenge
-                        correct_index: data.revenge_question.correct_index
+                        question: cached.revengeQuestion.question,
+                        options: cached.revengeQuestion.options,
+                        correct_index: cached.revengeQuestion.correct_index,
+                        type: cached.revengeQuestion.type || question.type,
+                        explanation: cached.revengeQuestion.explanation || t.mentor.revengeReady
                     });
-                } catch (e) {
-                    console.error(e);
-                    setAnalysis(t.mentor.error + question.explanation);
-                } finally {
+                }
+                setStatusMessage(t.mentor.cached);
+                setIsLoading(false);
+                return;
+            }
+
+            if (!apiKey) {
+                setStatusMessage(t.mentor.noKey);
+                setIsLoading(false);
+                return;
+            }
+
+            const now = Date.now();
+            const remaining = Math.max(0, COOLDOWN_MS - (now - lastRequestRef.current));
+            if (lastRequestRef.current && remaining > 0) {
+                setStatusMessage(`${t.mentor.cooldown} (${Math.ceil(remaining / 1000)}s)`);
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const client = new OpenRouterClient(apiKey, model);
+                const prompt = generateMentorPrompt(question.question, wrongAnswer, question.options[question.correct_index]);
+                const jsonStr = await client.generate(prompt, MENTOR_SYSTEM_PROMPT);
+                const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
+                const data = JSON.parse(cleanJson);
+
+                const revengePayload = {
+                    question: data.revenge_question.question,
+                    options: data.revenge_question.options,
+                    correct_index: data.revenge_question.correct_index,
+                    type: question.type,
+                    explanation: t.mentor.revengeComplete
+                };
+
+                setAnalysis(data.analysis);
+                setRevengeQuestion({
+                    ...revengePayload,
+                    id: Date.now()
+                });
+                setStatusMessage(t.mentor.revengeReady);
+                lastRequestRef.current = Date.now();
+
+                await cacheMentorAnalysis({
+                    questionId: question.id,
+                    questionText: question.question,
+                    wrongAnswer,
+                    correctAnswer: question.options[question.correct_index],
+                    explanation: question.explanation,
+                    analysis: data.analysis,
+                    mentorExplanation: question.explanation,
+                    revengeQuestion: revengePayload
+                });
+            } catch (e) {
+                console.error(e);
+                setAnalysis(t.mentor.error + question.explanation);
+            } finally {
+                if (!cancelled) {
                     setIsLoading(false);
                 }
-            };
-            fetchMentor();
-        }
-    }, [isOpen, question, wrongAnswer, apiKey, model, analysis, isLoading]);
+            }
+        };
+
+        fetchMentor();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, question, wrongAnswer, apiKey, model, language]);
 
     const handleChallenge = () => {
         if (revengeQuestion) {
@@ -101,6 +169,12 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                                         {analysis}
                                     </p>
                                 </div>
+                            )}
+
+                            {statusMessage && (
+                                <p className="text-xs text-muted-foreground text-center">
+                                    {statusMessage}
+                                </p>
                             )}
 
                             {!isLoading && revengeQuestion && (

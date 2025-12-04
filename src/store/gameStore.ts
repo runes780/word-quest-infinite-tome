@@ -1,5 +1,6 @@
 
 import { create } from 'zustand';
+import { logMistake } from '@/lib/data/mistakes';
 
 export interface Monster {
     id: number;
@@ -232,6 +233,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                     ...playerStats,
                     streak: 0
                 }
+            });
+
+            logMistake({
+                questionId: currentQuestion.id,
+                questionText: currentQuestion.question,
+                wrongAnswer: currentQuestion.options[optionIndex],
+                correctAnswer: currentQuestion.options[currentQuestion.correct_index],
+                explanation: currentQuestion.explanation
             });
         }
 

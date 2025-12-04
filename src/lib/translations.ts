@@ -63,7 +63,12 @@ export const translations = {
             title: "Tactical Advisor Online",
             analyzing: "Analyzing combat data...",
             acceptChallenge: "Accept Revenge Challenge",
-            error: "Communication link unstable. But remember: "
+            error: "Communication link unstable. But remember: ",
+            cached: "Loaded tactical notes from archives.",
+            cooldown: "Neural link cooling down... please wait a few seconds.",
+            revengeComplete: "Revenge complete! Well done!",
+            revengeReady: "Fresh intel secured.",
+            noKey: "API key missing. Open settings to reconnect."
         },
         input: {
             title: "Mission Briefing",
@@ -150,7 +155,12 @@ export const translations = {
             title: "战术顾问在线",
             analyzing: "正在分析战斗数据...",
             acceptChallenge: "接受复仇挑战",
-            error: "通讯链路不稳定。但请记住："
+            error: "通讯链路不稳定。但请记住：",
+            cached: "已从数据档案中调出讲解。",
+            cooldown: "AI 导师冷却中，请稍候几秒。",
+            revengeComplete: "复仇完成！干得好！",
+            revengeReady: "新的作战情报已就绪。",
+            noKey: "缺少 API 密钥，请先前往设置连接。"
         },
         input: {
             title: "任务简报",

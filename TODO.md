@@ -12,7 +12,7 @@
 
 ## AI & System Resilience
 - [x] Add timeout and fallback handling around `OpenRouterClient` and `InputSection` (e.g., local sample packs, user-facing retry guidance) and expose rate-limit info inside the settings modal to reduce first-run friction.
-- [ ] Give `MentorOverlay` caching plus rate gating by storing per-question analyses locally and reusing them before issuing a new API call; archive the explanations in Dexie for offline study.
+- [x] Give `MentorOverlay` caching plus rate gating by storing per-question analyses locally and reusing them before issuing a new API call; archive the explanations in Dexie for offline study.
 - [ ] Introduce multimodal ingestion by layering simple image upload + OCR (browser APIs or future on-device models) into `InputSection` to unlock the "photograph textbook" workflow.
 
 ## Multi-sensory Support & Stakeholder Views
