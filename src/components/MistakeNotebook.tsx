@@ -7,7 +7,6 @@ import { translations } from '@/lib/translations';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useGameStore, Monster } from '@/store/gameStore';
 import { getMistakes, MistakeRecord } from '@/lib/data/mistakes';
-import { cn } from '@/lib/utils';
 
 function buildFallbackOptions(record: MistakeRecord) {
     const base = new Set<string>();

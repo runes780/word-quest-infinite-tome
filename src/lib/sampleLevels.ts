@@ -17,7 +17,9 @@ const sunnyMonsters: Monster[] = [
         options: ['go', 'went', 'going', 'goes'],
         correct_index: 1,
         hint: 'Past tense of "go"',
-        explanation: '"Yesterday" 提示过去式，go 的过去式是 went。'
+        explanation: '"Yesterday" 提示过去式，go 的过去式是 went。',
+        skillTag: 'past_tense',
+        difficulty: 'easy'
     },
     {
         id: 91002,
@@ -26,7 +28,9 @@ const sunnyMonsters: Monster[] = [
         options: ['buddies', 'weather', 'picnic', 'Sunday'],
         correct_index: 0,
         hint: 'Think about people, not time or food.',
-        explanation: 'buddies 表示朋友，其他选项是天气、活动或日期。'
+        explanation: 'buddies 表示朋友，其他选项是天气、活动或日期。',
+        skillTag: 'friends_vocab',
+        difficulty: 'easy'
     },
     {
         id: 91003,
@@ -35,7 +39,9 @@ const sunnyMonsters: Monster[] = [
         options: ['play', 'played', 'playing', 'plays'],
         correct_index: 1,
         hint: '动作已经完成。',
-        explanation: '动作发生在昨天，所以用过去式 played。'
+        explanation: '动作发生在昨天，所以用过去式 played。',
+        skillTag: 'past_tense',
+        difficulty: 'medium'
     },
     {
         id: 91004,
@@ -44,7 +50,9 @@ const sunnyMonsters: Monster[] = [
         options: ['Rainy and cold', 'Sunny and warm', 'Snowy and windy', 'Foggy and dark'],
         correct_index: 1,
         hint: 'Look at the adjective in the passage.',
-        explanation: '原文写 the weather was sunny and warm。'
+        explanation: '原文写 the weather was sunny and warm。',
+        skillTag: 'reading_detail',
+        difficulty: 'easy'
     },
     {
         id: 91005,
@@ -53,7 +61,9 @@ const sunnyMonsters: Monster[] = [
         options: ['inside the house', 'at the doctor', 'outside on grass', 'in a store'],
         correct_index: 2,
         hint: 'Connect picnic with the park.',
-        explanation: 'Picnic 就是户外用餐，因此在草地上。'
+        explanation: 'Picnic 就是户外用餐，因此在草地上。',
+        skillTag: 'life_vocab',
+        difficulty: 'medium'
     }
 ];
 

@@ -2,6 +2,8 @@
 import { create } from 'zustand';
 import { logMistake } from '@/lib/data/mistakes';
 
+export type MonsterDifficulty = 'easy' | 'medium' | 'hard';
+
 export interface Monster {
     id: number;
     type: 'vocab' | 'grammar' | 'reading';
@@ -14,6 +16,8 @@ export interface Monster {
     maxHp?: number;
     element?: 'fire' | 'water' | 'grass'; // Elemental type
     isBoss?: boolean;
+    skillTag?: string;
+    difficulty?: MonsterDifficulty;
 }
 
 export interface PlayerStats {
@@ -71,6 +75,27 @@ export const RELICS: Item[] = [
     }
 ];
 
+const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
+
+const accuracyFor = (stats: Record<string, { correct: number; total: number }>, question: Monster) => {
+    const key = getSkillKey(question);
+    const data = stats[key];
+    if (!data || data.total === 0) return 0;
+    return data.correct / data.total;
+};
+
+const reorderBySkill = (
+    questions: Monster[],
+    currentIndex: number,
+    stats: Record<string, { correct: number; total: number }>
+) => {
+    if (currentIndex >= questions.length - 1) return questions;
+    const before = questions.slice(0, currentIndex + 1);
+    const tail = [...questions.slice(currentIndex + 1)];
+    tail.sort((a, b) => accuracyFor(stats, a) - accuracyFor(stats, b));
+    return [...before, ...tail];
+};
+
 export interface UserAnswer {
     questionId: number;
     questionText: string;
@@ -96,6 +121,7 @@ interface GameState {
     userAnswers: UserAnswer[];
     pendingRewards: Reward[];
     showRewardScreen: boolean;
+    skillStats: Record<string, { correct: number; total: number }>;
 
 
     // Actions
@@ -137,13 +163,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     userAnswers: [],
     pendingRewards: [],
     showRewardScreen: false,
+    skillStats: {},
 
     startGame: (questions, context) => set({
         questions: questions.map(q => ({
             ...q,
             hp: q.isBoss ? 3 : 1,
             maxHp: q.isBoss ? 3 : 1,
-            element: q.type === 'grammar' ? 'water' : q.type === 'vocab' ? 'fire' : 'grass'
+            element: q.type === 'grammar' ? 'water' : q.type === 'vocab' ? 'fire' : 'grass',
+            skillTag: q.skillTag || `${q.type}_core`,
+            difficulty: q.difficulty || 'medium'
         })),
         health: 3,
         score: 0,
@@ -156,13 +185,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         inventory: [],
         userAnswers: [],
         pendingRewards: [],
-        showRewardScreen: false
+        showRewardScreen: false,
+        skillStats: {}
     }),
 
     answerQuestion: (optionIndex) => {
-        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers } = get();
+        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
+        const skillKey = getSkillKey(currentQuestion);
+        const prevStats = skillStats[skillKey] || { correct: 0, total: 0 };
+        const updatedSkillStats = {
+            ...skillStats,
+            [skillKey]: {
+                total: prevStats.total + 1,
+                correct: prevStats.correct + (isCorrect ? 1 : 0)
+            }
+        };
 
         // Record Answer
         const newAnswer: UserAnswer = {
@@ -177,6 +216,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         let damageDealt = 0;
         let isCritical = false;
         let isSuperEffective = false; // Simplified for now
+
+        const reorderedQuestions = reorderBySkill(questions, currentIndex, updatedSkillStats);
 
         if (isCorrect) {
             // RPG Logic
@@ -217,7 +258,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                     maxXp: newMaxXp,
                     streak: playerStats.streak + 1,
                     gold: playerStats.gold + Math.floor((15 + (isCritical ? 10 : 0)) * (playerStats.gold > 0 && get().inventory.some(i => i.type === 'relic_midas') ? 1.5 : 1))
-                }
+                },
+                skillStats: updatedSkillStats,
+                questions: reorderedQuestions
             });
 
             // Trigger Vampire Fangs
@@ -232,7 +275,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                 playerStats: {
                     ...playerStats,
                     streak: 0
-                }
+                },
+                skillStats: updatedSkillStats,
+                questions: reorderedQuestions
             });
 
             logMistake({
@@ -263,7 +308,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             ...q,
             hp: q.isBoss ? 3 : 1,
             maxHp: q.isBoss ? 3 : 1,
-            element: (q.type === 'grammar' ? 'water' : q.type === 'vocab' ? 'fire' : 'grass') as 'fire' | 'water' | 'grass'
+            element: (q.type === 'grammar' ? 'water' : q.type === 'vocab' ? 'fire' : 'grass') as 'fire' | 'water' | 'grass',
+            skillTag: q.skillTag || `${q.type}_core`,
+            difficulty: q.difficulty || 'medium'
         }));
         set({ questions: [...questions, ...processedQuestions] });
     },

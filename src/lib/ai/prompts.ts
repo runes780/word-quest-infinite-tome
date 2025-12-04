@@ -32,6 +32,8 @@ The output must be a single JSON object with a "level_title" (a cool name based 
 Each "monster" represents a question and includes:
 - "id": integer
 - "type": "vocab" | "grammar" | "reading"
+- "skillTag": Short string naming the micro-skill (e.g., "past_tense", "weather_vocab").
+- "difficulty": "easy" | "medium" | "hard" (based on how tricky the item is).
 - "question": The question text (The Monster's attack).
 - "options": Array of 4 strings (The defensive shields).
 - "correct_index": Integer (0-3) indicating the correct option.

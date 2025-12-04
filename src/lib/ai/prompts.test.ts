@@ -13,6 +13,8 @@ describe('Prompt Generators', () => {
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Grammar (50%)');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Hint');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Contextual Understanding');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('skillTag');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('difficulty');
     });
 
     test('generateMentorPrompt includes context', () => {
