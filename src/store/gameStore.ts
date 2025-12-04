@@ -60,6 +60,8 @@ export interface KnowledgeCard {
     createdAt: number;
 }
 
+export const CRAFT_THRESHOLD = 5;
+
 export const RELICS: Item[] = [
     {
         id: 'relic_vampire',
@@ -167,6 +169,14 @@ const findWeakSkill = (stats: Record<string, { correct: number; total: number }>
     return sorted[0]?.[0];
 };
 
+const craftRelic = (inventory: Item[]) => {
+    const ownedTypes = new Set(inventory.map((item) => item.type));
+    const options = RELICS.filter((relic) => !ownedTypes.has(relic.type));
+    if (options.length === 0) return null;
+    const relic = options[Math.floor(Math.random() * options.length)];
+    return { ...relic, id: `${relic.id}_${Date.now()}` };
+};
+
 
 export interface UserAnswer {
     questionId: number;
@@ -255,7 +265,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const combined = [...preparedRevenge, ...preparedIncoming];
         const firstHp = combined[0]?.hp || 1;
 
-        set({
+        set((state) => ({
             questions: combined,
             health: 3,
             score: 0,
@@ -272,8 +282,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             skillStats: {},
             revengeQueue: [],
             bossShieldProgress: 0,
-            clarityEffect: null
-        });
+            clarityEffect: null,
+            knowledgeCards: state.knowledgeCards,
+            rootFragments: state.rootFragments
+        }));
         persistRevengeQueue([]);
     },
 
@@ -520,7 +532,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
     },
 
-    resetGame: () => set({
+    resetGame: () => set((state) => ({
         questions: [],
         health: 3,
         score: 0,
@@ -529,8 +541,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         isVictory: false,
         pendingRewards: [],
         showRewardScreen: false,
-        bossShieldProgress: 0
-    }),
+        bossShieldProgress: 0,
+        clarityEffect: null,
+        knowledgeCards: state.knowledgeCards,
+        rootFragments: state.rootFragments
+    })),
 
     generateRewards: (type) => {
         const rewards: Reward[] = [];
@@ -569,7 +584,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
 
         const weakSkill = findWeakSkill(skillStats);
-        if (weakSkill) {
+        if ((type === 'boss' || playerStats.streak >= 3) && weakSkill) {
             rewards.push({
                 id: `card_${Date.now()}`,
                 type: 'card',
@@ -580,14 +595,15 @@ export const useGameStore = create<GameState>((set, get) => ({
             });
         }
 
-        if (Math.random() > 0.5) {
+        const fragmentsAwarded = type === 'boss' ? 2 : playerStats.streak >= 3 ? 2 : 1;
+        if (fragmentsAwarded > 0) {
             rewards.push({
                 id: `fragment_${Date.now()}`,
                 type: 'fragment',
-                value: 1,
+                value: fragmentsAwarded,
                 icon: '🪨',
-                label: 'Root Fragment',
-                description: 'Collect fragments to craft rare relics later.'
+                label: `Root Fragment x${fragmentsAwarded}`,
+                description: 'Collect fragments to craft rare relics. Perfekt streaks grant extras.'
             });
         }
 
@@ -643,11 +659,49 @@ export const useGameStore = create<GameState>((set, get) => ({
                 get().addToRevengeQueue(question);
             }
         } else if (reward.type === 'fragment') {
-            set((state) => ({ rootFragments: state.rootFragments + Number(reward.value || 0) }));
+            const fragmentsToAdd = Number(reward.value || 0);
+            set((state) => {
+                let newFragments = state.rootFragments + fragmentsToAdd;
+                let newInventory = [...state.inventory];
+                let extraRewards = [] as Reward[];
+
+                while (newFragments >= CRAFT_THRESHOLD) {
+                    newFragments -= CRAFT_THRESHOLD;
+                    const crafted = craftRelic(newInventory);
+                    if (crafted) {
+                        newInventory = [...newInventory, crafted];
+                        extraRewards.push({
+                            id: `crafted_${crafted.id}`,
+                            type: 'relic',
+                            value: crafted.type,
+                            icon: crafted.icon,
+                            label: `Crafted ${crafted.name}`,
+                            description: 'Automatic relic crafted from root fragments.'
+                        });
+                    } else {
+                        break;
+                    }
+                }
+
+                const pending = extraRewards.length > 0 ? [...state.pendingRewards, ...extraRewards] : state.pendingRewards;
+
+                return {
+                    rootFragments: newFragments,
+                    inventory: newInventory,
+                    pendingRewards: pending,
+                    showRewardScreen: extraRewards.length > 0 ? true : state.showRewardScreen
+                };
+            });
         }
 
-        // Remove claimed reward
-        set({ pendingRewards: pendingRewards.filter(r => r.id !== rewardId) });
+        // Remove claimed reward from latest state
+        set((state) => {
+            const remaining = state.pendingRewards.filter(r => r.id !== rewardId);
+            return {
+                pendingRewards: remaining,
+                showRewardScreen: state.showRewardScreen && remaining.length > 0
+            };
+        });
     },
 
     closeRewardScreen: () => set({ showRewardScreen: false, pendingRewards: [] }),

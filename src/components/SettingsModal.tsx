@@ -16,7 +16,7 @@ interface RouterModel {
 }
 
 export function SettingsModal() {
-    const { apiKey, setApiKey, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, soundEnabled, setSoundEnabled } = useSettingsStore();
+    const { apiKey, setApiKey, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
     const [availableModels, setAvailableModels] = useState<RouterModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [showFreeOnly, setShowFreeOnly] = useState(false);
@@ -121,6 +121,19 @@ export function SettingsModal() {
                                     >
                                         {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
                                         <span className="font-medium">{soundEnabled ? 'On' : 'Off'}</span>
+                                    </button>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                                        {t.settings.narration}
+                                    </label>
+                                    <button
+                                        onClick={() => setTtsEnabled(!ttsEnabled)}
+                                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${ttsEnabled ? 'bg-primary/20 border-primary text-primary' : 'bg-secondary/50 border-input text-muted-foreground'}`}
+                                    >
+                                        {ttsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                                        <span className="font-medium">{ttsEnabled ? 'On' : 'Off'}</span>
                                     </button>
                                 </div>
 

@@ -10,6 +10,7 @@ export const translations = {
             close: "Close",
             save: "Save",
             sound: "Sound Effects",
+            narration: "Narration (TTS)",
             rateLimitFree: "Free-tier models are auto-throttled to ~20 requests/min to stay within OpenRouter limits.",
             rateLimitPaid: "Paid models stream immediately (no throttle applied by the app)."
         },
@@ -42,7 +43,10 @@ export const translations = {
             relicMidas: "+50% gold",
             relicScholar: "+20% XP",
             knowledgeCards: "Knowledge Cards",
-            rootFragments: "Root Fragments"
+            rootFragments: "Root Fragments",
+            readQuestion: "Listen",
+            readExplanation: "Replay",
+            fragmentsHint: "{count} until new relic"
         },
         shop: {
             title: "Merchant",
@@ -133,6 +137,7 @@ export const translations = {
             close: "关闭",
             save: "保存",
             sound: "音效",
+            narration: "语音朗读",
             rateLimitFree: "免费模型会被自动限速到每分钟约 20 次调用，请耐心等待。",
             rateLimitPaid: "付费模型不会被本应用限速，可即时返回。"
         },
@@ -165,7 +170,10 @@ export const translations = {
             relicMidas: "+50% 金币",
             relicScholar: "+20% 经验",
             knowledgeCards: "知识卡",
-            rootFragments: "词根碎片"
+            rootFragments: "词根碎片",
+            readQuestion: "朗读题目",
+            readExplanation: "朗读解析",
+            fragmentsHint: "距下一件遗物还差 {count} 个"
         },
         shop: {
             title: "商店",

@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useGameStore, BOSS_COMBO_THRESHOLD } from '@/store/gameStore';
+import { useGameStore, BOSS_COMBO_THRESHOLD, CRAFT_THRESHOLD } from '@/store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Shield, Sword, HelpCircle, Trophy, RotateCcw, Lightbulb, ShoppingBag, Coins, Zap, Flame } from 'lucide-react';
 import { MentorOverlay } from './MentorOverlay';
@@ -15,6 +15,7 @@ import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/pro
 import { translations } from '@/lib/translations';
 import { RewardScreen } from './RewardScreen';
 import { playSound } from '@/lib/audio';
+import { speakText, stopSpeech } from '@/lib/tts';
 
 export function BattleInterface() {
     const {
@@ -45,9 +46,12 @@ export function BattleInterface() {
 
 
 
-    const { apiKey, model, language, soundEnabled } = useSettingsStore();
+    const { apiKey, model, language, soundEnabled, ttsEnabled } = useSettingsStore();
     const t = translations[language];
     const [isGeneratingMore, setIsGeneratingMore] = useState(false);
+    const speechLang = language === 'zh' ? 'zh-CN' : 'en-US';
+    const fragmentsRemainder = rootFragments % CRAFT_THRESHOLD;
+    const fragmentsUntilCraft = fragmentsRemainder === 0 ? CRAFT_THRESHOLD : CRAFT_THRESHOLD - fragmentsRemainder;
 
     const [selectedOption, setSelectedOption] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
@@ -100,6 +104,10 @@ export function BattleInterface() {
             generateMoreQuestions();
         }
     }, [currentIndex, questions.length, isGeneratingMore, context, apiKey, model, addQuestions, playerStats.level]);
+
+    useEffect(() => () => {
+        stopSpeech();
+    }, []);
 
     const handleOptionClick = (index: number) => {
         if (showResult) return;
@@ -220,6 +228,16 @@ export function BattleInterface() {
         nextQuestion();
     };
 
+    const handleSpeakQuestion = () => {
+        if (!ttsEnabled || !currentQuestion) return;
+        speakText(currentQuestion.question, speechLang);
+    };
+
+    const handleSpeakExplanation = () => {
+        if (!ttsEnabled || !currentQuestion || !showResult) return;
+        speakText(resultMessage || currentQuestion.explanation, speechLang);
+    };
+
     if (!currentQuestion) return null;
 
     if (isGameOver || isVictory) {
@@ -308,7 +326,12 @@ export function BattleInterface() {
 
             <div className="flex gap-4 text-xs text-muted-foreground mb-6">
                 <span>{t.battle.knowledgeCards}: {knowledgeCards.length}</span>
-                <span>{t.battle.rootFragments}: {rootFragments}</span>
+                <span>
+                    {t.battle.rootFragments}: {rootFragments}
+                    <span className="ml-2 text-[10px] text-muted-foreground/80">
+                        {t.battle.fragmentsHint.replace('{count}', fragmentsUntilCraft.toString())}
+                    </span>
+                </span>
             </div>
 
             {/* New Challenger Alert */}
@@ -558,15 +581,25 @@ export function BattleInterface() {
                             <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
                                 {t.battle.missionObjective}
                             </span>
-                            {currentQuestion.hint && !showResult && (
-                                <button
-                                    onClick={() => setShowHint(!showHint)}
-                                    className="ml-auto text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
-                                >
-                                    <Lightbulb className="w-3 h-3" />
-                                    {showHint ? t.battle.hideHint : t.battle.hint}
-                                </button>
-                            )}
+                            <div className="ml-auto flex items-center gap-2">
+                                {ttsEnabled && (
+                                    <button
+                                        onClick={handleSpeakQuestion}
+                                        className="text-xs text-primary hover:text-primary/80 underline"
+                                    >
+                                        {t.battle.readQuestion}
+                                    </button>
+                                )}
+                                {currentQuestion.hint && !showResult && (
+                                    <button
+                                        onClick={() => setShowHint(!showHint)}
+                                        className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                                    >
+                                        <Lightbulb className="w-3 h-3" />
+                                        {showHint ? t.battle.hideHint : t.battle.hint}
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         <h3 className="text-2xl md:text-3xl font-bold text-foreground mb-4 leading-tight">
@@ -644,7 +677,17 @@ export function BattleInterface() {
                                         <h4 className={cn("text-xl font-black mb-2 uppercase tracking-wide", isCorrect ? "text-green-500" : "text-destructive")}>
                                             {isCorrect ? `✨ ${t.battle.victory} ` : `💥 ${t.battle.defeat} `}
                                         </h4>
-                                        <p className="text-sm font-medium opacity-90 leading-relaxed text-balance">{resultMessage}</p>
+                                        <div className="flex items-start gap-2">
+                                            <p className="text-sm font-medium opacity-90 leading-relaxed text-balance flex-1">{resultMessage}</p>
+                                            {ttsEnabled && (
+                                                <button
+                                                    onClick={handleSpeakExplanation}
+                                                    className="text-xs text-primary underline"
+                                                >
+                                                    {t.battle.readExplanation}
+                                                </button>
+                                            )}
+                                        </div>
                                         {currentQuestion.isBoss && currentMonsterHp > 0 && (
                                             <p className="text-xs text-muted-foreground mt-2">
                                                 {t.battle.shieldProgress}: {bossShieldProgress}/{BOSS_COMBO_THRESHOLD}

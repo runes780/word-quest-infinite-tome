@@ -8,7 +8,7 @@
 ## Gameplay & Motivation
 - [x] Deliver on the TODO inside `gameStore.nextQuestion`: design true multi-stage bosses (e.g., three chained questions or shield points) so HP bars matter and the UI shows segmented shields that only drop after consecutive correct answers.
 - [x] Finish the inventory/shop promise by implementing real effects for `potion_clarity` (remove two distractors or show context hints) plus the passive perks for `relic_midas` and `relic_scholar`, and surface active status in `BattleInterface`.
-- [ ] Broaden rewards: let `generateRewards` emit knowledge cards or root fragments based on streaks and skill scarcity, then tie those collectibles back into the review loop above.
+- [x] Broaden rewards: let `generateRewards` emit knowledge cards or root fragments based on streaks and skill scarcity, then tie those collectibles back into the review loop above.
 
 ## AI & System Resilience
 - [x] Add timeout and fallback handling around `OpenRouterClient` and `InputSection` (e.g., local sample packs, user-facing retry guidance) and expose rate-limit info inside the settings modal to reduce first-run friction.
@@ -16,5 +16,5 @@
 - [x] Introduce multimodal ingestion by layering simple image upload + OCR (browser APIs or future on-device models) into `InputSection` to unlock the "photograph textbook" workflow.
 
 ## Multi-sensory Support & Stakeholder Views
-- [ ] Build on `lib/audio.ts` with TTS (SpeechSynthesis or cloud) so prompts, hints, and explanations can be read aloud with captions and pacing bars for accessibility.
+- [x] Build on `lib/audio.ts` with TTS (SpeechSynthesis or cloud) so prompts, hints, and explanations can be read aloud with captions and pacing bars for accessibility.
 - [ ] Create a parent/teacher dashboard that queries the persisted history, breaks accuracy down by date and skill, and exports a PDF or image report for homework accountability.
