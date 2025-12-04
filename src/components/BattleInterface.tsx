@@ -37,7 +37,9 @@ export function BattleInterface() {
         generateRewards,
         bossShieldProgress,
         clarityEffect,
-        inventory
+        inventory,
+        knowledgeCards,
+        rootFragments
 
     } = useGameStore();
 
@@ -303,6 +305,11 @@ export function BattleInterface() {
                     )}
                 </div>
             )}
+
+            <div className="flex gap-4 text-xs text-muted-foreground mb-6">
+                <span>{t.battle.knowledgeCards}: {knowledgeCards.length}</span>
+                <span>{t.battle.rootFragments}: {rootFragments}</span>
+            </div>
 
             {/* New Challenger Alert */}
             <AnimatePresence>

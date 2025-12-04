@@ -107,6 +107,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                     options: question.options,
                     correctIndex: question.correct_index,
                     type: question.type,
+                    skillTag: question.skillTag,
                     revengeQuestion: revengePayload
                 });
             } catch (e) {

@@ -40,7 +40,9 @@ export const translations = {
             clarityActive: "Clarity potion removed distractions",
             activeRelics: "Active Buffs",
             relicMidas: "+50% gold",
-            relicScholar: "+20% XP"
+            relicScholar: "+20% XP",
+            knowledgeCards: "Knowledge Cards",
+            rootFragments: "Root Fragments"
         },
         shop: {
             title: "Merchant",
@@ -104,7 +106,14 @@ export const translations = {
             fallbackTitle: "Need a quick mission?",
             fallbackSubtitle: "Load an offline sample level instantly while the AI recovers.",
             useSample: "Load Sample Mission",
-            throttled: "Free models have a short cooldown between generations."
+            throttled: "Free models have a short cooldown between generations.",
+            imageUpload: "Or snap a photo of your textbook",
+            imageHint: "We run lightweight on-device OCR to extract text (no uploads).",
+            imageUploadButton: "Select Image",
+            imageProcessing: "Extracting text...",
+            imageDetected: "OCR text inserted. Review and edit before generating.",
+            imageReplace: "Replace Image",
+            imageStubText: "Detected text from image"
         },
         home: {
             title: "Word Quest",
@@ -154,7 +163,9 @@ export const translations = {
             clarityActive: "净化药水已移除干扰选项",
             activeRelics: "增益效果",
             relicMidas: "+50% 金币",
-            relicScholar: "+20% 经验"
+            relicScholar: "+20% 经验",
+            knowledgeCards: "知识卡",
+            rootFragments: "词根碎片"
         },
         shop: {
             title: "商店",
@@ -218,7 +229,14 @@ export const translations = {
             fallbackTitle: "需要立即作战吗？",
             fallbackSubtitle: "加载离线示例关卡，等待 AI 恢复后再切换。",
             useSample: "加载示例任务",
-            throttled: "免费模型调用间隔较长，请稍候。"
+            throttled: "免费模型调用间隔较长，请稍候。",
+            imageUpload: "或上传课本照片",
+            imageHint: "我们在本地运行轻量 OCR，不会把图片传到服务器。",
+            imageUploadButton: "选择图片",
+            imageProcessing: "正在识别文字...",
+            imageDetected: "OCR 文本已插入，可先修改再生成。",
+            imageReplace: "重新选择",
+            imageStubText: "已识别的课文"
         },
         home: {
             title: "单词大冒险",

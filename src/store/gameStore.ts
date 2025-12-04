@@ -41,11 +41,23 @@ export interface Item {
 
 export interface Reward {
     id: string;
-    type: 'gold' | 'relic' | 'potion' | 'card';
-    value: number | string; // Amount for gold, Item ID for others
+    type: 'gold' | 'relic' | 'potion' | 'card' | 'fragment';
+    value: number | string | KnowledgeCardReward;
     icon: string;
     label: string;
     description?: string;
+}
+
+export interface KnowledgeCardReward {
+    skillTag: string;
+    hint: string;
+}
+
+export interface KnowledgeCard {
+    id: string;
+    skillTag: string;
+    hint: string;
+    createdAt: number;
 }
 
 export const RELICS: Item[] = [
@@ -146,6 +158,15 @@ const reorderBySkill = (questions: Monster[], currentIndex: number, stats: Recor
 
 export const BOSS_COMBO_THRESHOLD = 2;
 
+const formatSkillLabel = (skill: string) => skill.replace(/_/g, ' ');
+
+const findWeakSkill = (stats: Record<string, { correct: number; total: number }>) => {
+    const sorted = Object.entries(stats)
+        .filter(([, value]) => value.total >= 1)
+        .sort((a, b) => (a[1].correct / a[1].total) - (b[1].correct / b[1].total));
+    return sorted[0]?.[0];
+};
+
 
 export interface UserAnswer {
     questionId: number;
@@ -177,6 +198,8 @@ interface GameState {
     addToRevengeQueue: (question: Monster) => void;
     bossShieldProgress: number;
     clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
+    knowledgeCards: KnowledgeCard[];
+    rootFragments: number;
 
 
     // Actions
@@ -222,6 +245,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     revengeQueue: loadInitialRevengeQueue(),
     bossShieldProgress: 0,
     clarityEffect: null,
+    knowledgeCards: [],
+    rootFragments: 0,
 
     startGame: (questions, context) => {
         const revengeEntries = [...get().revengeQueue];
@@ -368,7 +393,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 explanation: currentQuestion.explanation,
                 options: currentQuestion.options,
                 correctIndex: currentQuestion.correct_index,
-                type: currentQuestion.type
+                type: currentQuestion.type,
+                skillTag: currentQuestion.skillTag
             });
         }
 
@@ -508,7 +534,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     generateRewards: (type) => {
         const rewards: Reward[] = [];
-        const { playerStats, inventory } = get();
+        const { playerStats, inventory, skillStats } = get();
 
         // Gold Reward
         const baseGold = type === 'boss' ? 100 : type === 'elite' ? 50 : 20;
@@ -540,6 +566,29 @@ export const useGameStore = create<GameState>((set, get) => ({
                     description: randomRelic.description
                 });
             }
+        }
+
+        const weakSkill = findWeakSkill(skillStats);
+        if (weakSkill) {
+            rewards.push({
+                id: `card_${Date.now()}`,
+                type: 'card',
+                value: { skillTag: weakSkill, hint: formatSkillLabel(weakSkill) },
+                icon: '📘',
+                label: `Knowledge Card: ${formatSkillLabel(weakSkill)}`,
+                description: 'Adds a targeted review card based on your weakest skill.'
+            });
+        }
+
+        if (Math.random() > 0.5) {
+            rewards.push({
+                id: `fragment_${Date.now()}`,
+                type: 'fragment',
+                value: 1,
+                icon: '🪨',
+                label: 'Root Fragment',
+                description: 'Collect fragments to craft rare relics later.'
+            });
         }
 
         // Potion Reward (Chance)
@@ -580,6 +629,21 @@ export const useGameStore = create<GameState>((set, get) => ({
                 icon: '❤️'
             };
             set({ inventory: [...inventory, potion] });
+        } else if (reward.type === 'card') {
+            const knowledgeValue = reward.value as KnowledgeCardReward;
+            const card: KnowledgeCard = {
+                id: reward.id,
+                skillTag: knowledgeValue.skillTag,
+                hint: knowledgeValue.hint,
+                createdAt: Date.now()
+            };
+            set((state) => ({ knowledgeCards: [...state.knowledgeCards, card] }));
+            const question = get().questions.find((q) => getSkillKey(q) === knowledgeValue.skillTag);
+            if (question) {
+                get().addToRevengeQueue(question);
+            }
+        } else if (reward.type === 'fragment') {
+            set((state) => ({ rootFragments: state.rootFragments + Number(reward.value || 0) }));
         }
 
         // Remove claimed reward

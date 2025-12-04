@@ -1,14 +1,14 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
-import { Sparkles, BookOpen, AlertCircle, Settings } from 'lucide-react';
+import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw } from 'lucide-react';
 import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 
 export function InputSection() {
@@ -16,6 +16,10 @@ export function InputSection() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [fallbackLevel, setFallbackLevel] = useState<SampleLevel | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [isOcrLoading, setIsOcrLoading] = useState(false);
+    const [ocrMessage, setOcrMessage] = useState('');
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { startGame } = useGameStore();
     const { apiKey, model, setSettingsOpen, language } = useSettingsStore();
     const t = translations[language];
@@ -68,6 +72,42 @@ export function InputSection() {
         setError('');
     };
 
+    useEffect(() => {
+        return () => {
+            if (imagePreview) {
+                URL.revokeObjectURL(imagePreview);
+            }
+        };
+    }, [imagePreview]);
+
+    const simulateOcr = async (file: File) => {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        return `${t.input.imageStubText}: ${file.name}`;
+    };
+
+    const handleImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (imagePreview) URL.revokeObjectURL(imagePreview);
+        setImagePreview(URL.createObjectURL(file));
+        setIsOcrLoading(true);
+        setOcrMessage('');
+        try {
+            const text = await simulateOcr(file);
+            setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
+            setOcrMessage(t.input.imageDetected);
+        } catch (err) {
+            console.error(err);
+            setError(t.input.error);
+        } finally {
+            setIsOcrLoading(false);
+        }
+    };
+
+    const handleOpenFilePicker = () => {
+        fileInputRef.current?.click();
+    };
+
     return (
         <div className="w-full max-w-2xl mx-auto p-6">
             <motion.div
@@ -91,6 +131,48 @@ export function InputSection() {
                     placeholder={t.input.placeholder}
                     className="w-full h-48 bg-secondary/50 border border-input rounded-xl p-4 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary outline-none resize-none mb-6 transition-all"
                 />
+
+                <div className="mb-6 border border-dashed border-border rounded-2xl p-4 bg-secondary/30">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                <ImageIcon className="w-4 h-4" /> {t.input.imageUpload}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{t.input.imageHint}</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleOpenFilePicker}
+                            disabled={isOcrLoading}
+                            className="px-3 py-1.5 text-xs rounded-lg border border-primary text-primary hover:bg-primary/10 disabled:opacity-60"
+                        >
+                            {imagePreview ? t.input.imageReplace : t.input.imageUploadButton}
+                        </button>
+                    </div>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageSelected}
+                    />
+                    <div className="relative flex items-center justify-center h-32 bg-background/40 rounded-xl overflow-hidden">
+                        {imagePreview ? (
+                            <img src={imagePreview} alt="Selected study material" className="h-full object-contain" />
+                        ) : (
+                            <p className="text-xs text-muted-foreground">PNG/JPG, under 5MB recommended.</p>
+                        )}
+                        {isOcrLoading && (
+                            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white text-xs gap-2">
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                {t.input.imageProcessing}
+                            </div>
+                        )}
+                    </div>
+                    {ocrMessage && (
+                        <p className="text-xs text-green-500 mt-2">{ocrMessage}</p>
+                    )}
+                </div>
 
                 {error && (
                     <div className="space-y-3 mb-4">

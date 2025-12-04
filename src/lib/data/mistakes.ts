@@ -12,6 +12,7 @@ export interface LogMistakeArgs {
     options?: string[];
     correctIndex?: number;
     type?: StoredQuestionType;
+    skillTag?: string;
 }
 
 async function findMistake(questionId: number, wrongAnswer: string): Promise<MistakeRecord | null> {
@@ -59,6 +60,7 @@ export async function cacheMentorAnalysis(args: CacheMentorArgs) {
                 options: existing.options || args.options,
                 correctIndex: existing.correctIndex ?? args.correctIndex,
                 type: existing.type || args.type,
+                skillTag: existing.skillTag || args.skillTag,
                 timestamp: Date.now()
             });
         } else {
@@ -71,6 +73,7 @@ export async function cacheMentorAnalysis(args: CacheMentorArgs) {
                 options: args.options,
                 correctIndex: args.correctIndex,
                 type: args.type,
+                skillTag: args.skillTag,
                 mentorAnalysis: args.analysis,
                 revengeQuestion: args.revengeQuestion,
                 timestamp: Date.now()
@@ -91,6 +94,18 @@ export async function loadMentorCache(questionId: number, wrongAnswer: string): 
         return null;
     } catch (error) {
         console.error('loadMentorCache error', error);
+        return null;
+    }
+}
+
+export async function findMistakeBySkill(skillTag: string): Promise<MistakeRecord | null> {
+    if (!isBrowser) return null;
+    try {
+        const collection = db.mistakes.where('skillTag').equals(skillTag).reverse();
+        const record = await collection.first();
+        return record || null;
+    } catch (error) {
+        console.error('findMistakeBySkill error', error);
         return null;
     }
 }

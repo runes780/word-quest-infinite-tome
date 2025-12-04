@@ -29,6 +29,7 @@ export interface MistakeRecord {
     options?: string[];
     correctIndex?: number;
     type?: StoredQuestionType;
+    skillTag?: string;
     timestamp: number;
     mentorAnalysis?: string;
     revengeQuestion?: StoredRevengeQuestion;
@@ -43,6 +44,10 @@ export class WordQuestDB extends Dexie {
         this.version(1).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId'
+        });
+        this.version(2).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag'
         });
     }
 }
