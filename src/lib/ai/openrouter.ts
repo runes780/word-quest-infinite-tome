@@ -12,12 +12,14 @@ export class OpenRouterClient {
     private isProcessing = false;
     private lastRequestTime = 0;
     private minDelay = 3500; // Default to ~17 RPM for free tier
+    private timeoutMs = 20000;
 
     constructor(private apiKey: string, private model: string) {
         // User Requirement: Only limit rate for free models.
         // Free models on OpenRouter typically end with ":free".
         if (!model.endsWith(':free')) {
             this.minDelay = 50; // Negligible delay for paid models
+            this.timeoutMs = 10000;
         }
     }
 
@@ -50,6 +52,9 @@ export class OpenRouterClient {
         return new Promise((resolve, reject) => {
             const task = async () => {
                 try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
                     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                         method: "POST",
                         headers: {
@@ -66,6 +71,7 @@ export class OpenRouterClient {
                             ],
                             response_format: { type: "json_object" }, // Force JSON if supported
                         }),
+                        signal: controller.signal
                     });
 
                     if (!response.ok) {
@@ -77,7 +83,13 @@ export class OpenRouterClient {
                     const content = data.choices[0]?.message?.content || "";
                     resolve(content);
                 } catch (error) {
-                    reject(error);
+                    if ((error as Error).name === 'AbortError') {
+                        reject(new Error('OpenRouter request timed out.'));
+                    } else {
+                        reject(error);
+                    }
+                } finally {
+                    clearTimeout(timeout);
                 }
             };
 

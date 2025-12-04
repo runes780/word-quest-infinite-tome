@@ -9,7 +9,9 @@ export const translations = {
             connect: "Connect",
             close: "Close",
             save: "Save",
-            sound: "Sound Effects"
+            sound: "Sound Effects",
+            rateLimitFree: "Free-tier models are auto-throttled to ~20 requests/min to stay within OpenRouter limits.",
+            rateLimitPaid: "Paid models stream immediately (no throttle applied by the app)."
         },
         battle: {
             score: "SCORE",
@@ -70,7 +72,12 @@ export const translations = {
             configureKey: "Configure API Key to Start",
             analyzing: "Analyzing Intel...",
             initialize: "Initialize Mission",
-            error: "Failed to generate mission. Please try again."
+            error: "Failed to generate mission. Please try again.",
+            timeout: "The request took too long. Servers might be busy.",
+            fallbackTitle: "Need a quick mission?",
+            fallbackSubtitle: "Load an offline sample level instantly while the AI recovers.",
+            useSample: "Load Sample Mission",
+            throttled: "Free models have a short cooldown between generations."
         },
         home: {
             title: "Word Quest",
@@ -89,7 +96,9 @@ export const translations = {
             connect: "连接",
             close: "关闭",
             save: "保存",
-            sound: "音效"
+            sound: "音效",
+            rateLimitFree: "免费模型会被自动限速到每分钟约 20 次调用，请耐心等待。",
+            rateLimitPaid: "付费模型不会被本应用限速，可即时返回。"
         },
         battle: {
             score: "分数",
@@ -150,7 +159,12 @@ export const translations = {
             configureKey: "配置 API 密钥以开始",
             analyzing: "正在分析情报...",
             initialize: "初始化任务",
-            error: "任务生成失败。请重试。"
+            error: "任务生成失败。请重试。",
+            timeout: "请求超时，服务器可能繁忙。",
+            fallbackTitle: "需要立即作战吗？",
+            fallbackSubtitle: "加载离线示例关卡，等待 AI 恢复后再切换。",
+            useSample: "加载示例任务",
+            throttled: "免费模型调用间隔较长，请稍候。"
         },
         home: {
             title: "单词大冒险",

@@ -22,6 +22,7 @@ export function SettingsModal() {
     const [showFreeOnly, setShowFreeOnly] = useState(false);
 
     const t = translations[language];
+    const isFreeModel = model.endsWith(':free');
 
     const fetchModels = async () => {
         setIsLoadingModels(true);
@@ -146,6 +147,9 @@ export function SettingsModal() {
                                     <p className="text-xs text-muted-foreground mt-1">
                                         Enter key to load available models.
                                     </p>
+                                    <div className="mt-3 text-xs text-muted-foreground bg-secondary/40 border border-secondary/60 rounded-lg p-3">
+                                        {isFreeModel ? t.settings.rateLimitFree : t.settings.rateLimitPaid}
+                                    </div>
                                 </div>
 
                                 <div>

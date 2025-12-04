@@ -2,18 +2,20 @@
 'use client';
 
 import { useState } from 'react';
-import { useGameStore, Monster } from '@/store/gameStore';
+import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
 import { Sparkles, BookOpen, AlertCircle, Settings } from 'lucide-react';
+import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 
 export function InputSection() {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [fallbackLevel, setFallbackLevel] = useState<SampleLevel | null>(null);
     const { startGame } = useGameStore();
     const { apiKey, model, setSettingsOpen, language } = useSettingsStore();
     const t = translations[language];
@@ -27,6 +29,7 @@ export function InputSection() {
 
         setIsLoading(true);
         setError('');
+        setFallbackLevel(null);
 
         try {
             const client = new OpenRouterClient(apiKey, model);
@@ -43,12 +46,26 @@ export function InputSection() {
             }
 
             startGame(data.monsters, input);
+            setFallbackLevel(null);
         } catch (err) {
             console.error(err);
-            setError(t.input.error);
+            const isTimeout = err instanceof Error && err.message.includes('timed out');
+            setError(isTimeout ? t.input.timeout : t.input.error);
+            const sample = SAMPLE_LEVELS[Math.floor(Math.random() * SAMPLE_LEVELS.length)];
+            setFallbackLevel(sample);
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleUseSample = () => {
+        if (!fallbackLevel) return;
+        startGame(
+            fallbackLevel.monsters,
+            `${fallbackLevel.title}\n${fallbackLevel.context}`
+        );
+        setFallbackLevel(null);
+        setError('');
     };
 
     return (
@@ -76,9 +93,25 @@ export function InputSection() {
                 />
 
                 {error && (
-                    <div className="flex items-center gap-2 text-destructive mb-4 bg-destructive/10 p-3 rounded-lg">
-                        <AlertCircle className="w-5 h-5" />
-                        <p className="text-sm font-medium">{error}</p>
+                    <div className="space-y-3 mb-4">
+                        <div className="flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-lg">
+                            <AlertCircle className="w-5 h-5" />
+                            <p className="text-sm font-medium">{error}</p>
+                        </div>
+                        {fallbackLevel && (
+                            <div className="flex flex-col gap-3 bg-secondary/40 border border-border rounded-xl p-4">
+                                <div>
+                                    <p className="text-sm font-bold">{t.input.fallbackTitle}</p>
+                                    <p className="text-xs text-muted-foreground">{t.input.fallbackSubtitle}</p>
+                                </div>
+                                <button
+                                    onClick={handleUseSample}
+                                    className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors"
+                                >
+                                    {t.input.useSample}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -112,6 +145,11 @@ export function InputSection() {
                             </>
                         )}
                     </button>
+                )}
+                {(isLoading || model.endsWith(':free')) && (
+                    <p className="text-xs text-muted-foreground mt-3 text-center">
+                        {t.input.throttled}
+                    </p>
                 )}
             </motion.div>
         </div>
