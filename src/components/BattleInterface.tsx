@@ -33,10 +33,11 @@ export function BattleInterface() {
         currentMonsterHp,
         addQuestions,
         context,
-        inventory,
         useItem,
         generateRewards,
-        bossShieldProgress
+        bossShieldProgress,
+        clarityEffect,
+        inventory
 
     } = useGameStore();
 
@@ -226,7 +227,7 @@ export function BattleInterface() {
     return (
         <div className="w-full max-w-4xl mx-auto p-4">
             {/* HUD */}
-            <div className="flex justify-between items-center mb-8 bg-secondary/30 p-4 rounded-2xl backdrop-blur-sm border border-border">
+            <div className="flex justify-between items-center mb-4 bg-secondary/30 p-4 rounded-2xl backdrop-blur-sm border border-border">
                 <div className="flex items-center gap-4">
                     {/* Health Hearts */}
                     <div className="flex gap-1">
@@ -286,6 +287,22 @@ export function BattleInterface() {
                     </div>
                 </div>
             </div>
+
+            {(inventory.some(i => i.type === 'relic_midas') || inventory.some(i => i.type === 'relic_scholar')) && (
+                <div className="flex gap-2 flex-wrap text-xs text-muted-foreground mb-8">
+                    <span className="font-bold text-primary mr-1">{t.battle.activeRelics}:</span>
+                    {inventory.some(i => i.type === 'relic_midas') && (
+                        <span className="px-2 py-1 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-yellow-500">
+                            {t.battle.relicMidas}
+                        </span>
+                    )}
+                    {inventory.some(i => i.type === 'relic_scholar') && (
+                        <span className="px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                            {t.battle.relicScholar}
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* New Challenger Alert */}
             <AnimatePresence>
@@ -566,32 +583,39 @@ export function BattleInterface() {
 
                         {/* Options */}
                         <div className="grid grid-cols-1 gap-3">
-                            {currentQuestion.options.map((option, index) => (
-                                <motion.button
-                                    key={index}
-                                    initial={{ x: 20, opacity: 0 }}
-                                    animate={{ x: 0, opacity: 1 }}
-                                    transition={{ delay: index * 0.1 }}
-                                    onClick={() => handleOptionClick(index)}
-                                    disabled={showResult}
-                                    className={cn(
-                                        "w-full p-4 rounded-xl border-2 text-left font-medium transition-all relative overflow-hidden group hover:shadow-md hover:scale-[1.02]",
-                                        selectedOption === index
-                                            ? isCorrect
-                                                ? "border-green-500 bg-green-500/10 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]"
-                                                : "border-destructive bg-destructive/10 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                                            : "border-border bg-card hover:border-primary hover:bg-primary/5"
-                                    )}
-                                >
-                                    <div className="flex items-center justify-between relative z-10">
-                                        <span className="text-lg">{option}</span>
-                                        {selectedOption === index && (
-                                            isCorrect ? <Sword className="w-5 h-5 animate-bounce" /> : <Shield className="w-5 h-5 animate-pulse" />
+                            {currentQuestion.options.map((option, index) => {
+                                const clarityDisabled = !!(clarityEffect && clarityEffect.questionId === currentQuestion.id && clarityEffect.hiddenOptions.includes(index));
+                                return (
+                                    <motion.button
+                                        key={index}
+                                        initial={{ x: 20, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        transition={{ delay: index * 0.1 }}
+                                        onClick={() => handleOptionClick(index)}
+                                        disabled={showResult || clarityDisabled}
+                                        className={cn(
+                                            "w-full p-4 rounded-xl border-2 text-left font-medium transition-all relative overflow-hidden group hover:shadow-md hover:scale-[1.02]",
+                                            clarityDisabled && "opacity-40 pointer-events-none grayscale",
+                                            selectedOption === index
+                                                ? isCorrect
+                                                    ? "border-green-500 bg-green-500/10 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+                                                    : "border-destructive bg-destructive/10 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                                                : "border-border bg-card hover:border-primary hover:bg-primary/5"
                                         )}
-                                    </div>
-                                </motion.button>
-                            ))}
+                                    >
+                                        <div className="flex items-center justify-between relative z-10">
+                                            <span className="text-lg">{option}</span>
+                                            {selectedOption === index && (
+                                                isCorrect ? <Sword className="w-5 h-5 animate-bounce" /> : <Shield className="w-5 h-5 animate-pulse" />
+                                            )}
+                                        </div>
+                                    </motion.button>
+                                );
+                            })}
                         </div>
+                        {clarityEffect && clarityEffect.questionId === currentQuestion.id && (
+                            <p className="text-xs text-blue-400 mt-2">{t.battle.clarityActive}</p>
+                        )}
                     </motion.div>
 
                     {/* Result Feedback Area */}
@@ -618,6 +642,9 @@ export function BattleInterface() {
                                             <p className="text-xs text-muted-foreground mt-2">
                                                 {t.battle.shieldProgress}: {bossShieldProgress}/{BOSS_COMBO_THRESHOLD}
                                             </p>
+                                        )}
+                                        {clarityEffect && clarityEffect.questionId === currentQuestion.id && (
+                                            <p className="text-xs text-blue-400 mt-2">{t.battle.clarityActive}</p>
                                         )}
                                     </div>
                                     <div className="flex flex-col gap-2 shrink-0">

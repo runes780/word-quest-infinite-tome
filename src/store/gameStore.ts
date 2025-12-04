@@ -79,6 +79,12 @@ type RevengeEntry = Pick<Monster, 'id' | 'type' | 'question' | 'options' | 'corr
 
 const REVENGE_STORAGE_KEY = 'word-quest-revenge';
 
+const hasRelic = (inventory: Item[], type: ItemType) => inventory.some((item) => item.type === type);
+
+const applyGoldBonus = (base: number, inventory: Item[]) => Math.floor(base * (hasRelic(inventory, 'relic_midas') ? 1.5 : 1));
+
+const applyXpBonus = (base: number, inventory: Item[]) => Math.round(base * (hasRelic(inventory, 'relic_scholar') ? 1.2 : 1));
+
 const loadInitialRevengeQueue = (): RevengeEntry[] => {
     if (typeof window === 'undefined') return [];
     try {
@@ -170,6 +176,7 @@ interface GameState {
     revengeQueue: RevengeEntry[];
     addToRevengeQueue: (question: Monster) => void;
     bossShieldProgress: number;
+    clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
 
 
     // Actions
@@ -214,6 +221,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     skillStats: {},
     revengeQueue: loadInitialRevengeQueue(),
     bossShieldProgress: 0,
+    clarityEffect: null,
 
     startGame: (questions, context) => {
         const revengeEntries = [...get().revengeQueue];
@@ -238,13 +246,14 @@ export const useGameStore = create<GameState>((set, get) => ({
             showRewardScreen: false,
             skillStats: {},
             revengeQueue: [],
-            bossShieldProgress: 0
+            bossShieldProgress: 0,
+            clarityEffect: null
         });
         persistRevengeQueue([]);
     },
 
     answerQuestion: (optionIndex) => {
-        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress } = get();
+        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, clarityEffect } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
         const skillKey = getSkillKey(currentQuestion);
@@ -302,7 +311,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
 
             // XP Calculation
-            const xpGain = 20 + (isCritical ? 10 : 0);
+            const xpBase = 20 + (isCritical ? 10 : 0);
+            const xpGain = applyXpBonus(xpBase, inventory);
             let newXp = playerStats.xp + xpGain;
             let newLevel = playerStats.level;
             let newMaxXp = playerStats.maxXp;
@@ -325,7 +335,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     level: newLevel,
                     maxXp: newMaxXp,
                     streak: playerStats.streak + 1,
-                    gold: playerStats.gold + Math.floor((15 + (isCritical ? 10 : 0)) * (playerStats.gold > 0 && get().inventory.some(i => i.type === 'relic_midas') ? 1.5 : 1))
+                    gold: playerStats.gold + applyGoldBonus(15 + (isCritical ? 10 : 0), inventory)
                 },
                 skillStats: updatedSkillStats,
                 questions: reorderedQuestions,
@@ -409,7 +419,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             set({
                 currentIndex: nextIndex,
                 currentMonsterHp: nextMonster.hp || 1,
-                bossShieldProgress: 0
+                bossShieldProgress: 0,
+                clarityEffect: null
             });
         } else {
             // Endless Mode Trigger would go here
@@ -429,7 +440,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     })),
 
     addGold: (amount) => set((state) => ({
-        playerStats: { ...state.playerStats, gold: state.playerStats.gold + amount }
+        playerStats: { ...state.playerStats, gold: state.playerStats.gold + applyGoldBonus(amount, state.inventory) }
     })),
 
     spendGold: (amount) => {
@@ -446,7 +457,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     })),
 
     useItem: (itemId) => {
-        const { inventory, health, maxHealth } = get();
+        const { inventory, health, maxHealth, questions, currentIndex, clarityEffect } = get();
         const itemIndex = inventory.findIndex(i => i.id === itemId);
         if (itemIndex === -1) return;
 
@@ -459,13 +470,21 @@ export const useGameStore = create<GameState>((set, get) => ({
                 consumed = true;
             }
         } else if (item.type === 'potion_clarity') {
-            // Logic handled in UI or we need a state for "clarity active"
-            // For simplicity, let's say it heals for now or we add a "activeEffects" state later
-            // Let's make clarity potion just heal 2 for MVP to avoid complex UI logic changes right now
-            // Or better: Clarity Potion removes 2 wrong answers. This needs UI state.
-            // Let's stick to Health Potion for now and add Clarity later if needed.
-            // Actually, let's implement Clarity as "Heal 2" for now to keep it simple? No, that's confusing.
-            // Let's just implement Health Potion logic here.
+            const currentQuestion = questions[currentIndex];
+            if (currentQuestion) {
+                const alreadyApplied = clarityEffect && clarityEffect.questionId === currentQuestion.id;
+                if (!alreadyApplied) {
+                    const wrongIndexes = currentQuestion.options
+                        .map((_, idx) => idx)
+                        .filter(idx => idx !== currentQuestion.correct_index);
+                    if (wrongIndexes.length > 0) {
+                        const shuffled = [...wrongIndexes].sort(() => Math.random() - 0.5);
+                        const hidden = shuffled.slice(0, Math.min(2, shuffled.length));
+                        set({ clarityEffect: { questionId: currentQuestion.id, hiddenOptions: hidden } });
+                        consumed = true;
+                    }
+                }
+            }
         }
 
         if (consumed) {
@@ -493,7 +512,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
         // Gold Reward
         const baseGold = type === 'boss' ? 100 : type === 'elite' ? 50 : 20;
-        const goldAmount = Math.floor(baseGold * (inventory.some(i => i.type === 'relic_midas') ? 1.5 : 1));
+        const goldAmount = applyGoldBonus(baseGold, inventory);
 
         rewards.push({
             id: `gold_${Date.now()}`,

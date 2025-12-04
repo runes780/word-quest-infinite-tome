@@ -36,7 +36,11 @@ export const translations = {
             critical: "CRITICAL!",
             weakness: "WEAKNESS!",
             combo: "COMBO",
-            shieldProgress: "Shield charge"
+            shieldProgress: "Shield charge",
+            clarityActive: "Clarity potion removed distractions",
+            activeRelics: "Active Buffs",
+            relicMidas: "+50% gold",
+            relicScholar: "+20% XP"
         },
         shop: {
             title: "Merchant",
@@ -146,7 +150,11 @@ export const translations = {
             critical: "暴击！",
             weakness: "弱点击破！",
             combo: "连击",
-            shieldProgress: "护盾充能"
+            shieldProgress: "护盾充能",
+            clarityActive: "净化药水已移除干扰选项",
+            activeRelics: "增益效果",
+            relicMidas: "+50% 金币",
+            relicScholar: "+20% 经验"
         },
         shop: {
             title: "商店",
