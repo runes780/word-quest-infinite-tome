@@ -51,6 +51,9 @@ function updateAchievementStats(updates: Partial<PlayerAchievementStats>) {
 
 export type MonsterDifficulty = 'easy' | 'medium' | 'hard';
 
+// Question mode for productive recall
+export type QuestionMode = 'choice' | 'typing' | 'fill-blank';
+
 export interface Monster {
     id: number;
     type: 'vocab' | 'grammar' | 'reading';
@@ -65,6 +68,8 @@ export interface Monster {
     isBoss?: boolean;
     skillTag?: string;
     difficulty?: MonsterDifficulty;
+    questionMode?: QuestionMode; // Productive recall mode
+    correctAnswer?: string; // For typing/fill-blank questions
 }
 
 export interface PlayerStats {

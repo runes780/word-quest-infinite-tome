@@ -16,6 +16,8 @@ import { translations } from '@/lib/translations';
 import { RewardScreen } from './RewardScreen';
 import { playSound } from '@/lib/audio';
 import { speakText, stopSpeech } from '@/lib/tts';
+import { TypingQuestion } from './TypingQuestion';
+import { FillBlankQuestion } from './FillBlankQuestion';
 
 export function BattleInterface() {
     const {
@@ -684,38 +686,68 @@ export function BattleInterface() {
                             )}
                         </AnimatePresence>
 
-                        {/* Options */}
-                        <div className="grid grid-cols-1 gap-3">
-                            {currentQuestion.options.map((option, index) => {
-                                const clarityDisabled = !!(clarityEffect && clarityEffect.questionId === currentQuestion.id && clarityEffect.hiddenOptions.includes(index));
-                                return (
-                                    <motion.button
-                                        key={index}
-                                        initial={{ x: 20, opacity: 0 }}
-                                        animate={{ x: 0, opacity: 1 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        onClick={() => handleOptionClick(index)}
-                                        disabled={showResult || clarityDisabled}
-                                        className={cn(
-                                            "w-full p-4 rounded-xl border-2 text-left font-medium transition-all relative overflow-hidden group hover:shadow-md hover:scale-[1.02]",
-                                            clarityDisabled && "opacity-40 pointer-events-none grayscale",
-                                            selectedOption === index
-                                                ? isCorrect
-                                                    ? "border-green-500 bg-green-500/10 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]"
-                                                    : "border-destructive bg-destructive/10 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                                                : "border-border bg-card hover:border-primary hover:bg-primary/5"
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between relative z-10">
-                                            <span className="text-lg">{option}</span>
-                                            {selectedOption === index && (
-                                                isCorrect ? <Sword className="w-5 h-5 animate-bounce" /> : <Shield className="w-5 h-5 animate-pulse" />
+                        {/* Question Input - Multiple Choice, Typing, or Fill-Blank */}
+                        {(!currentQuestion.questionMode || currentQuestion.questionMode === 'choice') ? (
+                            /* Multiple Choice Options */
+                            <div className="grid grid-cols-1 gap-3">
+                                {currentQuestion.options.map((option, index) => {
+                                    const clarityDisabled = !!(clarityEffect && clarityEffect.questionId === currentQuestion.id && clarityEffect.hiddenOptions.includes(index));
+                                    return (
+                                        <motion.button
+                                            key={index}
+                                            initial={{ x: 20, opacity: 0 }}
+                                            animate={{ x: 0, opacity: 1 }}
+                                            transition={{ delay: index * 0.1 }}
+                                            onClick={() => handleOptionClick(index)}
+                                            disabled={showResult || clarityDisabled}
+                                            className={cn(
+                                                "w-full p-4 rounded-xl border-2 text-left font-medium transition-all relative overflow-hidden group hover:shadow-md hover:scale-[1.02]",
+                                                clarityDisabled && "opacity-40 pointer-events-none grayscale",
+                                                selectedOption === index
+                                                    ? isCorrect
+                                                        ? "border-green-500 bg-green-500/10 text-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]"
+                                                        : "border-destructive bg-destructive/10 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                                                    : "border-border bg-card hover:border-primary hover:bg-primary/5"
                                             )}
-                                        </div>
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
+                                        >
+                                            <div className="flex items-center justify-between relative z-10">
+                                                <span className="text-lg">{option}</span>
+                                                {selectedOption === index && (
+                                                    isCorrect ? <Sword className="w-5 h-5 animate-bounce" /> : <Shield className="w-5 h-5 animate-pulse" />
+                                                )}
+                                            </div>
+                                        </motion.button>
+                                    );
+                                })}
+                            </div>
+                        ) : currentQuestion.questionMode === 'typing' ? (
+                            /* Typing Question */
+                            <TypingQuestion
+                                question={currentQuestion}
+                                onAnswer={(correct, input) => {
+                                    setSelectedOption(correct ? currentQuestion.correct_index : -1);
+                                    setIsCorrect(correct);
+                                    setShowResult(true);
+                                    const result = answerQuestion(correct ? currentQuestion.correct_index : -1);
+                                    setResultMessage(result.explanation);
+                                }}
+                                disabled={showResult}
+                            />
+                        ) : currentQuestion.questionMode === 'fill-blank' ? (
+                            /* Fill-in-the-Blank Question */
+                            <FillBlankQuestion
+                                question={currentQuestion}
+                                onAnswer={(correct, input) => {
+                                    setSelectedOption(correct ? currentQuestion.correct_index : -1);
+                                    setIsCorrect(correct);
+                                    setShowResult(true);
+                                    const result = answerQuestion(correct ? currentQuestion.correct_index : -1);
+                                    setResultMessage(result.explanation);
+                                }}
+                                disabled={showResult}
+                            />
+                        ) : null}
+
                         {clarityEffect && clarityEffect.questionId === currentQuestion.id && (
                             <p className="text-xs text-blue-400 mt-2">{t.battle.clarityActive}</p>
                         )}

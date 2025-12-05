@@ -105,6 +105,9 @@ export const playSound = {
         setTimeout(() => zzfx(.5, .05, 200, .6, .1, -.5, 0, 10, 0), 300);
     },
 
+    // Error Sound (wrong answer)
+    error: () => zzfx(.6, .05, 200, .3, .01, -.5, .3, 0, 0),
+
     // Level Up / Victory
     victory: () => {
         const speed = 100;
