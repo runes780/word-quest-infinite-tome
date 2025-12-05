@@ -1,20 +1,192 @@
-# TODO
+# Word Quest: Infinite Tome - 产品分析与未来路线图
 
-## Learning Data & Adaptivity
-- [x] Wire the Dexie tables in `src/db/db.ts` into `useGameStore.userAnswers`, persist every mission and wrong answer, surface a "mistake notebook" view, and build an offline review queue from that data.
-- [x] Extend the `Monster` schema with `skillTag` and `difficulty`, update `LEVEL_GENERATOR_SYSTEM_PROMPT` / `generateLevelPrompt` to request those annotations, then aggregate accuracy per skill inside `answerQuestion` to drive adaptive ordering.
-- [x] Upgrade `MissionReport` with visual skill charts and an option to push wrong items into a "Revenge Queue" that auto-preloads next session, approximating a lightweight SRS loop.
+> **版本**: v1.0.0 | **分析日期**: 2025-12-05  
+> **定位**: 游戏化ESL词汇学习应用 (Grade 4-6, CEFR A1-A2)
 
-## Gameplay & Motivation
-- [x] Deliver on the TODO inside `gameStore.nextQuestion`: design true multi-stage bosses (e.g., three chained questions or shield points) so HP bars matter and the UI shows segmented shields that only drop after consecutive correct answers.
-- [x] Finish the inventory/shop promise by implementing real effects for `potion_clarity` (remove two distractors or show context hints) plus the passive perks for `relic_midas` and `relic_scholar`, and surface active status in `BattleInterface`.
-- [x] Broaden rewards: let `generateRewards` emit knowledge cards or root fragments based on streaks and skill scarcity, then tie those collectibles back into the review loop above.
+---
 
-## AI & System Resilience
-- [x] Add timeout and fallback handling around `OpenRouterClient` and `InputSection` (e.g., local sample packs, user-facing retry guidance) and expose rate-limit info inside the settings modal to reduce first-run friction.
-- [x] Give `MentorOverlay` caching plus rate gating by storing per-question analyses locally and reusing them before issuing a new API call; archive the explanations in Dexie for offline study.
-- [x] Introduce multimodal ingestion by layering simple image upload + OCR (browser APIs or future on-device models) into `InputSection` to unlock the "photograph textbook" workflow.
+## 一、现有功能分析
 
-## Multi-sensory Support & Stakeholder Views
-- [x] Build on `lib/audio.ts` with TTS (SpeechSynthesis or cloud) so prompts, hints, and explanations can be read aloud with captions and pacing bars for accessibility.
-- [x] Create a parent/teacher dashboard that queries the persisted history, breaks accuracy down by date and skill, and exports a PDF or image report for homework accountability.
+### 🎮 核心游戏循环
+
+| 模块 | 功能 | 教育学依据 | 评价 |
+|------|------|-----------|------|
+| **战斗系统** | 选择题对战怪物 | 测试效应 (Testing Effect) | ⭐⭐⭐⭐ 但缺少产出型练习 |
+| **即时反馈** | 对错动画+音效 | 反馈原理 (Immediate Feedback) | ⭐⭐⭐⭐⭐ 反馈丰富 |
+| **导师系统** | 错题AI分析+复仇机制 | 间隔重复 (Spaced Repetition) | ⭐⭐⭐⭐ 可加入SRS算法 |
+| **进度系统** | XP/等级/连击 | 自我效能感 (Self-Efficacy) | ⭐⭐⭐⭐ 需要更多里程碑 |
+
+### 🧠 记忆与认知
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **技能追踪** | `skillStats` 记录各知识点正确率 | ✅ 已实现 |
+| **自适应难度** | 根据技能弱点调整题目顺序 | ✅ 已实现 |
+| **错题本** | `MistakeNotebook` 记录历史错误 | ✅ 已实现 |
+| **复仇队列** | 错题优先级重考 | ✅ 已实现 |
+
+### 💎 激励机制
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **金币经济** | 答对赚金币，商店消费 | ✅ 已实现 |
+| **遗物系统** | 被动属性加成 (吸血/金币/经验) | ✅ 已实现 |
+| **知识卡牌** | Boss掉落hint收集 | ✅ 已实现 |
+| **碎片合成** | 5碎片合成遗物 | ✅ 已实现 |
+
+### 👨‍👩‍👧 家长/教师功能
+
+| 模块 | 功能 | 状态 |
+|------|------|------|
+| **家长仪表板** | 查看学习统计 | ✅ 已实现 |
+| **TTS朗读** | 问题/解释语音播放 | ✅ 已实现 |
+| **OCR上传** | 图片识别文本输入 | ✅ 已实现 |
+
+---
+
+## 二、核心优化建议
+
+### ✅ 已完成 (v1.0.1)
+
+- [x] **浅色系UI重构**: 淡雅象牙色背景、深靛蓝主色、无渐变、极简风格 (`globals.css`)
+- [x] **祝福系统 (Roguelike)**: 杀戮尖塔风格的开局祝福选择，11种祝福卡 (`BlessingSelection.tsx`)
+  - 普通: 学者之路(+20%XP)、商人眷顾(+50金币)、钢铁意志(+1血)
+  - 稀有: 玻璃大炮(+50%伤害/-1血)、财富猎人(+30%金币/错题扣金)、快速学习者(错题也得XP)
+  - 传说: 吸血智慧(答对回血)、完美主义者(双倍奖励/双倍惩罚)、坚毅之盾(+2血/-20%XP)
+
+### 🔴 优先级1: 关键修复
+
+- [ ] **API稳定性**: 添加本地缓存层，减少API依赖
+- [ ] **离线模式**: 本地题库+已缓存题目可离线游玩
+- [ ] **错误恢复**: 网络中断后自动重连，保存游戏状态
+- [ ] **性能优化**: 大型题库的虚拟滚动，减少DOM渲染
+
+### 🟠 优先级2: 教育学增强
+
+- [ ] **SRS算法**: 替换简单复仇队列，实现SM-2/FSRS遗忘曲线
+- [ ] **产出型练习**: 添加拼写/填空/造句题型 (Productive Recall)
+- [ ] **上下文学习**: 保留原文snippets，点击词汇高亮来源
+- [ ] **多模态输入**: 支持语音识别答题 (Web Speech API)
+- [ ] **词族展示**: 学习time时展示timing/timer/timely
+
+### 🟡 优先级3: 游戏化深化
+
+- [ ] **每日挑战**: 每日限时关卡+排行榜
+- [ ] **成就系统**: 50+成就徽章 (首次暴击、连续7天等)
+- [ ] **宠物系统**: 可养成的学习伙伴，需要喂食知识卡
+- [ ] **PvP模式**: 实时或异步对战
+- [ ] **Boss Rush**: 每周Boss挑战赛
+- [ ] **赛季系统**: 每月重置排行，赛季主题+皮肤
+
+### 🟢 优先级4: 社交与协作
+
+- [ ] **班级系统**: 教师创建班级，分发学习内容
+- [ ] **好友系统**: 添加好友，互相赠送道具
+- [ ] **公会/小组**: 组队完成大型任务
+- [ ] **家长报告**: 每周学习报告邮件推送
+
+---
+
+## 三、未来功能规划
+
+### 📱 Phase 1: 稳定性 (v1.1)
+> 目标: 提升可靠性，支持免费模型
+
+- [ ] 本地题库fallback (100+预设题目)
+- [ ] IndexedDB缓存AI响应
+- [ ] PWA离线支持
+- [ ] 错误边界与恢复机制
+- [ ] 多模型切换UI (推荐快速模型)
+
+### 📚 Phase 2: 记忆增强 (v1.2)
+> 目标: 应用SLA最佳实践
+
+- [ ] SM-2间隔重复算法
+- [ ] 多题型支持 (填空/排序/匹配)
+- [ ] 词汇卡片模式 (Flashcard)
+- [ ] 发音评测 (Speech Recognition)
+- [ ] 词根词缀拆解动画
+
+### 🏆 Phase 3: 社交竞技 (v1.3)
+> 目标: 提升留存率
+
+- [ ] 用户账号系统 (OAuth)
+- [ ] 云端同步进度
+- [ ] 排行榜 (每日/每周/总榜)
+- [ ] 好友PK挑战
+- [ ] 成就系统 (50+徽章)
+
+### 🎓 Phase 4: 机构版 (v2.0)
+> 目标: B2B教育市场
+
+- [ ] 教师管理后台
+- [ ] 班级作业分发
+- [ ] 学情分析报告
+- [ ] 自定义题库导入
+- [ ] LMS集成 (Canvas/Moodle)
+
+---
+
+## 四、技术债务清理
+
+| 问题 | 优先级 | 方案 |
+|------|--------|------|
+| `BattleInterface.tsx` 过大 (779行) | 高 | 拆分为子组件 |
+| `gameStore.ts` 状态过多 (700+行) | 高 | 拆分为多个slice |
+| 缺少单元测试覆盖 | 中 | 添加Jest测试 |
+| CSS未模块化 | 中 | 迁移至CSS Modules |
+| 无E2E测试 | 中 | 添加Playwright测试 |
+| TypeScript类型不严格 | 低 | 启用strict模式 |
+
+---
+
+## 五、KPI指标建议
+
+### 学习效果
+- **记忆保留率**: 7天后复测正确率 > 70%
+- **完成率**: 开始学习 → 完成关卡 > 85%
+- **弱点改善**: 技能正确率周增长 > 10%
+
+### 用户行为
+- **日活跃**: DAU/MAU > 30%
+- **学习时长**: 平均每日 > 15分钟
+- **7日留存**: > 40%
+- **付费转化**: 免费 → 付费 > 5%
+
+---
+
+## 六、竞品对标
+
+| 功能 | Word Quest | 多邻国 | 百词斩 | 沪江开心词场 |
+|------|-----------|--------|-------|-------------|
+| AI生成题目 | ✅ | ❌ | ❌ | ❌ |
+| 游戏化战斗 | ✅ | ⚠️ | ✅ | ⚠️ |
+| 间隔重复 | ⚠️ | ✅ | ✅ | ✅ |
+| 离线支持 | ❌ | ✅ | ✅ | ✅ |
+| 家长监控 | ✅ | ❌ | ❌ | ❌ |
+| 语音识别 | ❌ | ✅ | ❌ | ❌ |
+
+**差异化优势**: AI动态生成 + 战斗RPG + 家长仪表板
+
+---
+
+## 快速开始
+
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 运行测试
+npm test
+
+# 构建生产版本
+npm run build
+```
+
+---
+
+*最后更新: 2025-12-05*  
+*作者: Word Quest Team*
