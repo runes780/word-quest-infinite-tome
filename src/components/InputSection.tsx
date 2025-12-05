@@ -15,7 +15,7 @@ import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
 import { FSRSCard } from '@/db/db';
-import { ocrFromFile, getFreeVisionModels } from '@/lib/ai/vision';
+import { ocrFromFile } from '@/lib/ai/vision';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -135,13 +135,7 @@ export function InputSection() {
             return { text: `[${t.input.imageStubText}]: ${file.name}` };
         }
 
-        // Check if free vision models are available
-        const freeModels = getFreeVisionModels();
-        if (freeModels.length === 0) {
-            return { text: `[${t.input.imageStubText}]: ${file.name}` };
-        }
-
-        // Perform real OCR
+        // Perform real OCR (will fetch available models dynamically)
         const result = await ocrFromFile(apiKey, file);
 
         if (result.success && result.text) {

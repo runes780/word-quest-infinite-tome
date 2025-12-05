@@ -1,75 +1,116 @@
 /**
- * Vision Model OCR - Uses free vision-capable models from OpenRouter
+ * Vision Model OCR - Dynamically fetches and uses free vision models from OpenRouter
  * 
- * Automatically detects and uses available free vision models for OCR.
+ * Fetches available models from OpenRouter API in real-time and filters for free vision-capable models.
  */
 
-// Free vision-capable models on OpenRouter (as of 2024)
-export interface VisionModel {
+// OpenRouter model info from API
+interface OpenRouterModel {
     id: string;
     name: string;
-    free: boolean;
-    maxImageSize?: number; // Max base64 size in bytes
-    priority: number; // Lower = preferred
+    pricing: {
+        prompt: string;
+        completion: string;
+        image?: string;
+    };
+    context_length: number;
+    architecture?: {
+        modality?: string;
+        input_modalities?: string[];
+    };
 }
 
-export const VISION_MODELS: VisionModel[] = [
-    // Free Vision Models
-    {
-        id: 'google/gemini-2.0-flash-exp:free',
-        name: 'Gemini 2.0 Flash (Free)',
-        free: true,
-        priority: 1
-    },
-    {
-        id: 'google/gemini-exp-1206:free',
-        name: 'Gemini Exp 1206 (Free)',
-        free: true,
-        priority: 2
-    },
-    {
-        id: 'meta-llama/llama-3.2-11b-vision-instruct:free',
-        name: 'Llama 3.2 11B Vision (Free)',
-        free: true,
-        priority: 3
-    },
-    {
-        id: 'qwen/qwen-2-vl-7b-instruct:free',
-        name: 'Qwen 2 VL 7B (Free)',
-        free: true,
-        priority: 4
-    },
-    // Paid Vision Models (fallback)
-    {
-        id: 'openai/gpt-4o-mini',
-        name: 'GPT-4o Mini',
-        free: false,
-        priority: 10
-    },
-    {
-        id: 'anthropic/claude-3-haiku',
-        name: 'Claude 3 Haiku',
-        free: false,
-        priority: 11
+// Cached models (refreshed periodically)
+let cachedModels: OpenRouterModel[] = [];
+let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Fetch available models from OpenRouter API
+export async function fetchAvailableModels(): Promise<OpenRouterModel[]> {
+    const now = Date.now();
+
+    // Use cache if fresh
+    if (cachedModels.length > 0 && now - lastFetchTime < CACHE_DURATION) {
+        return cachedModels;
     }
-];
 
-// Get free vision models sorted by priority
-export function getFreeVisionModels(): VisionModel[] {
-    return VISION_MODELS
-        .filter(m => m.free)
-        .sort((a, b) => a.priority - b.priority);
+    try {
+        console.log('[Vision] Fetching models from OpenRouter...');
+        const response = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: {
+                'HTTP-Referer': 'https://wordquest.app',
+                'X-Title': 'Word Quest'
+            }
+        });
+
+        if (!response.ok) {
+            console.error('[Vision] Failed to fetch models:', response.status);
+            return cachedModels; // Return cached if available
+        }
+
+        const data = await response.json();
+        cachedModels = data.data || [];
+        lastFetchTime = now;
+
+        console.log(`[Vision] Fetched ${cachedModels.length} models`);
+        return cachedModels;
+    } catch (error) {
+        console.error('[Vision] Error fetching models:', error);
+        return cachedModels;
+    }
 }
 
-// Get all vision models sorted by priority
-export function getAllVisionModels(): VisionModel[] {
-    return [...VISION_MODELS].sort((a, b) => a.priority - b.priority);
+// Check if a model supports vision/images
+function isVisionModel(model: OpenRouterModel): boolean {
+    // Check architecture modalities
+    if (model.architecture?.input_modalities?.includes('image')) {
+        return true;
+    }
+    if (model.architecture?.modality?.includes('image')) {
+        return true;
+    }
+    // Check pricing for image support
+    if (model.pricing?.image && model.pricing.image !== '0') {
+        return true;
+    }
+    // Check model ID for vision keywords
+    const visionKeywords = ['vision', 'vl', 'llava', 'image', 'multimodal', 'gemini', 'gpt-4o', 'claude-3'];
+    const id = model.id.toLowerCase();
+    return visionKeywords.some(kw => id.includes(kw));
 }
 
-// Get the best available vision model (free preferred)
-export function getBestVisionModel(preferFree: boolean = true): VisionModel {
-    const models = preferFree ? getFreeVisionModels() : getAllVisionModels();
-    return models[0] || VISION_MODELS[0];
+// Check if a model is free
+function isFreeModel(model: OpenRouterModel): boolean {
+    // Model ID ends with :free
+    if (model.id.endsWith(':free')) {
+        return true;
+    }
+    // Check if pricing is 0
+    const promptCost = parseFloat(model.pricing?.prompt || '0');
+    const completionCost = parseFloat(model.pricing?.completion || '0');
+    return promptCost === 0 && completionCost === 0;
+}
+
+// Get free vision models from API
+export async function getFreeVisionModels(): Promise<OpenRouterModel[]> {
+    const models = await fetchAvailableModels();
+    const freeVision = models.filter(m => isFreeModel(m) && isVisionModel(m));
+
+    console.log(`[Vision] Found ${freeVision.length} free vision models:`, freeVision.map(m => m.id));
+    return freeVision;
+}
+
+// Get all vision models (free first)
+export async function getAllVisionModels(): Promise<OpenRouterModel[]> {
+    const models = await fetchAvailableModels();
+    const visionModels = models.filter(isVisionModel);
+
+    // Sort: free models first
+    return visionModels.sort((a, b) => {
+        const aFree = isFreeModel(a) ? 0 : 1;
+        const bFree = isFreeModel(b) ? 0 : 1;
+        return aFree - bFree;
+    });
 }
 
 // OCR Prompts
@@ -100,15 +141,12 @@ export async function resizeImageIfNeeded(
     base64: string,
     maxSizeBytes: number = 4 * 1024 * 1024
 ): Promise<string> {
-    // Check current size
-    const currentSize = base64.length * 0.75; // Approximate bytes
+    const currentSize = base64.length * 0.75;
     if (currentSize <= maxSizeBytes) return base64;
 
-    // Need to resize using canvas
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-            // Calculate scale factor
             const scaleFactor = Math.sqrt(maxSizeBytes / currentSize) * 0.9;
             const newWidth = Math.floor(img.width * scaleFactor);
             const newHeight = Math.floor(img.height * scaleFactor);
@@ -124,10 +162,8 @@ export async function resizeImageIfNeeded(
             }
 
             ctx.drawImage(img, 0, 0, newWidth, newHeight);
-
-            // Convert to JPEG for smaller size
             const resized = canvas.toDataURL('image/jpeg', 0.85);
-            console.log(`[Vision OCR] Resized image from ${Math.round(currentSize / 1024)}KB to ${Math.round(resized.length * 0.75 / 1024)}KB`);
+            console.log(`[Vision] Resized image from ${Math.round(currentSize / 1024)}KB to ${Math.round(resized.length * 0.75 / 1024)}KB`);
             resolve(resized);
         };
         img.onerror = () => reject(new Error('Failed to load image'));
@@ -145,16 +181,18 @@ export interface VisionOCRResult {
 // Perform OCR using vision model
 export async function performVisionOCR(
     apiKey: string,
-    imageBase64: string,
-    preferredModel?: string
+    imageBase64: string
 ): Promise<VisionOCRResult> {
-    // Select model
-    const models = preferredModel
-        ? [VISION_MODELS.find(m => m.id === preferredModel), ...getFreeVisionModels()].filter(Boolean) as VisionModel[]
-        : getFreeVisionModels();
+    // Fetch available free vision models
+    const models = await getFreeVisionModels();
 
     if (models.length === 0) {
-        return { text: '', model: '', success: false, error: 'No vision models available' };
+        console.warn('[Vision] No free vision models found, trying all vision models...');
+        const allVision = await getAllVisionModels();
+        if (allVision.length === 0) {
+            return { text: '', model: '', success: false, error: 'No vision models available' };
+        }
+        models.push(...allVision.slice(0, 5)); // Try first 5 vision models
     }
 
     // Resize image if needed
@@ -162,13 +200,15 @@ export async function performVisionOCR(
     try {
         processedImage = await resizeImageIfNeeded(imageBase64);
     } catch (e) {
-        console.error('[Vision OCR] Image processing failed:', e);
+        console.error('[Vision] Image processing failed:', e);
         return { text: '', model: '', success: false, error: 'Image processing failed' };
     }
 
     // Try each model in order
+    const errors: string[] = [];
+
     for (const model of models) {
-        console.log(`[Vision OCR] Trying ${model.name}...`);
+        console.log(`[Vision] Trying ${model.id}...`);
 
         try {
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -203,11 +243,11 @@ export async function performVisionOCR(
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.warn(`[Vision OCR] ${model.name} failed: ${response.status} - ${errorText}`);
+                console.warn(`[Vision] ${model.id} failed: ${response.status} - ${errorText}`);
+                errors.push(`${model.id}: ${response.status}`);
 
-                // Rate limit - wait before trying next
                 if (response.status === 429) {
-                    await new Promise(r => setTimeout(r, 3000));
+                    await new Promise(r => setTimeout(r, 2000));
                 }
                 continue;
             }
@@ -216,15 +256,17 @@ export async function performVisionOCR(
             const text = data.choices?.[0]?.message?.content?.trim();
 
             if (text && text !== '[NO TEXT DETECTED]') {
-                console.log(`[Vision OCR] Success with ${model.name}! Extracted ${text.length} chars`);
-                return { text, model: model.name, success: true };
+                console.log(`[Vision] Success with ${model.id}! Extracted ${text.length} chars`);
+                return { text, model: model.name || model.id, success: true };
             }
 
-            // Model returned no text, try next
-            console.log(`[Vision OCR] ${model.name} returned no text, trying next...`);
+            console.log(`[Vision] ${model.id} returned no text`);
+            errors.push(`${model.id}: no text`);
 
         } catch (error) {
-            console.error(`[Vision OCR] ${model.name} error:`, error);
+            const errMsg = (error as Error).message;
+            console.error(`[Vision] ${model.id} error:`, errMsg);
+            errors.push(`${model.id}: ${errMsg}`);
             continue;
         }
     }
@@ -233,7 +275,7 @@ export async function performVisionOCR(
         text: '',
         model: '',
         success: false,
-        error: 'All vision models failed to extract text'
+        error: `All models failed: ${errors.join(', ')}`
     };
 }
 
