@@ -226,8 +226,8 @@ export function MissionReport() {
                             <p className="text-sm text-muted-foreground">{t.report.noMistakes}</p>
                         ) : (
                             <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                                {wrongDetails.map(({ answer, question }) => (
-                                    <div key={answer.questionId} className="p-3 rounded-xl border border-border bg-background/40">
+                                {wrongDetails.map(({ answer, question }, index) => (
+                                    <div key={`${answer.questionId}-${index}`} className="p-3 rounded-xl border border-border bg-background/40">
                                         <p className="text-sm font-semibold mb-1">{question.question}</p>
                                         <p className="text-xs text-muted-foreground mb-3">{t.report.correct}: {question.options[question.correct_index]}</p>
                                         <button
