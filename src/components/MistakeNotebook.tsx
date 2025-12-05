@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BookMarked, X, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { translations } from '@/lib/translations';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useGameStore, Monster } from '@/store/gameStore';
 import { getMistakes, MistakeRecord } from '@/lib/data/mistakes';
+import { VirtualList } from './VirtualList';
 
 function buildFallbackOptions(record: MistakeRecord) {
     const base = new Set<string>();
@@ -45,6 +46,9 @@ function recordToMonster(record: MistakeRecord, fallbackExplanation: string): Mo
     } as Monster;
 }
 
+// Item height for virtual scrolling (approximate)
+const ITEM_HEIGHT = 180;
+
 export function MistakeNotebook() {
     const { language } = useSettingsStore();
     const t = translations[language];
@@ -78,11 +82,42 @@ export function MistakeNotebook() {
         };
     }, [isOpen]);
 
-    const handleQueue = (record: MistakeRecord) => {
+    const handleQueue = useCallback((record: MistakeRecord) => {
         const monster = recordToMonster(record, record.explanation);
         injectQuestion(monster);
         setIsOpen(false);
-    };
+    }, [injectQuestion]);
+
+    // Render a single mistake item
+    const renderMistakeItem = useCallback((record: MistakeRecord) => (
+        <div className="p-4 border border-border rounded-2xl bg-secondary/40 mb-3 mr-2">
+            <div className="text-xs text-muted-foreground mb-1">
+                {new Date(record.timestamp).toLocaleString()}
+            </div>
+            <p className="font-semibold mb-2 line-clamp-2">{record.questionText}</p>
+            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                {record.mentorAnalysis || record.explanation}
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span className="px-2 py-1 rounded-full bg-background/60 border border-border">
+                    {t.notebook.correct}: {record.correctAnswer}
+                </span>
+                <span className="px-2 py-1 rounded-full bg-background/60 border border-border">
+                    {t.notebook.chosen}: {record.wrongAnswer}
+                </span>
+            </div>
+            <button
+                onClick={() => handleQueue(record)}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
+            >
+                {t.notebook.queue}
+                <ArrowUpRight className="w-4 h-4" />
+            </button>
+        </div>
+    ), [t.notebook, handleQueue]);
+
+    // Use virtual scrolling for lists > 10 items
+    const useVirtual = mistakes.length > 10;
 
     return (
         <>
@@ -113,7 +148,14 @@ export function MistakeNotebook() {
                             <div className="flex items-center justify-between mb-4">
                                 <div>
                                     <h3 className="text-2xl font-bold text-primary">{t.notebook.title}</h3>
-                                    <p className="text-sm text-muted-foreground">{t.notebook.subtitle}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {t.notebook.subtitle}
+                                        {mistakes.length > 10 && (
+                                            <span className="ml-2 text-xs text-green-500">
+                                                ⚡ {language === 'zh' ? '虚拟滚动启用' : 'Virtual scroll enabled'}
+                                            </span>
+                                        )}
+                                    </p>
                                 </div>
                                 <button onClick={() => setIsOpen(false)}>
                                     <X className="w-6 h-6 text-muted-foreground" />
@@ -127,30 +169,21 @@ export function MistakeNotebook() {
                                 </div>
                             ) : mistakes.length === 0 ? (
                                 <p className="text-muted-foreground text-sm">{t.notebook.empty}</p>
+                            ) : useVirtual ? (
+                                // Virtual scrolling for large lists
+                                <VirtualList
+                                    items={mistakes}
+                                    itemHeight={ITEM_HEIGHT}
+                                    containerHeight={Math.min(60 * 16, window?.innerHeight * 0.6 || 500)}
+                                    renderItem={renderMistakeItem}
+                                    className="pr-2"
+                                />
                             ) : (
-                                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                                // Regular rendering for small lists
+                                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                                     {mistakes.map((record) => (
-                                        <div key={record.id} className="p-4 border border-border rounded-2xl bg-secondary/40">
-                                            <div className="text-xs text-muted-foreground mb-1">
-                                                {new Date(record.timestamp).toLocaleString()}
-                                            </div>
-                                            <p className="font-semibold mb-2">{record.questionText}</p>
-                                            <p className="text-sm text-muted-foreground mb-3">{record.mentorAnalysis || record.explanation}</p>
-                                            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                                                <span className="px-2 py-1 rounded-full bg-background/60 border border-border">
-                                                    {t.notebook.correct}: {record.correctAnswer}
-                                                </span>
-                                                <span className="px-2 py-1 rounded-full bg-background/60 border border-border">
-                                                    {t.notebook.chosen}: {record.wrongAnswer}
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={() => handleQueue(record)}
-                                                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
-                                            >
-                                                {t.notebook.queue}
-                                                <ArrowUpRight className="w-4 h-4" />
-                                            </button>
+                                        <div key={record.id}>
+                                            {renderMistakeItem(record)}
                                         </div>
                                     ))}
                                 </div>
