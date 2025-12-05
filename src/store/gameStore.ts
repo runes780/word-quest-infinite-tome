@@ -2,7 +2,51 @@
 import { create } from 'zustand';
 import { logMistake } from '@/lib/data/mistakes';
 import { getCurrentBlessingEffect } from '@/components/InputSection';
+import { loadPlayerStats, savePlayerStats, checkAchievements, PlayerAchievementStats, Achievement } from '@/components/AchievementSystem';
 
+// Achievement stats update helper
+let pendingAchievements: Achievement[] = [];
+export function getPendingAchievements() {
+    const achievements = [...pendingAchievements];
+    pendingAchievements = [];
+    return achievements;
+}
+
+function updateAchievementStats(updates: Partial<PlayerAchievementStats>) {
+    const stats = loadPlayerStats();
+    const newStats = { ...stats };
+
+    // Apply updates (increment values)
+    if (updates.totalCorrect !== undefined) newStats.totalCorrect = (newStats.totalCorrect || 0) + updates.totalCorrect;
+    if (updates.totalWrong !== undefined) newStats.totalWrong = (newStats.totalWrong || 0) + updates.totalWrong;
+    if (updates.totalQuestions !== undefined) newStats.totalQuestions = (newStats.totalQuestions || 0) + updates.totalQuestions;
+    if (updates.totalCriticals !== undefined) newStats.totalCriticals = (newStats.totalCriticals || 0) + updates.totalCriticals;
+    if (updates.totalGoldEarned !== undefined) newStats.totalGoldEarned = (newStats.totalGoldEarned || 0) + updates.totalGoldEarned;
+    if (updates.totalXpEarned !== undefined) newStats.totalXpEarned = (newStats.totalXpEarned || 0) + updates.totalXpEarned;
+    if (updates.bossesDefeated !== undefined) newStats.bossesDefeated = (newStats.bossesDefeated || 0) + updates.bossesDefeated;
+    if (updates.perfectRuns !== undefined) newStats.perfectRuns = (newStats.perfectRuns || 0) + updates.perfectRuns;
+    if (updates.potionsUsed !== undefined) newStats.potionsUsed = (newStats.potionsUsed || 0) + updates.potionsUsed;
+    if (updates.fastAnswers !== undefined) newStats.fastAnswers = (newStats.fastAnswers || 0) + updates.fastAnswers;
+    if (updates.hintsUsed !== undefined) newStats.hintsUsed = (newStats.hintsUsed || 0) + updates.hintsUsed;
+    if (updates.revengeCleared !== undefined) newStats.revengeCleared = (newStats.revengeCleared || 0) + updates.revengeCleared;
+    if (updates.levelsCompleted !== undefined) newStats.levelsCompleted = (newStats.levelsCompleted || 0) + updates.levelsCompleted;
+
+    // Update max streak if current streak is higher
+    if (updates.currentStreak !== undefined) {
+        newStats.currentStreak = updates.currentStreak;
+        if (newStats.currentStreak > newStats.maxStreak) {
+            newStats.maxStreak = newStats.currentStreak;
+        }
+    }
+
+    savePlayerStats(newStats);
+
+    // Check for newly unlocked achievements
+    const newlyUnlocked = checkAchievements(newStats);
+    if (newlyUnlocked.length > 0) {
+        pendingAchievements.push(...newlyUnlocked);
+    }
+}
 
 export type MonsterDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -398,6 +442,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 bossShieldProgress: nextBossShieldProgress
             });
 
+            // Track achievement stats
+            updateAchievementStats({
+                totalCorrect: 1,
+                totalQuestions: 1,
+                totalGoldEarned: goldGain,
+                totalXpEarned: xpGain,
+                totalCriticals: isCritical ? 1 : 0,
+                currentStreak: newStreak,
+                bossesDefeated: (nextMonsterHp <= 0 && currentQuestion.isBoss) ? 1 : 0,
+            });
+
             // Blessing: Heal on streak threshold (e.g., Vampiric Wisdom)
             if (healOnCorrectThreshold > 0 && healAmount > 0 && newStreak % healOnCorrectThreshold === 0) {
                 get().heal(healAmount);
@@ -442,6 +497,13 @@ export const useGameStore = create<GameState>((set, get) => ({
                 correctIndex: currentQuestion.correct_index,
                 type: currentQuestion.type,
                 skillTag: currentQuestion.skillTag
+            });
+
+            // Track achievement stats for wrong answer
+            updateAchievementStats({
+                totalWrong: 1,
+                totalQuestions: 1,
+                currentStreak: 0,
             });
         }
 
