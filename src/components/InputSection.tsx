@@ -9,9 +9,10 @@ import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw } from 'lucide-react';
+import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy } from 'lucide-react';
 import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
+import { DailyChallenge } from './DailyChallenge';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -27,6 +28,7 @@ export function InputSection() {
     const [ocrMessage, setOcrMessage] = useState('');
     const [showBlessingSelection, setShowBlessingSelection] = useState(false);
     const [pendingQuestions, setPendingQuestions] = useState<{ monsters: Monster[]; context: string } | null>(null);
+    const [showDailyChallenge, setShowDailyChallenge] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { startGame } = useGameStore();
     const { apiKey, model, setSettingsOpen, language } = useSettingsStore();
@@ -162,6 +164,12 @@ export function InputSection() {
                 )}
             </AnimatePresence>
 
+            {/* Daily Challenge Modal */}
+            <DailyChallenge
+                isOpen={showDailyChallenge}
+                onClose={() => setShowDailyChallenge(false)}
+            />
+
             <div className="w-full max-w-2xl mx-auto p-6">
                 <motion.div
                     initial={{ y: 20, opacity: 0 }}
@@ -266,27 +274,36 @@ export function InputSection() {
                             {t.input.configureKey}
                         </button>
                     ) : (
-                        <button
-                            onClick={handleGenerate}
-                            disabled={isLoading || !input.trim()}
-                            className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all
-              ${isLoading || !input.trim()
-                                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                                    : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-primary/25'
-                                }`}
-                        >
-                            {isLoading ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                    {t.input.analyzing}
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-5 h-5" />
-                                    {t.input.initialize}
-                                </>
-                            )}
-                        </button>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDailyChallenge(true)}
+                                className="px-4 py-4 bg-accent/20 border-2 border-accent text-accent rounded-xl font-bold hover:bg-accent/30 transition-all flex items-center gap-2"
+                                title={language === 'zh' ? '每日挑战' : 'Daily Challenge'}
+                            >
+                                <Trophy className="w-6 h-6" />
+                            </button>
+                            <button
+                                onClick={handleGenerate}
+                                disabled={isLoading || !input.trim()}
+                                className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all
+                  ${isLoading || !input.trim()
+                                        ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                                        : 'bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-primary/25'
+                                    }`}
+                            >
+                                {isLoading ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                        {t.input.analyzing}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="w-5 h-5" />
+                                        {t.input.initialize}
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     )}
                     {(isLoading || model.endsWith(':free')) && (
                         <p className="text-xs text-muted-foreground mt-3 text-center">
