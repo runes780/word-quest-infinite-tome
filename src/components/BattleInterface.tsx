@@ -76,46 +76,91 @@ export function BattleInterface() {
             if (!apiKey || !context || isGeneratingMore) return;
 
             setIsGeneratingMore(true);
+
+            // Import cache and fallback functions dynamically to avoid SSR issues
+            const { cacheQuestions, getCachedQuestions, hashContext } = await import('@/db/db');
+            const { getBalancedFallbackQuestions } = await import('@/lib/data/fallbackQuestions');
+            const contextHash = hashContext(context);
+
             try {
                 const client = new OpenRouterClient(apiKey, model);
                 const prompt = generateLevelPrompt(context + `\n\n(Player is Level ${playerStats.level}. Generate a new wave of challengers!)`);
                 const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
 
-                // Robust JSON extraction - find the first { and last matching }
+                // Robust JSON extraction
                 let cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
-
-                // Find the first { and extract JSON object
                 const firstBrace = cleanJson.indexOf('{');
-                if (firstBrace === -1) {
-                    throw new Error('No JSON object found in response');
-                }
+                if (firstBrace === -1) throw new Error('No JSON object found');
 
-                // Find the matching closing brace by counting braces
                 let braceCount = 0;
                 let lastBrace = -1;
                 for (let i = firstBrace; i < cleanJson.length; i++) {
                     if (cleanJson[i] === '{') braceCount++;
                     if (cleanJson[i] === '}') braceCount--;
-                    if (braceCount === 0) {
-                        lastBrace = i;
-                        break;
-                    }
+                    if (braceCount === 0) { lastBrace = i; break; }
                 }
-
-                if (lastBrace === -1) {
-                    throw new Error('Malformed JSON - unbalanced braces');
-                }
+                if (lastBrace === -1) throw new Error('Malformed JSON');
 
                 cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
                 const data = JSON.parse(cleanJson);
 
                 if (data.monsters && Array.isArray(data.monsters)) {
-                    setTimeout(() => {
-                        addQuestions(data.monsters);
-                    }, 500);
+                    // Cache questions for future use
+                    try {
+                        const questionsToCache = data.monsters.map((m: Record<string, unknown>) => ({
+                            question: m.question as string,
+                            options: m.options as string[],
+                            correct_index: m.correct_index as number,
+                            type: (m.type as string) || 'vocab',
+                            explanation: m.explanation as string,
+                            hint: m.hint as string | undefined,
+                            skillTag: m.skillTag as string | undefined,
+                            contextHash,
+                            timestamp: Date.now(),
+                            used: false
+                        }));
+                        await cacheQuestions(questionsToCache);
+                        console.log(`[Cache] Saved ${questionsToCache.length} questions`);
+                    } catch (cacheError) {
+                        console.warn('[Cache] Failed to cache questions:', cacheError);
+                    }
+
+                    setTimeout(() => addQuestions(data.monsters), 500);
                 }
             } catch (e) {
-                console.error("Failed to generate more questions", e);
+                console.error("API failed, trying cache/fallback", e);
+
+                // Try cached questions first
+                const cached = await getCachedQuestions(contextHash, 5);
+                if (cached.length > 0) {
+                    console.log(`[Cache] Using ${cached.length} cached questions`);
+                    const questions = cached.map(c => ({
+                        id: c.id || Date.now(),
+                        type: c.type || 'vocab',
+                        question: c.question,
+                        options: c.options,
+                        correct_index: c.correct_index,
+                        explanation: c.explanation,
+                        hint: c.hint,
+                        skillTag: c.skillTag
+                    }));
+                    setTimeout(() => addQuestions(questions), 500);
+                } else {
+                    // Use local fallback questions
+                    console.log('[Fallback] Using local question bank');
+                    const fallback = getBalancedFallbackQuestions(5);
+                    const questions = fallback.map(f => ({
+                        id: f.id,
+                        type: f.type,
+                        question: f.question,
+                        options: f.options,
+                        correct_index: f.correct_index,
+                        explanation: f.explanation,
+                        hint: f.hint,
+                        skillTag: f.skillTag
+                    }));
+                    setTimeout(() => addQuestions(questions), 500);
+                }
             } finally {
                 setIsGeneratingMore(false);
             }
