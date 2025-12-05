@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
@@ -36,25 +37,19 @@ export function InputSection() {
         setFallbackLevel(null);
 
         try {
-            const client = new OpenRouterClient(apiKey, model);
-            const prompt = generateLevelPrompt(input);
-            const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
-
-            // Clean up JSON string if it contains markdown code blocks
-            const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
-
-            const data = JSON.parse(cleanJson);
-
+            const data = await fetchMissionWithRetry(input, apiKey, model);
             if (!data.monsters || !Array.isArray(data.monsters)) {
                 throw new Error('Invalid data format received from AI');
             }
 
             startGame(data.monsters, input);
             setFallbackLevel(null);
+            setError('');
         } catch (err) {
+            const message = err instanceof Error ? err.message : '';
             console.error(err);
-            const isTimeout = err instanceof Error && err.message.includes('timed out');
-            setError(isTimeout ? t.input.timeout : t.input.error);
+            const isRateLimit = /429|rate limit|Too Many Requests/i.test(message);
+            setError(isRateLimit ? t.input.throttled : t.input.error);
             const sample = SAMPLE_LEVELS[Math.floor(Math.random() * SAMPLE_LEVELS.length)];
             setFallbackLevel(sample);
         } finally {
@@ -158,7 +153,14 @@ export function InputSection() {
                     />
                     <div className="relative flex items-center justify-center h-32 bg-background/40 rounded-xl overflow-hidden">
                         {imagePreview ? (
-                            <img src={imagePreview} alt="Selected study material" className="h-full object-contain" />
+                            <Image
+                                src={imagePreview}
+                                alt="Selected study material"
+                                fill
+                                sizes="128px"
+                                className="object-contain"
+                                unoptimized
+                            />
                         ) : (
                             <p className="text-xs text-muted-foreground">PNG/JPG, under 5MB recommended.</p>
                         )}
@@ -237,3 +239,62 @@ export function InputSection() {
         </div>
     );
 }
+
+const safeParseMission = (payload: string) => {
+    const trimmed = payload.trim();
+    if (!trimmed) {
+        console.warn('Mission JSON parse skipped (empty payload). Will retry.');
+        throw new Error('MISSION_EMPTY');
+    }
+
+    try {
+        return JSON.parse(trimmed);
+    } catch (error) {
+        const fallback = extractJsonBlock(trimmed);
+        if (fallback) {
+            try {
+                return JSON.parse(fallback);
+            } catch (inner) {
+                console.warn('Mission JSON fallback parse failed. Will retry.', { fallback, inner });
+            }
+        }
+        console.warn('Mission JSON parse failed. Will retry.', { error });
+        throw new Error('MISSION_PARSE_FAILED');
+    }
+};
+
+const extractJsonBlock = (input: string) => {
+    const start = input.indexOf('{');
+    const end = input.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) {
+        return null;
+    }
+    return input.slice(start, end + 1);
+};
+
+const fetchMissionWithRetry = async (text: string, apiKey: string, model: string) => {
+    const client = new OpenRouterClient(apiKey, model);
+    const attempts = model.endsWith(':free') ? 3 : 2;
+    const baseDelay = model.endsWith(':free') ? 2000 : 1000;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+            const prompt = generateLevelPrompt(text);
+            const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
+            const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
+            return safeParseMission(cleanJson);
+        } catch (error) {
+            lastError = error as Error;
+            if (attempt < attempts - 1) {
+                const jitter = 0.5 + Math.random();
+                await wait(baseDelay * (attempt + 1) * jitter);
+                continue;
+            }
+        }
+    }
+
+    throw lastError || new Error('MISSION_UNKNOWN');
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

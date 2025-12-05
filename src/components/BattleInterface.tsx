@@ -28,7 +28,6 @@ export function BattleInterface() {
         nextQuestion,
         isGameOver,
         isVictory,
-        resetGame,
         injectQuestion,
         playerStats,
         currentMonsterHp,
@@ -63,7 +62,6 @@ export function BattleInterface() {
     const [particles, setParticles] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
     const [damageText, setDamageText] = useState<{ id: number; x: number; y: number; text: string; color: string; scale: number }[]>([]);
     const [flyingCoins, setFlyingCoins] = useState<{ id: number; delay: number }[]>([]);
-    const [isShaking, setIsShaking] = useState(false);
     const [comboScale, setComboScale] = useState(1);
     const [goldScale, setGoldScale] = useState(1);
     const [wrongAnswerText, setWrongAnswerText] = useState('');
@@ -150,16 +148,12 @@ export function BattleInterface() {
                 text = `${t.battle.critical} -${damage}`;
                 color = '#ef4444'; // Red
                 scale = 1.5;
-                setIsShaking(true);
-                setTimeout(() => setIsShaking(false), 300);
                 if (soundEnabled) setTimeout(playSound.crit, 100);
             } else if (result.isSuperEffective) {
                 text = `${t.battle.weakness} -${damage}`;
                 color = '#facc15'; // Yellow
                 scale = 1.3;
-                setIsShaking(true);
-                setTimeout(() => setIsShaking(false), 200);
-                if (soundEnabled) setTimeout(playSound.crit, 100);
+                if (soundEnabled) setTimeout(playSound.attackZap, 150);
             } else {
                 if (soundEnabled) setTimeout(playSound.hit, 200);
             }

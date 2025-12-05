@@ -290,7 +290,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     answerQuestion: (optionIndex) => {
-        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, clarityEffect } = get();
+        const { questions, currentIndex, health, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
         const skillKey = getSkillKey(currentQuestion);

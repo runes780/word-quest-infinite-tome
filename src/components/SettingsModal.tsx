@@ -1,7 +1,7 @@
 'use client';
 
 import { useSettingsStore } from '@/store/settingsStore';
-import { Settings, X, RefreshCw, ToggleLeft, ToggleRight, Languages, Volume2, VolumeX } from 'lucide-react';
+import { Settings, X, RefreshCw, ToggleLeft, ToggleRight, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { translations } from '@/lib/translations';
@@ -45,7 +45,7 @@ export function SettingsModal() {
         if (isSettingsOpen && apiKey && availableModels.length === 0) {
             fetchModels();
         }
-    }, [isSettingsOpen, apiKey]);
+    }, [isSettingsOpen, apiKey, availableModels.length]);
 
     const filteredModels = availableModels.filter(m =>
         showFreeOnly ? m.id.endsWith(':free') : true

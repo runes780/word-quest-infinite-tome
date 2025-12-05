@@ -2,8 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
-import { Coins, ArrowRight, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Coins, ArrowRight } from 'lucide-react';
 import { playSound } from '@/lib/audio';
 
 export function RewardScreen() {

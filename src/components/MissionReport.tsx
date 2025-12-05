@@ -17,6 +17,8 @@ export function MissionReport() {
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
+    const [analysisSource, setAnalysisSource] = useState<'ai' | 'local' | null>(null);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set());
     const [historyLogged, setHistoryLogged] = useState(false);
@@ -65,16 +67,25 @@ export function MissionReport() {
     };
 
     const handleAnalyze = async () => {
-        if (!apiKey) return;
+        if (!apiKey) {
+            setAnalysisError(t.mentor.noKey);
+            return;
+        }
         setIsLoading(true);
+        setAnalysisError(null);
         try {
             const client = new OpenRouterClient(apiKey, model);
             const prompt = generateReportPrompt(score, questions.length, userAnswers);
             const jsonStr = await client.generate(prompt, REPORT_SYSTEM_PROMPT);
             const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
             setAnalysis(JSON.parse(cleanJson));
+            setAnalysisSource('ai');
         } catch (e) {
             console.error(e);
+            const fallback = buildLocalDebrief(skillEntries, language, score, questions.length);
+            setAnalysis(fallback);
+            setAnalysisSource('local');
+            setAnalysisError(t.report.offlineAnalysis);
         } finally {
             setIsLoading(false);
         }
@@ -185,6 +196,9 @@ export function MissionReport() {
                                         <p className="text-muted-foreground">{analysis.mistake_analysis}</p>
                                     </div>
                                 )}
+                                {analysisSource === 'local' && analysisError && (
+                                    <p className="text-xs text-yellow-400 mt-4">{analysisError}</p>
+                                )}
                             </div>
 
                         </motion.div>
@@ -245,4 +259,38 @@ export function MissionReport() {
             </div>
         </motion.div >
     );
+}
+
+function buildLocalDebrief(
+    skills: { key: string; accuracy: number; attempts: number; }[],
+    language: 'en' | 'zh',
+    score: number,
+    totalQuestions: number
+) {
+    const sorted = [...skills].filter((entry) => entry.attempts > 0).sort((a, b) => b.accuracy - a.accuracy);
+    const best = sorted[0];
+    const weakest = sorted[sorted.length - 1];
+    const overallPercent = totalQuestions > 0 ? Math.round((score / (totalQuestions * 10)) * 100) : 0;
+
+    const formatSkill = (entry?: { key: string; accuracy: number; attempts: number }) => {
+        if (!entry) return language === 'zh' ? '暂无数据' : 'N/A';
+        const label = entry.key.replace(/_/g, ' ');
+        const percent = Math.round(entry.accuracy * 100);
+        return language === 'zh'
+            ? `${label} · 正确率 ${percent}%`
+            : `${label} · ${percent}% accuracy`;
+    };
+
+    const advice = language === 'zh'
+        ? `巩固 ${best ? best.key.replace(/_/g, ' ') : '基础'}，并针对 ${weakest ? weakest.key.replace(/_/g, ' ') : '薄弱点'} 做 2-3 题复习。`
+        : `Solidify ${best ? best.key.replace(/_/g, ' ') : 'core skills'} and revisit ${weakest ? weakest.key.replace(/_/g, ' ') : 'weaker spots'} with a few focused reps.`;
+
+    return {
+        mvp_skill: formatSkill(best),
+        weakness: formatSkill(weakest),
+        advice,
+        mistake_analysis: language === 'zh'
+            ? `本地估算总正确率约 ${overallPercent}% 。网络恢复后可再次请求 AI 分析。`
+            : `Local estimate puts total accuracy near ${overallPercent}%. When the connection stabilizes, rerun the AI analysis for deeper insight.`
+    };
 }

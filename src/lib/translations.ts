@@ -75,7 +75,8 @@ export const translations = {
             noMistakes: "No mistakes this run!",
             queueForNext: "Queue for next mission",
             queued: "Queued",
-            correct: "Correct"
+            correct: "Correct",
+            offlineAnalysis: "Connection weak – showing local skill summary instead."
         },
         mentor: {
             title: "Tactical Advisor Online",
@@ -152,7 +153,9 @@ export const translations = {
             imageProcessing: "Extracting text...",
             imageDetected: "OCR text inserted. Review and edit before generating.",
             imageReplace: "Replace Image",
-            imageStubText: "Detected text from image"
+            imageStubText: "Detected text from image",
+            parseError: "The AI response was incomplete. Please try again or load a sample mission.",
+            localFallback: "AI signal lost—generated an offline practice set from your text."
         },
         home: {
             title: "Word Quest",
@@ -237,7 +240,8 @@ export const translations = {
             noMistakes: "本轮没有错题，继续保持！",
             queueForNext: "加入下次任务",
             queued: "已加入",
-            correct: "正确答案"
+            correct: "正确答案",
+            offlineAnalysis: "链接不稳定，已切换为本地技能分析。"
         },
         mentor: {
             title: "战术顾问在线",
@@ -314,7 +318,9 @@ export const translations = {
             imageProcessing: "正在识别文字...",
             imageDetected: "OCR 文本已插入，可先修改再生成。",
             imageReplace: "重新选择",
-            imageStubText: "已识别的课文"
+            imageStubText: "已识别的课文",
+            parseError: "AI 返回的数据不完整，请重试或先加载示例任务。",
+            localFallback: "AI 信号中断，已根据你的文本生成离线练习关。"
         },
         home: {
             title: "单词大冒险",

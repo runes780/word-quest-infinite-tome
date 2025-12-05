@@ -125,7 +125,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
         return () => {
             cancelled = true;
         };
-    }, [isOpen, question, wrongAnswer, apiKey, model, language]);
+    }, [isOpen, question, wrongAnswer, apiKey, model, language, t]);
 
     const handleChallenge = () => {
         if (revengeQuestion) {
