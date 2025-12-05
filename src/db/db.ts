@@ -419,6 +419,78 @@ export async function deleteCard(questionHash: string): Promise<void> {
     await db.fsrsCards.where('questionHash').equals(questionHash).delete();
 }
 
+// Get card by question text (for display in mistake notebook)
+export async function getCardByQuestionText(questionText: string): Promise<FSRSCard | null> {
+    const hash = hashQuestion(questionText);
+    const card = await db.fsrsCards.where('questionHash').equals(hash).first();
+    return card || null;
+}
+
+// Calculate memory retrievability (probability of recall)
+// Based on FSRS formula: R = e^(-t/S) where t = elapsed time, S = stability
+export function calculateRetrievability(card: FSRSCard): number {
+    if (card.state === 0) return 1; // New card, not yet learned
+
+    const now = Date.now();
+    const lastReview = card.last_review || card.due - (card.scheduled_days * 24 * 60 * 60 * 1000);
+    const elapsedDays = (now - lastReview) / (24 * 60 * 60 * 1000);
+
+    if (card.stability <= 0) return 0;
+
+    // R = e^(-t/S) where t is in days and S is stability in days
+    const retrievability = Math.exp(-elapsedDays / card.stability);
+    return Math.max(0, Math.min(1, retrievability));
+}
+
+// Get human-readable memory status
+export function getMemoryStatus(card: FSRSCard): {
+    retrievability: number;
+    stability: number;
+    status: 'new' | 'learning' | 'strong' | 'weak' | 'forgotten';
+    daysUntilDue: number;
+    statusEmoji: string;
+    statusText: { en: string; zh: string };
+} {
+    const retrievability = calculateRetrievability(card);
+    const now = Date.now();
+    const daysUntilDue = (card.due - now) / (24 * 60 * 60 * 1000);
+
+    let status: 'new' | 'learning' | 'strong' | 'weak' | 'forgotten';
+    let statusEmoji: string;
+    let statusText: { en: string; zh: string };
+
+    if (card.state === 0) {
+        status = 'new';
+        statusEmoji = '🆕';
+        statusText = { en: 'New', zh: '新卡片' };
+    } else if (card.state === 1 || card.state === 3) {
+        status = 'learning';
+        statusEmoji = '📖';
+        statusText = { en: 'Learning', zh: '学习中' };
+    } else if (retrievability >= 0.9) {
+        status = 'strong';
+        statusEmoji = '💪';
+        statusText = { en: 'Strong', zh: '记忆牢固' };
+    } else if (retrievability >= 0.7) {
+        status = 'weak';
+        statusEmoji = '⚠️';
+        statusText = { en: 'Needs Review', zh: '需要复习' };
+    } else {
+        status = 'forgotten';
+        statusEmoji = '🔴';
+        statusText = { en: 'Forgotten', zh: '几乎遗忘' };
+    }
+
+    return {
+        retrievability,
+        stability: card.stability,
+        status,
+        daysUntilDue,
+        statusEmoji,
+        statusText
+    };
+}
+
 // ========== Cache Functions ==========
 
 export async function cacheQuestions(questions: CachedQuestion[]): Promise<void> {

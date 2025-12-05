@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BookMarked, X, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { BookMarked, X, RefreshCw, ArrowUpRight, Trash2, Brain, Clock, TrendingUp } from 'lucide-react';
 import { translations } from '@/lib/translations';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useGameStore, Monster } from '@/store/gameStore';
-import { getMistakes, MistakeRecord } from '@/lib/data/mistakes';
+import { getMistakes, MistakeRecord, deleteMistake } from '@/lib/data/mistakes';
+import { getCardByQuestionText, getMemoryStatus, FSRSCard } from '@/db/db';
 import { VirtualList } from './VirtualList';
 
 function buildFallbackOptions(record: MistakeRecord) {
@@ -46,16 +47,24 @@ function recordToMonster(record: MistakeRecord, fallbackExplanation: string): Mo
     } as Monster;
 }
 
-// Item height for virtual scrolling (approximate)
-const ITEM_HEIGHT = 180;
+// Extended type with FSRS data
+interface MistakeWithFSRS extends MistakeRecord {
+    fsrsCard?: FSRSCard | null;
+    memoryStatus?: ReturnType<typeof getMemoryStatus>;
+}
+
+// Item height for virtual scrolling
+const ITEM_HEIGHT = 220;
 
 export function MistakeNotebook() {
     const { language } = useSettingsStore();
     const t = translations[language];
+    const isZh = language === 'zh';
     const { injectQuestion } = useGameStore();
     const [isOpen, setIsOpen] = useState(false);
-    const [mistakes, setMistakes] = useState<MistakeRecord[]>([]);
+    const [mistakes, setMistakes] = useState<MistakeWithFSRS[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -65,8 +74,18 @@ export function MistakeNotebook() {
             setIsLoading(true);
             try {
                 const data = await getMistakes();
+
+                // Fetch FSRS data for each mistake
+                const withFSRS = await Promise.all(
+                    data.map(async (record) => {
+                        const fsrsCard = await getCardByQuestionText(record.questionText);
+                        const memoryStatus = fsrsCard ? getMemoryStatus(fsrsCard) : undefined;
+                        return { ...record, fsrsCard, memoryStatus };
+                    })
+                );
+
                 if (mounted) {
-                    setMistakes(data);
+                    setMistakes(withFSRS);
                 }
             } finally {
                 if (mounted) {
@@ -88,24 +107,148 @@ export function MistakeNotebook() {
         setIsOpen(false);
     }, [injectQuestion]);
 
+    const handleDelete = useCallback(async (id: number) => {
+        await deleteMistake(id);
+        setMistakes(prev => prev.filter(m => m.id !== id));
+        setDeleteConfirm(null);
+    }, []);
+
+    // Memory status indicator component
+    const MemoryIndicator = ({ status }: { status?: ReturnType<typeof getMemoryStatus> }) => {
+        if (!status) {
+            return (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Brain className="w-3 h-3" />
+                    <span>{isZh ? '未追踪' : 'Not tracked'}</span>
+                </div>
+            );
+        }
+
+        const retrievabilityPercent = Math.round(status.retrievability * 100);
+        const stabilityDays = Math.round(status.stability * 10) / 10;
+
+        // Color based on retrievability
+        const barColor = status.retrievability >= 0.9
+            ? 'bg-green-500'
+            : status.retrievability >= 0.7
+                ? 'bg-yellow-500'
+                : status.retrievability >= 0.5
+                    ? 'bg-orange-500'
+                    : 'bg-red-500';
+
+        return (
+            <div className="space-y-2 mt-3 p-3 rounded-xl bg-background/50 border border-border/50">
+                <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1">
+                        <span>{status.statusEmoji}</span>
+                        <span className="font-medium">
+                            {isZh ? status.statusText.zh : status.statusText.en}
+                        </span>
+                    </div>
+                    <span className="text-muted-foreground">
+                        {status.daysUntilDue > 0
+                            ? `${Math.ceil(status.daysUntilDue)}${isZh ? '天后复习' : 'd until review'}`
+                            : isZh ? '需要复习' : 'Due now'
+                        }
+                    </span>
+                </div>
+
+                {/* Retrievability bar */}
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                            <TrendingUp className="w-3 h-3" />
+                            {isZh ? '可提取性' : 'Retrievability'}
+                        </span>
+                        <span className="font-mono">{retrievabilityPercent}%</span>
+                    </div>
+                    <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                        <div
+                            className={`h-full ${barColor} transition-all`}
+                            style={{ width: `${retrievabilityPercent}%` }}
+                        />
+                    </div>
+                </div>
+
+                {/* Stability indicator */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {isZh ? '稳定性' : 'Stability'}
+                    </span>
+                    <span className="font-mono">
+                        {stabilityDays} {isZh ? '天' : 'days'}
+                    </span>
+                </div>
+            </div>
+        );
+    };
+
     // Render a single mistake item
-    const renderMistakeItem = useCallback((record: MistakeRecord) => (
-        <div className="p-4 border border-border rounded-2xl bg-secondary/40 mb-3 mr-2">
+    const renderMistakeItem = useCallback((record: MistakeWithFSRS) => (
+        <div className="p-4 border border-border rounded-2xl bg-secondary/40 mb-3 mr-2 relative">
+            {/* Delete button */}
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteConfirm(record.id!);
+                }}
+                className="absolute top-3 right-3 p-2 rounded-lg hover:bg-red-500/20 text-muted-foreground hover:text-red-500 transition-colors"
+                title={isZh ? '删除记录' : 'Delete record'}
+            >
+                <Trash2 className="w-4 h-4" />
+            </button>
+
+            {/* Delete confirmation */}
+            <AnimatePresence>
+                {deleteConfirm === record.id && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="absolute inset-0 bg-card/95 backdrop-blur rounded-2xl flex flex-col items-center justify-center z-10"
+                    >
+                        <p className="text-sm mb-4">
+                            {isZh ? '确定删除这条记录吗？' : 'Delete this record?'}
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setDeleteConfirm(null)}
+                                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm"
+                            >
+                                {isZh ? '取消' : 'Cancel'}
+                            </button>
+                            <button
+                                onClick={() => handleDelete(record.id!)}
+                                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm"
+                            >
+                                {isZh ? '删除' : 'Delete'}
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="text-xs text-muted-foreground mb-1">
                 {new Date(record.timestamp).toLocaleString()}
             </div>
-            <p className="font-semibold mb-2 line-clamp-2">{record.questionText}</p>
-            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+            <p className="font-semibold mb-2 line-clamp-2 pr-8">{record.questionText}</p>
+            <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
                 {record.mentorAnalysis || record.explanation}
             </p>
+
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span className="px-2 py-1 rounded-full bg-background/60 border border-border">
-                    {t.notebook.correct}: {record.correctAnswer}
+                <span className="px-2 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-600">
+                    ✓ {record.correctAnswer}
                 </span>
-                <span className="px-2 py-1 rounded-full bg-background/60 border border-border">
-                    {t.notebook.chosen}: {record.wrongAnswer}
+                <span className="px-2 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-red-500">
+                    ✗ {record.wrongAnswer}
                 </span>
             </div>
+
+            {/* FSRS Memory Status */}
+            <MemoryIndicator status={record.memoryStatus} />
+
             <button
                 onClick={() => handleQueue(record)}
                 className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
@@ -114,9 +257,8 @@ export function MistakeNotebook() {
                 <ArrowUpRight className="w-4 h-4" />
             </button>
         </div>
-    ), [t.notebook, handleQueue]);
+    ), [t.notebook, handleQueue, handleDelete, deleteConfirm, isZh]);
 
-    // Use virtual scrolling for lists > 10 items
     const useVirtual = mistakes.length > 10;
 
     return (
@@ -152,7 +294,7 @@ export function MistakeNotebook() {
                                         {t.notebook.subtitle}
                                         {mistakes.length > 10 && (
                                             <span className="ml-2 text-xs text-green-500">
-                                                ⚡ {language === 'zh' ? '虚拟滚动启用' : 'Virtual scroll enabled'}
+                                                ⚡ {isZh ? '虚拟滚动启用' : 'Virtual scroll enabled'}
                                             </span>
                                         )}
                                     </p>
@@ -170,16 +312,14 @@ export function MistakeNotebook() {
                             ) : mistakes.length === 0 ? (
                                 <p className="text-muted-foreground text-sm">{t.notebook.empty}</p>
                             ) : useVirtual ? (
-                                // Virtual scrolling for large lists
                                 <VirtualList
                                     items={mistakes}
                                     itemHeight={ITEM_HEIGHT}
-                                    containerHeight={Math.min(60 * 16, window?.innerHeight * 0.6 || 500)}
+                                    containerHeight={Math.min(60 * 16, typeof window !== 'undefined' ? window.innerHeight * 0.6 : 500)}
                                     renderItem={renderMistakeItem}
                                     className="pr-2"
                                 />
                             ) : (
-                                // Regular rendering for small lists
                                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
                                     {mistakes.map((record) => (
                                         <div key={record.id}>
