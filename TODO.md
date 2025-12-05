@@ -68,7 +68,7 @@
 - [x] **SRS算法**: 替换简单复仇队列，实现SM-2/FSRS遗忘曲线 - `db.ts` (ts-fsrs)
 - [x] **产出型练习**: 添加拼写/填空/造句题型 (Productive Recall) - `TypingQuestion.tsx`, `FillBlankQuestion.tsx`
 - [ ] **上下文学习**: 保留原文snippets，点击词汇高亮来源
-- [ ] **多模态输入**: 支持语音识别答题 (Web Speech API)
+- [x] **多模态输入**: 支持语音识别答题 (Web Speech API) - `VoiceInput.tsx`, `speechRecognition.ts`
 - [ ] **词族展示**: 学习time时展示timing/timer/timely
 
 ### 🟡 优先级3: 游戏化深化

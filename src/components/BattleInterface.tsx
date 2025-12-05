@@ -18,6 +18,7 @@ import { playSound } from '@/lib/audio';
 import { speakText, stopSpeech } from '@/lib/tts';
 import { TypingQuestion } from './TypingQuestion';
 import { FillBlankQuestion } from './FillBlankQuestion';
+import { VoiceInput } from './VoiceInput';
 
 export function BattleInterface() {
     const {
@@ -750,6 +751,32 @@ export function BattleInterface() {
 
                         {clarityEffect && clarityEffect.questionId === currentQuestion.id && (
                             <p className="text-xs text-blue-400 mt-2">{t.battle.clarityActive}</p>
+                        )}
+
+                        {/* Voice Input Option */}
+                        {(!currentQuestion.questionMode || currentQuestion.questionMode === 'choice') && !showResult && (
+                            <div className="mt-6 pt-6 border-t border-border/50">
+                                <p className="text-xs text-muted-foreground text-center mb-4">
+                                    {language === 'zh' ? '或者用语音回答' : 'Or answer with voice'}
+                                </p>
+                                <VoiceInput
+                                    correctAnswer={currentQuestion.options[currentQuestion.correct_index]}
+                                    options={currentQuestion.options}
+                                    disabled={showResult}
+                                    onAnswer={(correct, spokenText) => {
+                                        const matchedIndex = currentQuestion.options.findIndex(
+                                            opt => opt.toLowerCase().includes(spokenText.toLowerCase()) ||
+                                                spokenText.toLowerCase().includes(opt.toLowerCase())
+                                        );
+                                        const idx = correct ? currentQuestion.correct_index : (matchedIndex >= 0 ? matchedIndex : 0);
+                                        setSelectedOption(idx);
+                                        setIsCorrect(correct);
+                                        setShowResult(true);
+                                        const result = answerQuestion(idx);
+                                        setResultMessage(result.explanation);
+                                    }}
+                                />
+                            </div>
                         )}
                     </motion.div>
 
