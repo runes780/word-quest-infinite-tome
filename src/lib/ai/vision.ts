@@ -20,6 +20,24 @@ interface OpenRouterModel {
     };
 }
 
+// Known working free vision models (fallback list)
+const KNOWN_FREE_VISION_MODELS = [
+    'qwen/qwen2-vl-7b-instruct:free',
+    'qwen/qwen-2-vl-7b-instruct:free',
+    'meta-llama/llama-3.2-11b-vision-instruct:free',
+    'meta-llama/llama-3.2-90b-vision-instruct:free'
+];
+
+// Known working paid vision models (fallback)
+const KNOWN_PAID_VISION_MODELS = [
+    'openai/gpt-4o-mini',
+    'openai/gpt-4o',
+    'anthropic/claude-3-5-sonnet',
+    'anthropic/claude-3-haiku',
+    'google/gemini-pro-vision',
+    'google/gemini-1.5-flash'
+];
+
 // Cached models (refreshed periodically)
 let cachedModels: OpenRouterModel[] = [];
 let lastFetchTime = 0;
@@ -60,23 +78,17 @@ export async function fetchAvailableModels(): Promise<OpenRouterModel[]> {
     }
 }
 
-// Check if a model supports vision/images
+// Check if a model DEFINITELY supports vision/images (strict check)
 function isVisionModel(model: OpenRouterModel): boolean {
-    // Check architecture modalities
+    // STRICT: Only accept if explicitly listed in input_modalities
     if (model.architecture?.input_modalities?.includes('image')) {
         return true;
     }
-    if (model.architecture?.modality?.includes('image')) {
+    // Check modality string for image
+    if (model.architecture?.modality === 'text+image->text') {
         return true;
     }
-    // Check pricing for image support
-    if (model.pricing?.image && model.pricing.image !== '0') {
-        return true;
-    }
-    // Check model ID for vision keywords
-    const visionKeywords = ['vision', 'vl', 'llava', 'image', 'multimodal', 'gemini', 'gpt-4o', 'claude-3'];
-    const id = model.id.toLowerCase();
-    return visionKeywords.some(kw => id.includes(kw));
+    return false;
 }
 
 // Check if a model is free
@@ -86,24 +98,48 @@ function isFreeModel(model: OpenRouterModel): boolean {
         return true;
     }
     // Check if pricing is 0
-    const promptCost = parseFloat(model.pricing?.prompt || '0');
-    const completionCost = parseFloat(model.pricing?.completion || '0');
+    const promptCost = parseFloat(model.pricing?.prompt || '1');
+    const completionCost = parseFloat(model.pricing?.completion || '1');
     return promptCost === 0 && completionCost === 0;
 }
 
-// Get free vision models from API
+// Get free vision models from API + known working models
 export async function getFreeVisionModels(): Promise<OpenRouterModel[]> {
     const models = await fetchAvailableModels();
+
+    // Strict filtering: only models with explicit vision support
     const freeVision = models.filter(m => isFreeModel(m) && isVisionModel(m));
+
+    // Add known working models not already in the list
+    const existingIds = new Set(freeVision.map(m => m.id));
+    for (const knownId of KNOWN_FREE_VISION_MODELS) {
+        if (!existingIds.has(knownId)) {
+            const foundModel = models.find(m => m.id === knownId);
+            if (foundModel) {
+                freeVision.push(foundModel);
+            }
+        }
+    }
 
     console.log(`[Vision] Found ${freeVision.length} free vision models:`, freeVision.map(m => m.id));
     return freeVision;
 }
 
-// Get all vision models (free first)
+// Get all vision models (free first, then known paid)
 export async function getAllVisionModels(): Promise<OpenRouterModel[]> {
     const models = await fetchAvailableModels();
     const visionModels = models.filter(isVisionModel);
+
+    // Add known paid models as fallback
+    const existingIds = new Set(visionModels.map(m => m.id));
+    for (const knownId of KNOWN_PAID_VISION_MODELS) {
+        if (!existingIds.has(knownId)) {
+            const foundModel = models.find(m => m.id === knownId);
+            if (foundModel) {
+                visionModels.push(foundModel);
+            }
+        }
+    }
 
     // Sort: free models first
     return visionModels.sort((a, b) => {
