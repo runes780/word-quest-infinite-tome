@@ -78,14 +78,38 @@ export function BattleInterface() {
             setIsGeneratingMore(true);
             try {
                 const client = new OpenRouterClient(apiKey, model);
-                // Add variety by asking for a "new wave" or slightly harder questions based on level
-                const prompt = generateLevelPrompt(context + `\n\n(Player is Level ${playerStats.level}.Generate a new wave of challengers!)`);
+                const prompt = generateLevelPrompt(context + `\n\n(Player is Level ${playerStats.level}. Generate a new wave of challengers!)`);
                 const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
-                const cleanJson = jsonStr.replace(/```json\n ?|\n ? ```/g, '').trim();
+
+                // Robust JSON extraction - find the first { and last matching }
+                let cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
+
+                // Find the first { and extract JSON object
+                const firstBrace = cleanJson.indexOf('{');
+                if (firstBrace === -1) {
+                    throw new Error('No JSON object found in response');
+                }
+
+                // Find the matching closing brace by counting braces
+                let braceCount = 0;
+                let lastBrace = -1;
+                for (let i = firstBrace; i < cleanJson.length; i++) {
+                    if (cleanJson[i] === '{') braceCount++;
+                    if (cleanJson[i] === '}') braceCount--;
+                    if (braceCount === 0) {
+                        lastBrace = i;
+                        break;
+                    }
+                }
+
+                if (lastBrace === -1) {
+                    throw new Error('Malformed JSON - unbalanced braces');
+                }
+
+                cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
                 const data = JSON.parse(cleanJson);
 
                 if (data.monsters && Array.isArray(data.monsters)) {
-                    // Add a small delay to not jank the UI
                     setTimeout(() => {
                         addQuestions(data.monsters);
                     }, 500);
