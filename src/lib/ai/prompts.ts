@@ -78,14 +78,62 @@ Generate a brief "Mission Debrief" in Chinese for a Grade 4-6 student.
 }
 `;
 
+/**
+ * Sanitize context text to remove any game instructions, explanations, or meta content
+ * that might pollute the learning material prompt
+ */
+function sanitizeContext(text: string): string {
+  // Remove common meta patterns that shouldn't be part of learning material
+  const patternsToRemove = [
+    /\(Player is Level \d+.*?\)/gi,          // Level indicators
+    /Generate.*?challengers?.*?$/gmi,         // Generation instructions  
+    /# Response.*?$/gmi,                      // Response headers
+    /# Input Text.*?$/gmi,                    // Input headers
+    /```json[\s\S]*?```/g,                    // JSON code blocks
+    /Great!.*?哦！/g,                          // Explanation patterns in Chinese
+    /正确答案[是为：:]\s*.*/gi,                // "Correct answer is..." patterns
+    /答案解析[：:]\s*.*/gi,                    // "Answer analysis..." patterns
+    /解释[：:]\s*.*/gi,                        // "Explanation:" patterns
+    /\[.*?正确.*?\]/g,                         // [correct] markers
+    /\[.*?错误.*?\]/g,                         // [wrong] markers
+    /Score:.*?\/.*?\d+/gi,                    // Score patterns
+    /Mission.*?Debrief/gi,                    // Mission report headers
+    /MVP.*?Skill/gi,                          // MVP skill markers
+    /"analysis":\s*".*?"/g,                   // Mentor analysis JSON
+    /"revenge_question":\s*\{[^}]*\}/g,        // Revenge question JSON
+  ];
+
+  let cleaned = text;
+  for (const pattern of patternsToRemove) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+
+  // Remove excessive whitespace/newlines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  // If cleaned text is too short (< 20 chars), return original to avoid empty prompts
+  if (cleaned.length < 20) {
+    return text.trim();
+  }
+
+  return cleaned;
+}
+
 export function generateLevelPrompt(text: string): string {
+  const cleanText = sanitizeContext(text);
   return `
-# Input Text
-${text}
+# Input Text (English Reading Material)
+${cleanText}
+
+# Important Notes
+- Generate questions ONLY based on the reading material above
+- DO NOT include any game instructions, explanations, or meta content in your questions
+- Focus on vocabulary and grammar from the actual text
 
 # Response (JSON Only)
 `;
 }
+
 
 export function generateMentorPrompt(question: string, wrongAnswer: string, correctAnswer: string): string {
   return `
