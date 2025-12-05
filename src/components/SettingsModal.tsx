@@ -1,7 +1,7 @@
 'use client';
 
 import { useSettingsStore } from '@/store/settingsStore';
-import { Settings, X, RefreshCw, ToggleLeft, ToggleRight, Volume2, VolumeX } from 'lucide-react';
+import { Settings, X, RefreshCw, ToggleLeft, ToggleRight, Volume2, VolumeX, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { translations } from '@/lib/translations';
@@ -16,7 +16,7 @@ interface RouterModel {
 }
 
 export function SettingsModal() {
-    const { apiKey, setApiKey, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
+    const { apiKey, setApiKey, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, theme, setTheme, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
     const [availableModels, setAvailableModels] = useState<RouterModel[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [showFreeOnly, setShowFreeOnly] = useState(false);
@@ -107,6 +107,28 @@ export function SettingsModal() {
                                             className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${language === 'zh' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                                         >
                                             中文
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                                        {language === 'zh' ? '主题' : 'Theme'}
+                                    </label>
+                                    <div className="flex gap-2 p-1 bg-secondary/50 rounded-lg border border-input w-fit">
+                                        <button
+                                            onClick={() => setTheme('light')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${theme === 'light' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            <Sun className="w-4 h-4" />
+                                            {language === 'zh' ? '浅色' : 'Light'}
+                                        </button>
+                                        <button
+                                            onClick={() => setTheme('dark')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${theme === 'dark' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            <Moon className="w-4 h-4" />
+                                            {language === 'zh' ? '深色' : 'Dark'}
                                         </button>
                                     </div>
                                 </div>

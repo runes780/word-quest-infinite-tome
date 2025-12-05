@@ -81,7 +81,7 @@
 /* Light Mode - Elegant, Minimal, Timeless */
 :root {
   /* Base: Warm ivory background */
-  --background: 40 30% 98%;
+  --background: 45 30% 97%;
   --foreground: 220 25% 15%;
 
   /* Cards: Pure white with subtle warmth */
@@ -113,7 +113,7 @@
   --destructive-foreground: 0 0% 100%;
 
   /* Borders: Very subtle */
-  --border: 220 15% 90%;
+  --border: 220 15% 88%;
   --input: 220 15% 92%;
   --ring: 235 60% 52%;
 
@@ -126,6 +126,50 @@
   /* Gold for coins/rewards */
   --gold: 40 95% 50%;
   --gold-foreground: 40 95% 15%;
+
+  /* Battle arena - subtle gradient feel without gradients */
+  --arena-bg: 225 25% 95%;
+  --arena-border: 220 20% 85%;
+}
+
+/* Dark Mode - Original RPG Theme */
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+
+  --card: 222 47% 14%;
+  --card-foreground: 210 40% 98%;
+
+  --popover: 222 47% 14%;
+  --popover-foreground: 210 40% 98%;
+
+  --primary: 263 70% 60%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 217 33% 20%;
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 217 33% 18%;
+  --muted-foreground: 215 20% 65%;
+
+  --accent: 35 95% 60%;
+  --accent-foreground: 35 95% 15%;
+
+  --destructive: 0 62% 55%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 217 33% 22%;
+  --input: 217 33% 20%;
+  --ring: 263 70% 60%;
+
+  --success: 145 60% 45%;
+  --success-foreground: 0 0% 100%;
+
+  --gold: 40 95% 55%;
+  --gold-foreground: 40 95% 15%;
+
+  --arena-bg: 222 47% 8%;
+  --arena-border: 217 33% 20%;
 }
 
 @layer base {
@@ -171,4 +215,37 @@
   .border-subtle {
     border-color: rgba(0, 0, 0, 0.06);
   }
+
+  /* Battle arena styling */
+  .battle-arena {
+    background: hsl(var(--arena-bg));
+    border: 1px solid hsl(var(--arena-border));
+  }
+
+  /* Health bar styles */
+  .health-bar {
+    background: hsl(var(--destructive) / 0.2);
+  }
+
+  .health-bar-fill {
+    background: hsl(var(--destructive));
+  }
+
+  /* XP bar styles */
+  .xp-bar {
+    background: hsl(var(--primary) / 0.2);
+  }
+
+  .xp-bar-fill {
+    background: hsl(var(--primary));
+  }
+}
+
+/* Dark mode override for specific elements */
+.dark .shadow-soft {
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.25);
+}
+
+.dark .shadow-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
 }
