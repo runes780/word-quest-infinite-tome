@@ -9,12 +9,13 @@ import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy, Brain } from 'lucide-react';
+import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy, Brain, Camera } from 'lucide-react';
 import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
 import { FSRSCard } from '@/db/db';
+import { ocrFromFile, getFreeVisionModels } from '@/lib/ai/vision';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -126,9 +127,28 @@ export function InputSection() {
         };
     }, [imagePreview]);
 
-    const simulateOcr = async (file: File) => {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        return `${t.input.imageStubText}: ${file.name}`;
+    // Perform real OCR using free vision models
+    const performOcr = async (file: File): Promise<{ text: string; model?: string }> => {
+        // Check if API key is available
+        if (!apiKey) {
+            // Fallback: just return placeholder
+            return { text: `[${t.input.imageStubText}]: ${file.name}` };
+        }
+
+        // Check if free vision models are available
+        const freeModels = getFreeVisionModels();
+        if (freeModels.length === 0) {
+            return { text: `[${t.input.imageStubText}]: ${file.name}` };
+        }
+
+        // Perform real OCR
+        const result = await ocrFromFile(apiKey, file);
+
+        if (result.success && result.text) {
+            return { text: result.text, model: result.model };
+        } else {
+            throw new Error(result.error || 'OCR failed');
+        }
     };
 
     const handleImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,13 +158,21 @@ export function InputSection() {
         setImagePreview(URL.createObjectURL(file));
         setIsOcrLoading(true);
         setOcrMessage('');
+        setError('');
+
         try {
-            const text = await simulateOcr(file);
+            const { text, model } = await performOcr(file);
             setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
-            setOcrMessage(t.input.imageDetected);
+            setOcrMessage(model
+                ? `✨ ${language === 'zh' ? '文字识别成功' : 'OCR successful'} (${model})`
+                : t.input.imageDetected
+            );
         } catch (err) {
-            console.error(err);
-            setError(t.input.error);
+            console.error('OCR Error:', err);
+            setError(language === 'zh'
+                ? `OCR 失败: ${(err as Error).message}`
+                : `OCR failed: ${(err as Error).message}`
+            );
         } finally {
             setIsOcrLoading(false);
         }
