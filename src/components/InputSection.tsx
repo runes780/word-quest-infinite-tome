@@ -9,10 +9,12 @@ import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy } from 'lucide-react';
+import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy, Brain } from 'lucide-react';
 import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
 import { DailyChallenge } from './DailyChallenge';
+import { SRSDashboard } from './SRSDashboard';
+import { FSRSCard } from '@/db/db';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -29,6 +31,7 @@ export function InputSection() {
     const [showBlessingSelection, setShowBlessingSelection] = useState(false);
     const [pendingQuestions, setPendingQuestions] = useState<{ monsters: Monster[]; context: string } | null>(null);
     const [showDailyChallenge, setShowDailyChallenge] = useState(false);
+    const [showSRSDashboard, setShowSRSDashboard] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { startGame } = useGameStore();
     const { apiKey, model, setSettingsOpen, language } = useSettingsStore();
@@ -170,6 +173,28 @@ export function InputSection() {
                 onClose={() => setShowDailyChallenge(false)}
             />
 
+            {/* SRS Dashboard Modal */}
+            <SRSDashboard
+                isOpen={showSRSDashboard}
+                onClose={() => setShowSRSDashboard(false)}
+                onStartReview={(cards: FSRSCard[]) => {
+                    // Convert FSRS cards to Monster format for game
+                    const monsters = cards.map((card, idx) => ({
+                        id: card.id || Date.now() + idx,
+                        type: card.type || 'vocab' as const,
+                        question: card.question,
+                        options: card.options,
+                        correct_index: card.correct_index,
+                        explanation: card.explanation || '',
+                        hint: card.hint,
+                        skillTag: card.skillTag
+                    }));
+                    if (monsters.length > 0) {
+                        startGame(monsters, 'SRS Review');
+                    }
+                }}
+            />
+
             <div className="w-full max-w-2xl mx-auto p-6">
                 <motion.div
                     initial={{ y: 20, opacity: 0 }}
@@ -275,6 +300,13 @@ export function InputSection() {
                         </button>
                     ) : (
                         <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowSRSDashboard(true)}
+                                className="px-4 py-4 bg-purple-500/20 border-2 border-purple-500 text-purple-500 rounded-xl font-bold hover:bg-purple-500/30 transition-all flex items-center gap-2"
+                                title={language === 'zh' ? '复习看板' : 'Review Dashboard'}
+                            >
+                                <Brain className="w-6 h-6" />
+                            </button>
                             <button
                                 onClick={() => setShowDailyChallenge(true)}
                                 className="px-4 py-4 bg-accent/20 border-2 border-accent text-accent rounded-xl font-bold hover:bg-accent/30 transition-all flex items-center gap-2"

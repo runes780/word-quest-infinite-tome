@@ -84,11 +84,45 @@ export interface FSRSCard {
     last_review?: number;  // Last review timestamp
 }
 
+// Global Player Profile - Persistent across all sessions
+export interface GlobalPlayerProfile {
+    id?: number;
+
+    // Core progression (never resets)
+    totalXp: number;
+    globalLevel: number;
+    totalGold: number;
+
+    // Daily streak system
+    dailyStreak: number;
+    lastActiveDate: string;  // YYYY-MM-DD
+    dailyXpGoal: number;
+    dailyXpEarned: number;
+
+    // Lifetime stats
+    wordsLearned: number;
+    lessonsCompleted: number;
+    totalStudyMinutes: number;
+    perfectLessons: number;
+
+    // Skill mastery (0-100)
+    vocabMastery: number;
+    grammarMastery: number;
+    readingMastery: number;
+
+    // Inventory persisted
+    ownedRelics: string[];  // Relic IDs owned permanently
+
+    createdAt: number;
+    updatedAt: number;
+}
+
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
     mistakes!: Table<MistakeRecord>;
     questionCache!: Table<CachedQuestion>;
     fsrsCards!: Table<FSRSCard>;
+    playerProfile!: Table<GlobalPlayerProfile>;
 
     constructor() {
         super('WordQuestDB');
@@ -111,12 +145,132 @@ export class WordQuestDB extends Dexie {
             questionCache: '++id, contextHash, timestamp, used',
             fsrsCards: '++id, questionHash, due, state'
         });
+        this.version(5).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id'
+        });
     }
 }
 
 export const db = new WordQuestDB();
 
+// ========== Player Profile Functions ==========
+
+function getTodayKey(): string {
+    return new Date().toISOString().split('T')[0];
+}
+
+function getDefaultProfile(): GlobalPlayerProfile {
+    return {
+        totalXp: 0,
+        globalLevel: 1,
+        totalGold: 0,
+        dailyStreak: 0,
+        lastActiveDate: '',
+        dailyXpGoal: 50,
+        dailyXpEarned: 0,
+        wordsLearned: 0,
+        lessonsCompleted: 0,
+        totalStudyMinutes: 0,
+        perfectLessons: 0,
+        vocabMastery: 0,
+        grammarMastery: 0,
+        readingMastery: 0,
+        ownedRelics: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    };
+}
+
+export async function getPlayerProfile(): Promise<GlobalPlayerProfile> {
+    const existing = await db.playerProfile.toCollection().first();
+    if (existing) return existing;
+
+    // Create new profile
+    const profile = getDefaultProfile();
+    const id = await db.playerProfile.add(profile);
+    return { ...profile, id };
+}
+
+export async function updatePlayerProfile(updates: Partial<GlobalPlayerProfile>): Promise<GlobalPlayerProfile> {
+    const profile = await getPlayerProfile();
+    const today = getTodayKey();
+
+    // Handle daily streak logic
+    if (updates.dailyXpEarned !== undefined) {
+        const lastDate = profile.lastActiveDate;
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = yesterday.toISOString().split('T')[0];
+
+        if (lastDate === today) {
+            // Same day, just add XP
+            updates.dailyXpEarned = profile.dailyXpEarned + (updates.dailyXpEarned || 0);
+        } else if (lastDate === yesterdayKey) {
+            // Consecutive day, increment streak
+            updates.dailyStreak = profile.dailyStreak + 1;
+            updates.lastActiveDate = today;
+        } else if (lastDate !== today) {
+            // Streak broken or first day
+            updates.dailyStreak = 1;
+            updates.lastActiveDate = today;
+        }
+    }
+
+    // Calculate level from XP
+    if (updates.totalXp !== undefined) {
+        const newXp = profile.totalXp + updates.totalXp;
+        updates.totalXp = newXp;
+        updates.globalLevel = calculateLevel(newXp);
+    }
+
+    // Add gold (don't replace)
+    if (updates.totalGold !== undefined) {
+        updates.totalGold = profile.totalGold + updates.totalGold;
+    }
+
+    const merged = {
+        ...profile,
+        ...updates,
+        updatedAt: Date.now()
+    };
+
+    await db.playerProfile.update(profile.id!, merged);
+    return merged;
+}
+
+// XP to Level calculation (similar to Duolingo)
+function calculateLevel(xp: number): number {
+    // Level 1: 0 XP, Level 2: 100 XP, Level 3: 250 XP, etc.
+    // Formula: XP needed = 50 * level^1.5
+    let level = 1;
+    let totalNeeded = 0;
+    while (totalNeeded <= xp) {
+        level++;
+        totalNeeded += Math.floor(50 * Math.pow(level, 1.5));
+    }
+    return level - 1;
+}
+
+export function xpForNextLevel(currentLevel: number): number {
+    return Math.floor(50 * Math.pow(currentLevel + 1, 1.5));
+}
+
+export function xpProgressInLevel(totalXp: number, currentLevel: number): { current: number; needed: number } {
+    let accumulated = 0;
+    for (let l = 1; l <= currentLevel; l++) {
+        accumulated += Math.floor(50 * Math.pow(l, 1.5));
+    }
+    const currentLevelXp = totalXp - accumulated + Math.floor(50 * Math.pow(currentLevel, 1.5));
+    const neededForNext = xpForNextLevel(currentLevel);
+    return { current: Math.max(0, currentLevelXp), needed: neededForNext };
+}
+
 // ========== FSRS Functions ==========
+
 
 // Initialize FSRS with default parameters
 const params = generatorParameters();
