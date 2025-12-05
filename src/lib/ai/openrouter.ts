@@ -27,11 +27,13 @@ export class OpenRouterClient {
     private lastRequestTime = 0;
     private minDelay = 3500;
     private fetchTimeoutMs = 30000;
-    private maxRetries = 1;
+    private maxRetries: number;
     private isFreeModel: boolean;
 
     constructor(private apiKey: string, private model: string) {
         this.isFreeModel = model.endsWith(':free');
+        // Free models need more retries due to rate limits
+        this.maxRetries = this.isFreeModel ? 4 : 2;
         if (!this.isFreeModel) {
             this.minDelay = 100;
             this.fetchTimeoutMs = 20000;
@@ -119,9 +121,19 @@ export class OpenRouterClient {
                         if (!response.ok) {
                             const errorText = await response.text();
                             console.error(`[OpenRouter] API Error: ${response.status} - ${errorText}`);
+
+                            // Fatal errors - don't retry
                             if (response.status === 401 || response.status === 400) {
                                 throw new Error(`OpenRouter API Error: ${response.status} - ${errorText}`);
                             }
+
+                            // Rate limit - wait longer before retry
+                            if (response.status === 429) {
+                                const waitTime = this.isFreeModel ? 8000 + attempt * 5000 : 3000 + attempt * 2000;
+                                console.log(`[OpenRouter] Rate limited (429). Waiting ${waitTime / 1000}s before retry...`);
+                                await new Promise(r => setTimeout(r, waitTime));
+                            }
+
                             lastError = new Error(`OpenRouter API Error: ${response.status} - ${errorText}`);
                             continue;
                         }
