@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { logMistake } from '@/lib/data/mistakes';
 import { getCurrentBlessingEffect } from '@/components/InputSection';
 import { loadPlayerStats, savePlayerStats, checkAchievements, PlayerAchievementStats, Achievement } from '@/components/AchievementSystem';
+import { updatePlayerProfile, reviewCard, hashQuestion } from '@/db/db';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -535,6 +536,26 @@ export const useGameStore = create<GameState>((set, get) => ({
                 bossesDefeated: (nextMonsterHp <= 0 && currentQuestion.isBoss) ? 1 : 0,
             });
 
+            // Update global persistent profile (XP, gold, streak)
+            updatePlayerProfile({
+                totalXp: xpGain,
+                totalGold: goldGain,
+                dailyXpEarned: xpGain,
+                wordsLearned: 1
+            }).catch(console.error);
+
+            // Update FSRS card scheduling (mark as 'good' for correct answer)
+            const questionHash = hashQuestion(currentQuestion.question);
+            reviewCard(questionHash, isCritical ? 'easy' : 'good', {
+                question: currentQuestion.question,
+                options: currentQuestion.options,
+                correct_index: currentQuestion.correct_index,
+                type: currentQuestion.type,
+                explanation: currentQuestion.explanation,
+                hint: currentQuestion.hint,
+                skillTag: currentQuestion.skillTag
+            }).catch(console.error);
+
             // Blessing: Heal on streak threshold (e.g., Vampiric Wisdom)
             if (healOnCorrectThreshold > 0 && healAmount > 0 && newStreak % healOnCorrectThreshold === 0) {
                 get().heal(healAmount);
@@ -587,6 +608,18 @@ export const useGameStore = create<GameState>((set, get) => ({
                 totalQuestions: 1,
                 currentStreak: 0,
             });
+
+            // Update FSRS card scheduling (mark as 'again' for wrong answer)
+            const questionHash = hashQuestion(currentQuestion.question);
+            reviewCard(questionHash, 'again', {
+                question: currentQuestion.question,
+                options: currentQuestion.options,
+                correct_index: currentQuestion.correct_index,
+                type: currentQuestion.type,
+                explanation: currentQuestion.explanation,
+                hint: currentQuestion.hint,
+                skillTag: currentQuestion.skillTag
+            }).catch(console.error);
         }
 
         return {
