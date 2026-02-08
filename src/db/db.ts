@@ -200,6 +200,23 @@ export interface GuardianDashboardEvent {
     timestamp: number;
 }
 
+export type AIRequestOutcome = 'success' | 'error' | 'timeout';
+
+export interface AIRequestMetric {
+    id?: number;
+    provider: 'openrouter';
+    model: string;
+    isFreeModel: boolean;
+    outcome: AIRequestOutcome;
+    attempts: number;
+    retryCount: number;
+    rateLimitHits: number;
+    latencyMs: number;
+    statusCode?: number;
+    errorMessage?: string;
+    timestamp: number;
+}
+
 export type StudyActionPriority = 'urgent' | 'important' | 'optional';
 export type StudyActionStatus = 'pending' | 'completed' | 'skipped';
 
@@ -234,6 +251,18 @@ export interface GuardianAcceptanceSnapshot {
     windowDays: number;
     generatedAt: number;
     weeklyActiveRate: EngagementMetricRow;
+}
+
+export interface AIRequestMonitorSnapshot {
+    windowDays: number;
+    generatedAt: number;
+    totalRequests: number;
+    avgLatencyMs: number;
+    p95LatencyMs: number;
+    successRate: EngagementMetricRow;
+    nonRateLimitedRate: EngagementMetricRow;
+    retryPressureRate: number;
+    status: 'healthy' | 'warning' | 'critical' | 'insufficient';
 }
 
 export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
@@ -276,6 +305,7 @@ export class WordQuestDB extends Dexie {
     learningTasks!: Table<LearningTask>;
     studyActionExecutions!: Table<StudyActionExecution>;
     guardianDashboardEvents!: Table<GuardianDashboardEvent>;
+    aiRequestMetrics!: Table<AIRequestMetric>;
     skillMastery!: Table<SkillMasteryRecord>;
 
     constructor() {
@@ -354,6 +384,19 @@ export class WordQuestDB extends Dexie {
             learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
             studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
             guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
+        this.version(11).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
     }
@@ -1039,6 +1082,102 @@ export async function logGuardianDashboardEvent(
         dateKey: dateKeyFromTimestamp(timestamp),
         timestamp
     });
+}
+
+export async function logAIRequestMetric(input: Omit<AIRequestMetric, 'id' | 'timestamp'> & { timestamp?: number; }): Promise<void> {
+    await db.aiRequestMetrics.add({
+        ...input,
+        timestamp: input.timestamp ?? Date.now()
+    });
+}
+
+function percentile(values: number[], p: number): number {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+    return sorted[index];
+}
+
+export function computeAIRequestMonitorSnapshotFromRows(
+    rows: AIRequestMetric[],
+    now = Date.now(),
+    windowDays = 7
+): AIRequestMonitorSnapshot {
+    const currentRange = getWindowRange(now, windowDays, 0);
+    const previousRange = getWindowRange(now, windowDays, 1);
+    const current = filterEventsInRange(rows, currentRange);
+    const previous = filterEventsInRange(rows, previousRange);
+
+    const currentSuccess = current.filter((row) => row.outcome === 'success').length;
+    const previousSuccess = previous.filter((row) => row.outcome === 'success').length;
+    const currentNonRateLimited = current.filter((row) => row.rateLimitHits === 0).length;
+    const previousNonRateLimited = previous.filter((row) => row.rateLimitHits === 0).length;
+    const currentLatency = current.map((row) => row.latencyMs).filter((value) => value > 0);
+    const retryRequests = current.filter((row) => row.retryCount > 0).length;
+
+    const successRate = createMetricRow({
+        numerator: currentSuccess,
+        denominator: current.length,
+        previousNumerator: previousSuccess,
+        previousDenominator: previous.length,
+        target: 0.9,
+        targetType: 'absolute_rate',
+        minDenominator: 5
+    });
+    const nonRateLimitedRate = createMetricRow({
+        numerator: currentNonRateLimited,
+        denominator: current.length,
+        previousNumerator: previousNonRateLimited,
+        previousDenominator: previous.length,
+        target: 0.85,
+        targetType: 'absolute_rate',
+        minDenominator: 5
+    });
+
+    const totalRequests = current.length;
+    const retryPressureRate = totalRequests > 0 ? retryRequests / totalRequests : 0;
+
+    let status: AIRequestMonitorSnapshot['status'] = 'healthy';
+    if (totalRequests < 5) {
+        status = 'insufficient';
+    } else {
+        const failedTargets = [successRate.status, nonRateLimitedRate.status].filter((value) => value === 'not_met').length;
+        const insufficientTargets = [successRate.status, nonRateLimitedRate.status].filter((value) => value === 'insufficient').length;
+        if (failedTargets >= 2 || retryPressureRate >= 0.6) {
+            status = 'critical';
+        } else if (failedTargets >= 1 || insufficientTargets >= 1 || retryPressureRate >= 0.35) {
+            status = 'warning';
+        } else {
+            status = 'healthy';
+        }
+    }
+
+    return {
+        windowDays,
+        generatedAt: now,
+        totalRequests,
+        avgLatencyMs: currentLatency.length > 0
+            ? Math.round(currentLatency.reduce((sum, value) => sum + value, 0) / currentLatency.length)
+            : 0,
+        p95LatencyMs: Math.round(percentile(currentLatency, 95)),
+        successRate,
+        nonRateLimitedRate,
+        retryPressureRate,
+        status
+    };
+}
+
+export async function getAIRequestMonitorSnapshot(
+    windowDays = 7,
+    lookbackDays = 60,
+    now = Date.now()
+): Promise<AIRequestMonitorSnapshot> {
+    const start = now - (lookbackDays * DAY_MS);
+    const rows = await db.aiRequestMetrics
+        .where('timestamp')
+        .aboveOrEqual(start)
+        .toArray();
+    return computeAIRequestMonitorSnapshotFromRows(rows, now, windowDays);
 }
 
 export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {

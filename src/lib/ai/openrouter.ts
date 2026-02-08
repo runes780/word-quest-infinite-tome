@@ -1,4 +1,6 @@
 
+import { logOpenRouterMetric } from './metrics';
+
 export interface OpenRouterResponse {
     choices: {
         message: {
@@ -84,6 +86,10 @@ export class OpenRouterClient {
         return new Promise((resolve, reject) => {
             const task = async () => {
                 let lastError: Error | null = null;
+                const requestStartedAt = Date.now();
+                let attempts = 0;
+                let rateLimitHits = 0;
+                let lastStatusCode: number | undefined;
 
                 for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
                     const controller = new AbortController();
@@ -95,6 +101,7 @@ export class OpenRouterClient {
                             console.log(`[OpenRouter] Retry ${attempt}/${this.maxRetries} after ${backoffMs}ms`);
                             await new Promise(r => setTimeout(r, backoffMs));
                         }
+                        attempts += 1;
 
                         console.log(`[OpenRouter] Sending streaming request to ${this.model}...`);
 
@@ -132,6 +139,7 @@ export class OpenRouterClient {
                         fetchTimeoutId = undefined;
 
                         console.log(`[OpenRouter] Response status: ${response.status}`);
+                        lastStatusCode = response.status;
 
                         if (!response.ok) {
                             const errorText = await response.text();
@@ -144,6 +152,7 @@ export class OpenRouterClient {
 
                             // Rate limit - wait longer before retry
                             if (response.status === 429) {
+                                rateLimitHits += 1;
                                 const waitTime = this.isFreeModel ? 8000 + attempt * 5000 : 3000 + attempt * 2000;
                                 console.log(`[OpenRouter] Rate limited (429). Waiting ${waitTime / 1000}s before retry...`);
                                 await new Promise(r => setTimeout(r, waitTime));
@@ -211,6 +220,16 @@ export class OpenRouterClient {
                         }
 
                         console.log(`[OpenRouter] Success! Total: ${fullContent.length} chars`);
+                        void logOpenRouterMetric({
+                            model: this.model,
+                            isFreeModel: this.isFreeModel,
+                            outcome: 'success',
+                            attempts,
+                            retryCount: Math.max(0, attempts - 1),
+                            rateLimitHits,
+                            latencyMs: Math.max(0, Date.now() - requestStartedAt),
+                            statusCode: lastStatusCode
+                        });
                         resolve(fullContent);
                         return;
                     } catch (error) {
@@ -226,6 +245,17 @@ export class OpenRouterClient {
                     }
                 }
 
+                void logOpenRouterMetric({
+                    model: this.model,
+                    isFreeModel: this.isFreeModel,
+                    outcome: lastError?.message.includes('timeout') ? 'timeout' : 'error',
+                    attempts,
+                    retryCount: Math.max(0, attempts - 1),
+                    rateLimitHits,
+                    latencyMs: Math.max(0, Date.now() - requestStartedAt),
+                    statusCode: lastStatusCode,
+                    errorMessage: lastError?.message
+                });
                 reject(lastError || new Error('Unknown error occurred'));
             };
 

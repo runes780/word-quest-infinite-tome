@@ -24,6 +24,7 @@ import {
 } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import {
+    AIRequestMonitorSnapshot,
     EngagementMetricRow,
     EngagementSnapshot,
     FSRSCard,
@@ -34,6 +35,7 @@ import {
     StudyActionPriority,
     StudyActionStatus,
     computeStudyActionExecutionSummaryFromRows,
+    getAIRequestMonitorSnapshot,
     getGuardianAcceptanceSnapshot,
     getEngagementSnapshot,
     getDueCardsWithPriority,
@@ -93,6 +95,7 @@ export function ParentDashboard() {
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
     const [consistencyAudit, setConsistencyAudit] = useState<DataConsistencyAuditSnapshot | null>(null);
+    const [aiMonitor, setAiMonitor] = useState<AIRequestMonitorSnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -122,7 +125,8 @@ export function ParentDashboard() {
                 repeatedCauseData,
                 repeatedCauseTrendData,
                 repeatedCauseBaseline,
-                consistencyAuditData
+                consistencyAuditData,
+                aiMonitorData
             ] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
@@ -141,7 +145,8 @@ export function ParentDashboard() {
                 getRepeatedCauseSnapshot(range),
                 getRepeatedCauseTrends([7, 14, 30]),
                 getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800),
-                getDataConsistencyAuditSnapshot()
+                getDataConsistencyAuditSnapshot(),
+                getAIRequestMonitorSnapshot(7)
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
@@ -163,6 +168,7 @@ export function ParentDashboard() {
             setRepeatedCauseTrends(repeatedCauseTrendData);
             setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
             setConsistencyAudit(consistencyAuditData);
+            setAiMonitor(aiMonitorData);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -836,6 +842,70 @@ export function ParentDashboard() {
                                             </div>
                                         )}
                                     </div>
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? 'AI 稳定性监控' : 'AI Reliability Monitor'}
+                                        </div>
+                                        <span className={`text-xs font-semibold ${
+                                            aiMonitor?.status === 'healthy'
+                                                ? 'text-green-500'
+                                                : aiMonitor?.status === 'critical'
+                                                    ? 'text-destructive'
+                                                    : aiMonitor?.status === 'warning'
+                                                        ? 'text-amber-500'
+                                                        : 'text-muted-foreground'
+                                        }`}>
+                                            {aiMonitor?.status === 'healthy'
+                                                ? (isZh ? '健康' : 'Healthy')
+                                                : aiMonitor?.status === 'critical'
+                                                    ? (isZh ? '严重' : 'Critical')
+                                                    : aiMonitor?.status === 'warning'
+                                                        ? (isZh ? '预警' : 'Warning')
+                                                        : (isZh ? '样本不足' : 'Insufficient')}
+                                        </span>
+                                    </div>
+                                    {aiMonitor ? (
+                                        <div className="grid md:grid-cols-3 gap-3">
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="请求成功率"
+                                                labelEn="Request Success Rate"
+                                                metric={aiMonitor.successRate}
+                                                targetTextZh="目标：成功率 >= 90%"
+                                                targetTextEn="Target: success rate >= 90%"
+                                            />
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="非限速比例"
+                                                labelEn="Non-rate-limited Rate"
+                                                metric={aiMonitor.nonRateLimitedRate}
+                                                targetTextZh="目标：非限速比例 >= 85%"
+                                                targetTextEn="Target: non-rate-limited rate >= 85%"
+                                            />
+                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
+                                                <div className="font-semibold">{isZh ? '请求负载' : 'Request Load'}</div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    {isZh ? '样本数' : 'Samples'}: {aiMonitor.totalRequests}
+                                                </div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    {isZh ? '平均延迟' : 'Avg latency'}: {aiMonitor.avgLatencyMs}ms
+                                                </div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    P95: {aiMonitor.p95LatencyMs}ms
+                                                </div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    {isZh ? '重试压力' : 'Retry pressure'}: {(aiMonitor.retryPressureRate * 100).toFixed(1)}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground">
+                                            {isZh ? '暂无 AI 请求样本，触发一次关卡生成/导师分析后将自动显示。' : 'No AI request sample yet. Generate one mission or mentor analysis to populate this panel.'}
+                                        </div>
+                                    )}
                                 </section>
 
                                 <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
