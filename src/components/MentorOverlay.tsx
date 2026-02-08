@@ -25,6 +25,8 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState('');
+    const [causeTag, setCauseTag] = useState('');
+    const [nextAction, setNextAction] = useState('');
     const [revengeQuestion, setRevengeQuestion] = useState<Monster | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
@@ -35,6 +37,8 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
 
         let cancelled = false;
         setAnalysis('');
+        setCauseTag('');
+        setNextAction('');
         setRevengeQuestion(null);
         setStatusMessage('');
 
@@ -44,6 +48,8 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
             if (cancelled) return;
             if (cached) {
                 setAnalysis(cached.mentorAnalysis || question.explanation);
+                setCauseTag(cached.mentorCauseTag || '');
+                setNextAction(cached.mentorNextAction || '');
                 if (cached.revengeQuestion) {
                     setRevengeQuestion({
                         id: Date.now(),
@@ -79,7 +85,14 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
 
             try {
                 const client = new OpenRouterClient(apiKey, model);
-                const prompt = generateMentorPrompt(question.question, wrongAnswer, question.options[question.correct_index]);
+                const prompt = generateMentorPrompt(
+                    question.question,
+                    wrongAnswer,
+                    question.options[question.correct_index],
+                    question.skillTag,
+                    question.difficulty,
+                    question.questionMode
+                );
                 const jsonStr = await client.generate(prompt, MENTOR_SYSTEM_PROMPT);
                 const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
                 const data = JSON.parse(cleanJson);
@@ -93,6 +106,8 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                 };
 
                 setAnalysis(data.analysis);
+                setCauseTag(data.cause_tag || '');
+                setNextAction(data.next_action || '');
                 setRevengeQuestion({
                     ...revengePayload,
                     id: Date.now(),
@@ -111,6 +126,8 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                     correctAnswer: question.options[question.correct_index],
                     explanation: question.explanation,
                     analysis: data.analysis,
+                    causeTag: data.cause_tag,
+                    nextAction: data.next_action,
                     mentorExplanation: question.explanation,
                     options: question.options,
                     correctIndex: question.correct_index,
@@ -176,10 +193,26 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                                     <div className="h-4 bg-secondary rounded w-5/6" />
                                 </div>
                             ) : (
-                                <div className="prose prose-invert max-w-none">
+                                <div className="prose prose-invert max-w-none space-y-3">
                                     <p className="text-lg leading-relaxed text-foreground/90 font-medium">
                                         {analysis}
                                     </p>
+                                    {causeTag && (
+                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-xs">
+                                            <span className="uppercase tracking-wide text-primary font-semibold">
+                                                {language === 'zh' ? '错因标签' : 'Cause Tag'}
+                                            </span>
+                                            <span className="font-mono text-foreground">{causeTag}</span>
+                                        </div>
+                                    )}
+                                    {nextAction && (
+                                        <p className="text-sm text-muted-foreground">
+                                            <span className="font-semibold text-primary mr-2">
+                                                {language === 'zh' ? '下一步' : 'Next'}
+                                            </span>
+                                            {nextAction}
+                                        </p>
+                                    )}
                                 </div>
                             )}
 

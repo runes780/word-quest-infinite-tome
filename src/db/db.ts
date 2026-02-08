@@ -41,6 +41,8 @@ export interface MistakeRecord {
     skillTag?: string;
     timestamp: number;
     mentorAnalysis?: string;
+    mentorCauseTag?: string;
+    mentorNextAction?: string;
     revengeQuestion?: StoredRevengeQuestion;
 }
 
@@ -145,6 +147,23 @@ export interface SkillMasteryRecord {
     correct: number;
     lastReviewedAt: number;
     updatedAt: number;
+}
+
+export interface MasteryAggregateSkillRow {
+    skillTag: string;
+    attempts: number;
+    correct: number;
+    smoothedAccuracy: number;
+    currentState: MasteryState;
+    currentScore: number;
+}
+
+export interface MasteryAggregateSnapshot {
+    windowDays: number;
+    totalAttempts: number;
+    totalCorrect: number;
+    bySkill: MasteryAggregateSkillRow[];
+    stateCounts: Record<MasteryState, number>;
 }
 
 export class WordQuestDB extends Dexie {
@@ -339,11 +358,66 @@ export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timest
 }
 
 function masteryStateFromScore(score: number, attempts: number, accuracy: number): MasteryState {
-    if (attempts < 2) return 'new';
-    if (score >= 85 && attempts >= 8 && accuracy >= 0.85) return 'mastered';
-    if (score >= 65 && attempts >= 5 && accuracy >= 0.7) return 'consolidated';
-    if (score >= 30) return 'learning';
+    if (attempts < 3) return 'new';
+    if (score >= 86 && attempts >= 10 && accuracy >= 0.86) return 'mastered';
+    if (score >= 68 && attempts >= 6 && accuracy >= 0.72) return 'consolidated';
+    if (score >= 35) return 'learning';
     return 'new';
+}
+
+function smoothAccuracy(correct: number, attempts: number): number {
+    // Beta prior (alpha=2,beta=2) to reduce volatility for low-sample skills.
+    return (correct + 2) / (attempts + 4);
+}
+
+function transitionMasteryState(
+    previousState: MasteryState,
+    score: number,
+    attempts: number,
+    smoothedAccuracy: number
+): MasteryState {
+    if (attempts < 3) return 'new';
+
+    if (previousState === 'mastered') {
+        if (score < 74 || smoothedAccuracy < 0.72) return 'consolidated';
+        return 'mastered';
+    }
+
+    if (previousState === 'consolidated') {
+        if (score >= 86 && attempts >= 10 && smoothedAccuracy >= 0.86) return 'mastered';
+        if (score < 52 || smoothedAccuracy < 0.58) return 'learning';
+        return 'consolidated';
+    }
+
+    if (previousState === 'learning') {
+        if (score >= 68 && attempts >= 6 && smoothedAccuracy >= 0.72) return 'consolidated';
+        if (score < 22 && attempts >= 4) return 'new';
+        return 'learning';
+    }
+
+    if (score >= 35 && attempts >= 3) return 'learning';
+    return 'new';
+}
+
+export function computeMasteryUpdate(input: {
+    previousScore: number;
+    previousState: MasteryState;
+    attempts: number;
+    correct: number;
+    result: LearningEventResult;
+}): { score: number; state: MasteryState; smoothedAccuracy: number; } {
+    const { previousScore, previousState, attempts, correct, result } = input;
+    const smoothed = smoothAccuracy(correct, attempts);
+    const targetScore = Math.round(smoothed * 100);
+    const weight = attempts < 8 ? 0.35 : 0.55;
+    const resultBias = result === 'correct' ? 4 : -5;
+    const score = clamp(Math.round(previousScore * (1 - weight) + targetScore * weight + resultBias), 0, 100);
+    const state = transitionMasteryState(previousState, score, attempts, smoothed);
+    return {
+        score,
+        state,
+        smoothedAccuracy: smoothed
+    };
 }
 
 export async function updateSkillMastery(skillTag: string, result: LearningEventResult): Promise<SkillMasteryRecord> {
@@ -352,13 +426,15 @@ export async function updateSkillMastery(skillTag: string, result: LearningEvent
 
     const attempts = (existing?.attempts || 0) + 1;
     const correct = (existing?.correct || 0) + (result === 'correct' ? 1 : 0);
-    const accuracy = attempts > 0 ? correct / attempts : 0;
-
     const previousScore = existing?.score ?? 20;
-    const trendAdjust = accuracy >= 0.8 ? 2 : accuracy <= 0.5 ? -2 : 0;
-    const resultAdjust = result === 'correct' ? 6 : -8;
-    const score = clamp(previousScore + resultAdjust + trendAdjust, 0, 100);
-    const state = masteryStateFromScore(score, attempts, accuracy);
+    const previousState = existing?.state || 'new';
+    const { score, state } = computeMasteryUpdate({
+        previousScore,
+        previousState,
+        attempts,
+        correct,
+        result
+    });
 
     const nextRecord: SkillMasteryRecord = {
         id: existing?.id,
@@ -412,7 +488,7 @@ export async function seedSkillMasteryFromLearningEvents(): Promise<number> {
 
     const now = Date.now();
     const records: SkillMasteryRecord[] = Array.from(grouped.entries()).map(([skillTag, value]) => {
-        const accuracy = value.attempts > 0 ? value.correct / value.attempts : 0;
+        const accuracy = smoothAccuracy(value.correct, value.attempts);
         const score = clamp(Math.round(accuracy * 100), 0, 100);
         return {
             skillTag,
@@ -465,6 +541,69 @@ export async function getRecentMistakeIntensity(skillTags: string[], windowDays 
         result[key] = (result[key] || 0) + 1;
     });
     return result;
+}
+
+export async function getMasteryAggregateSnapshot(windowDays = 7): Promise<MasteryAggregateSnapshot> {
+    const cutoff = Date.now() - (windowDays * 24 * 60 * 60 * 1000);
+    const [events, masteryRows] = await Promise.all([
+        db.learningEvents
+            .where('timestamp')
+            .aboveOrEqual(cutoff)
+            .and((row) => row.eventType === 'answer')
+            .toArray(),
+        db.skillMastery.toArray()
+    ]);
+
+    const bucket = new Map<string, { attempts: number; correct: number }>();
+    events.forEach((event) => {
+        if (!event.skillTag || !event.result) return;
+        const row = bucket.get(event.skillTag) || { attempts: 0, correct: 0 };
+        row.attempts += 1;
+        row.correct += event.result === 'correct' ? 1 : 0;
+        bucket.set(event.skillTag, row);
+    });
+
+    const masteryMap = masteryRows.reduce((acc, row) => {
+        acc[row.skillTag] = row;
+        return acc;
+    }, {} as Record<string, SkillMasteryRecord>);
+
+    const bySkill: MasteryAggregateSkillRow[] = Array.from(bucket.entries())
+        .map(([skillTag, row]) => {
+            const mastery = masteryMap[skillTag];
+            return {
+                skillTag,
+                attempts: row.attempts,
+                correct: row.correct,
+                smoothedAccuracy: smoothAccuracy(row.correct, row.attempts),
+                currentState: mastery?.state || 'new',
+                currentScore: mastery?.score ?? 20
+            };
+        })
+        .sort((a, b) => {
+            if (b.attempts !== a.attempts) return b.attempts - a.attempts;
+            return b.currentScore - a.currentScore;
+        });
+
+    const totalAttempts = bySkill.reduce((sum, row) => sum + row.attempts, 0);
+    const totalCorrect = bySkill.reduce((sum, row) => sum + row.correct, 0);
+    const stateCounts: Record<MasteryState, number> = {
+        new: 0,
+        learning: 0,
+        consolidated: 0,
+        mastered: 0
+    };
+    masteryRows.forEach((row) => {
+        stateCounts[row.state] += 1;
+    });
+
+    return {
+        windowDays,
+        totalAttempts,
+        totalCorrect,
+        bySkill,
+        stateCounts
+    };
 }
 
 // XP to Level calculation (similar to Duolingo)

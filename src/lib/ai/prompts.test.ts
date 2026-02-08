@@ -1,5 +1,5 @@
 
-import { generateLevelPrompt, generateMentorPrompt, generateReportPrompt, LEVEL_GENERATOR_SYSTEM_PROMPT } from '@/lib/ai/prompts';
+import { generateLevelPrompt, generateMentorPrompt, generateReportPrompt, LEVEL_GENERATOR_SYSTEM_PROMPT, MENTOR_SYSTEM_PROMPT } from '@/lib/ai/prompts';
 
 describe('Prompt Generators', () => {
     test('generateLevelPrompt includes input text', () => {
@@ -21,10 +21,19 @@ describe('Prompt Generators', () => {
     });
 
     test('generateMentorPrompt includes context', () => {
-        const prompt = generateMentorPrompt('What is 1+1?', '3', '2');
+        const prompt = generateMentorPrompt('What is 1+1?', '3', '2', 'number_sense', 'easy', 'choice');
         expect(prompt).toContain('What is 1+1?');
         expect(prompt).toContain('3');
         expect(prompt).toContain('2');
+        expect(prompt).toContain('number_sense');
+        expect(prompt).toContain('easy');
+        expect(prompt).toContain('choice');
+    });
+
+    test('MENTOR prompt format requires cause tag and next action', () => {
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('questionMode');
+        expect(MENTOR_SYSTEM_PROMPT).toContain('cause_tag');
+        expect(MENTOR_SYSTEM_PROMPT).toContain('next_action');
     });
 
     test('generateReportPrompt calculates score correctly', () => {

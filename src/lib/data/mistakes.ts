@@ -44,6 +44,8 @@ export async function logMistake(args: LogMistakeArgs) {
 
 export interface CacheMentorArgs extends LogMistakeArgs {
     analysis: string;
+    causeTag?: string;
+    nextAction?: string;
     mentorExplanation?: string;
     revengeQuestion?: StoredRevengeQuestion;
 }
@@ -55,6 +57,8 @@ export async function cacheMentorAnalysis(args: CacheMentorArgs) {
         if (existing?.id) {
             await db.mistakes.update(existing.id, {
                 mentorAnalysis: args.analysis,
+                mentorCauseTag: args.causeTag,
+                mentorNextAction: args.nextAction,
                 revengeQuestion: args.revengeQuestion,
                 explanation: args.mentorExplanation || existing.explanation,
                 options: existing.options || args.options,
@@ -75,6 +79,8 @@ export async function cacheMentorAnalysis(args: CacheMentorArgs) {
                 type: args.type,
                 skillTag: args.skillTag,
                 mentorAnalysis: args.analysis,
+                mentorCauseTag: args.causeTag,
+                mentorNextAction: args.nextAction,
                 revengeQuestion: args.revengeQuestion,
                 timestamp: Date.now()
             });

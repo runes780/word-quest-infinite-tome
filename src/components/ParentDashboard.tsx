@@ -9,7 +9,7 @@ import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
 import { getMistakes, MistakeRecord } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
-import { FSRSCard, getDueCardsWithPriority, getMemoryStatus, getSRSStats } from '@/db/db';
+import { FSRSCard, getDueCardsWithPriority, getMasteryAggregateSnapshot, getMemoryStatus, getSRSStats, MasteryAggregateSnapshot } from '@/db/db';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
@@ -17,12 +17,14 @@ type RangeOption = typeof RANGE_OPTIONS[number];
 export function ParentDashboard() {
     const { language } = useSettingsStore();
     const t = translations[language];
+    const isZh = language === 'zh';
     const [isOpen, setIsOpen] = useState(false);
     const [range, setRange] = useState<RangeOption>(14);
     const [snapshot, setSnapshot] = useState<DashboardSummary | null>(null);
     const [mistakes, setMistakes] = useState<MistakeRecord[]>([]);
     const [dueCards, setDueCards] = useState<FSRSCard[]>([]);
     const [srsDueCount, setSrsDueCount] = useState(0);
+    const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -34,16 +36,18 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const [historyData, mistakeData, dueCardData, srsStats] = await Promise.all([
+            const [historyData, mistakeData, dueCardData, srsStats, masteryData] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
                 getDueCardsWithPriority(3),
-                getSRSStats()
+                getSRSStats(),
+                getMasteryAggregateSnapshot(range)
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
             setDueCards(dueCardData);
             setSrsDueCount(srsStats.due);
+            setMasterySnapshot(masteryData);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -251,6 +255,25 @@ export function ParentDashboard() {
                                         <span className="text-xs text-muted-foreground">{srsDueCount} SRS due</span>
                                     </header>
                                     <div className="space-y-2 text-sm">
+                                        {masterySnapshot && (
+                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40">
+                                                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                                                    {isZh ? '掌握度脉冲' : 'Mastery Pulse'} ({masterySnapshot.windowDays}d)
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {isZh ? '作答' : 'Attempts'}: {masterySnapshot.totalAttempts} · {isZh ? '正确' : 'Correct'}: {masterySnapshot.totalCorrect}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {isZh ? '状态' : 'States'}: new {masterySnapshot.stateCounts.new}, learning {masterySnapshot.stateCounts.learning}, consolidated {masterySnapshot.stateCounts.consolidated}, mastered {masterySnapshot.stateCounts.mastered}
+                                                </div>
+                                                {masterySnapshot.bySkill.slice(0, 2).map((row) => (
+                                                    <div key={row.skillTag} className="mt-2 text-xs">
+                                                        <span className="font-medium">{row.skillTag.replace(/_/g, ' ')}</span>
+                                                        <span className="text-muted-foreground"> · {Math.round(row.smoothedAccuracy * 100)}% · {row.currentState}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                         <div className="p-3 rounded-xl bg-background/40 border border-border/40">
                                             1. {weakestSkill
                                                 ? `Review weakest skill "${weakestSkill.skill.replace(/_/g, ' ')}" with 3-5 targeted questions.`

@@ -57,11 +57,14 @@ You are a tactical AI advisor in a game. A young player (Grade 4-6) is stuck on 
 # Task
 1. Analyze why the player might have chosen the wrong answer.
 2. Explain the correct answer using a fun analogy or simple logic. DO NOT lecture. Talk like a supportive game guide.
-3. Create a BRAND NEW mini-question (a "Counter-Attack" move) testing the exact same logic to let the player practice immediately.
+3. Add a concise error cause tag and one concrete next action.
+4. Create a BRAND NEW mini-question (a "Counter-Attack" move) testing the exact same logic to let the player practice immediately.
 
 # Output Format (JSON)
 {
   "analysis": "用亲切、幽默的中文解释错误原因和正确逻辑。",
+  "cause_tag": "错误原因标签（例如：tense_confusion / collocation_mixup / inference_gap）",
+  "next_action": "一句可执行的下一步练习建议（10秒可读）",
   "revenge_question": {
     "question": "New simple question text",
     "options": ["A", "B", "C", "D"],
@@ -144,11 +147,21 @@ ${cleanText}
 }
 
 
-export function generateMentorPrompt(question: string, wrongAnswer: string, correctAnswer: string): string {
+export function generateMentorPrompt(
+  question: string,
+  wrongAnswer: string,
+  correctAnswer: string,
+  skillTag?: string,
+  difficulty?: string,
+  mode?: string
+): string {
   return `
 Question: "${question}"
 Player chose (Wrong): "${wrongAnswer}"
 Correct Answer: "${correctAnswer}"
+Skill Tag: "${skillTag || 'unknown'}"
+Difficulty: "${difficulty || 'unknown'}"
+Question Mode: "${mode || 'choice'}"
 `;
 }
 

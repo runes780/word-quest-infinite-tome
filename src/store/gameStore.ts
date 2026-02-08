@@ -266,6 +266,24 @@ const masteryPressure = (mastery?: SkillMasteryRecord) => {
     return 0.5;
 };
 
+export function computeSkillPriority(
+    question: Monster,
+    stats: Record<string, { correct: number; total: number }>,
+    masteryBySkill: Record<string, SkillMasteryRecord>,
+    reviewRiskBySkill: Record<string, number>,
+    recentMistakeBySkill: Record<string, number>
+): number {
+    const key = getSkillKey(question);
+    const accuracy = accuracyFor(stats, question);
+    const accuracyPressure = 1 - accuracy;
+    const mastery = masteryBySkill[key];
+    const masteryScore = masteryPressure(mastery);
+    const reviewRisk = Math.min(3, reviewRiskBySkill[key] || 0);
+    const recentMistakes = Math.min(3, recentMistakeBySkill[key] || 0);
+    const difficultyWeight = question.difficulty === 'hard' ? 0.8 : question.difficulty === 'medium' ? 0.4 : 0.1;
+    return masteryScore + accuracyPressure + reviewRisk + recentMistakes + difficultyWeight;
+}
+
 const reorderBySkill = (
     questions: Monster[],
     currentIndex: number,
@@ -277,18 +295,8 @@ const reorderBySkill = (
     if (currentIndex >= questions.length - 1) return questions;
     const head = questions.slice(0, currentIndex + 1);
     const tail = [...questions.slice(currentIndex + 1)];
-    const priorityFor = (question: Monster) => {
-        const key = getSkillKey(question);
-        const accuracy = accuracyFor(stats, question);
-        const accuracyPressure = 1 - accuracy;
-        const mastery = masteryBySkill[key];
-        const masteryScore = masteryPressure(mastery);
-        const reviewRisk = Math.min(3, reviewRiskBySkill[key] || 0);
-        const recentMistakes = Math.min(3, recentMistakeBySkill[key] || 0);
-        const difficultyWeight = question.difficulty === 'hard' ? 0.8 : question.difficulty === 'medium' ? 0.4 : 0.1;
-        return masteryScore + accuracyPressure + reviewRisk + recentMistakes + difficultyWeight;
-    };
-    tail.sort((a, b) => priorityFor(b) - priorityFor(a));
+    tail.sort((a, b) => computeSkillPriority(b, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill) -
+        computeSkillPriority(a, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill));
     return [...head, ...tail];
 };
 
