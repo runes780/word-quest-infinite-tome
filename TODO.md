@@ -95,6 +95,7 @@
 ### 架构与质量
 - [x] `gameStore` 第一阶段拆分：抽离 `questionFlow` 与 `revengeQueue` 模块
 - [x] `BattleInterface` 第一阶段拆分：抽离 `BattleScene` 与 `BattleQuestionPanel`
+- [x] `gameStore` 第二阶段拆分：抽离 `economyRewards`（relic/奖励/成长计算）
 - [ ] `gameStore` 按领域拆分（learning/combat/economy）
 - [ ] `BattleInterface` 拆分子模块
 - [x] 建立学习主流程 E2E（mission -> battle -> srs -> report）
