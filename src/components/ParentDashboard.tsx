@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { GraduationCap, LineChart, RefreshCw, Download, Printer, X, Sparkles } from 'lucide-react';
 
 import { useSettingsStore } from '@/store/settingsStore';
+import { useGameStore } from '@/store/gameStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
 import {
@@ -21,6 +22,7 @@ import {
 } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import { FSRSCard, getDueCardsWithPriority, getMasteryAggregateSnapshot, getMemoryStatus, getSRSStats, MasteryAggregateSnapshot } from '@/db/db';
+import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
@@ -29,6 +31,7 @@ export function ParentDashboard() {
     const { language } = useSettingsStore();
     const t = translations[language];
     const isZh = language === 'zh';
+    const { startGame } = useGameStore();
     const [isOpen, setIsOpen] = useState(false);
     const [range, setRange] = useState<RangeOption>(14);
     const [snapshot, setSnapshot] = useState<DashboardSummary | null>(null);
@@ -95,6 +98,18 @@ export function ParentDashboard() {
 
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
+
+    const handleStartTargetedReview = () => {
+        const pack = buildTargetedReviewPack({
+            mistakes,
+            focusCauseTag: repeatedAction.focusCauseTag,
+            weakestSkillTag: weakestSkill?.skill,
+            desiredCount: repeatedAction.recommendedQuestions
+        });
+        if (pack.monsters.length === 0) return;
+        startGame(pack.monsters, `Targeted Review: ${repeatedAction.focusCauseTag || 'core_skills'}`, 'battle');
+        setIsOpen(false);
+    };
 
     const handleExportImage = async () => {
         if (!reportRef.current || !hasHistory) return;
@@ -238,6 +253,14 @@ export function ParentDashboard() {
                                         {isZh
                                             ? `建议今晚聚焦${repeatedAction.priorityWindowDays || range}天窗口，围绕 ${repeatedAction.focusCauseTag || '核心错因'} 完成 ${repeatedAction.recommendedQuestions} 题定向练习。`
                                             : `Tonight focus on the ${repeatedAction.priorityWindowDays || range}d window and run ${repeatedAction.recommendedQuestions} targeted questions on ${repeatedAction.focusCauseTag || 'the top cause tag'}.`}
+                                    </div>
+                                    <div className="mt-3 flex justify-end">
+                                        <button
+                                            onClick={handleStartTargetedReview}
+                                            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90"
+                                        >
+                                            {isZh ? '开始定向复习包' : 'Start Targeted Pack'}
+                                        </button>
                                     </div>
                                 </section>
 
