@@ -22,7 +22,16 @@ import {
     RepeatedCauseTrend
 } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
-import { FSRSCard, getDueCardsWithPriority, getMasteryAggregateSnapshot, getMemoryStatus, getSRSStats, MasteryAggregateSnapshot } from '@/db/db';
+import {
+    FSRSCard,
+    getDueCardsWithPriority,
+    getMasteryAggregateSnapshot,
+    getMemoryStatus,
+    getSRSStats,
+    getWeeklyLearningTasks,
+    LearningTask,
+    MasteryAggregateSnapshot
+} from '@/db/db';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
@@ -40,6 +49,7 @@ export function ParentDashboard() {
     const [dueCards, setDueCards] = useState<FSRSCard[]>([]);
     const [srsDueCount, setSrsDueCount] = useState(0);
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
+    const [learningTasks, setLearningTasks] = useState<LearningTask[]>([]);
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
@@ -54,12 +64,23 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const [historyData, mistakeData, dueCardData, srsStats, masteryData, repeatedCauseData, repeatedCauseTrendData, repeatedCauseBaseline] = await Promise.all([
+            const [
+                historyData,
+                mistakeData,
+                dueCardData,
+                srsStats,
+                masteryData,
+                weeklyTasks,
+                repeatedCauseData,
+                repeatedCauseTrendData,
+                repeatedCauseBaseline
+            ] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
                 getDueCardsWithPriority(3),
                 getSRSStats(),
                 getMasteryAggregateSnapshot(range),
+                getWeeklyLearningTasks(),
                 getRepeatedCauseSnapshot(range),
                 getRepeatedCauseTrends([7, 14, 30]),
                 getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800)
@@ -69,6 +90,7 @@ export function ParentDashboard() {
             setDueCards(dueCardData);
             setSrsDueCount(srsStats.due);
             setMasterySnapshot(masteryData);
+            setLearningTasks(weeklyTasks);
             setRepeatedCauseSnapshot(repeatedCauseData);
             setRepeatedCauseTrends(repeatedCauseTrendData);
             setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
@@ -105,6 +127,7 @@ export function ParentDashboard() {
 
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
     const dailyRows = snapshot?.daily ?? [];
+    const weeklyTaskRows = learningTasks.slice(0, 3);
 
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
@@ -325,6 +348,64 @@ export function ParentDashboard() {
                                     ) : (
                                         <div className="text-xs text-muted-foreground">
                                             {isZh ? '还没有定向复习执行记录。建议先启动一次定向复习包。' : 'No targeted execution yet. Start one targeted pack to establish baseline outcomes.'}
+                                        </div>
+                                    )}
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '学习任务线（本周）' : 'Learning Questline (This Week)'}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {weeklyTaskRows.filter((task) => task.status === 'completed').length}/{weeklyTaskRows.length} {isZh ? '完成' : 'done'}
+                                        </span>
+                                    </div>
+                                    {weeklyTaskRows.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {weeklyTaskRows.map((task) => {
+                                                const progressRatio = task.goal > 0 ? task.progress / task.goal : 0;
+                                                const statusTone = task.status === 'completed'
+                                                    ? 'text-green-500'
+                                                    : task.status === 'expired'
+                                                        ? 'text-muted-foreground'
+                                                        : 'text-amber-500';
+                                                const latestEvidence = task.evidence[0];
+                                                return (
+                                                    <div key={task.taskId} className="p-3 rounded-xl bg-background/40 border border-border/40">
+                                                        <div className="flex items-center justify-between">
+                                                            <div>
+                                                                <div className="text-sm font-semibold">{task.title}</div>
+                                                                <div className="text-xs text-muted-foreground">{task.description}</div>
+                                                            </div>
+                                                            <div className={`text-xs font-semibold ${statusTone}`}>
+                                                                {task.status === 'completed'
+                                                                    ? (isZh ? '已完成' : 'Completed')
+                                                                    : task.status === 'expired'
+                                                                        ? (isZh ? '已过期' : 'Expired')
+                                                                        : (isZh ? '进行中' : 'In Progress')}
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-2 h-2 bg-background/40 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-gradient-to-r from-primary to-emerald-400" style={{ width: `${Math.max(4, Math.min(100, progressRatio * 100))}%` }} />
+                                                        </div>
+                                                        <div className="mt-2 text-xs flex justify-between text-muted-foreground">
+                                                            <span>{task.progress}/{task.goal}</span>
+                                                            <span>+{task.rewardXp} XP · +{task.rewardGold} Gold</span>
+                                                        </div>
+                                                        {latestEvidence && (
+                                                            <div className="mt-1 text-[11px] text-muted-foreground">
+                                                                {isZh ? '最新证据' : 'Latest evidence'}: {latestEvidence.source}/{latestEvidence.eventType}
+                                                                {latestEvidence.skillTag ? ` · ${latestEvidence.skillTag}` : ''}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground">
+                                            {isZh ? '暂无任务线数据，完成一次战斗或每日挑战后会自动生成。' : 'No questline data yet. Complete one battle or daily run to initialize weekly tasks.'}
                                         </div>
                                     )}
                                 </section>

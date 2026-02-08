@@ -136,6 +136,37 @@ export interface LearningEvent {
     timestamp: number;
 }
 
+export type LearningTaskMetric = 'daily_sessions' | 'srs_answers' | 'battle_correct';
+export type LearningTaskStatus = 'active' | 'completed' | 'expired';
+
+export interface LearningTaskEvidence {
+    timestamp: number;
+    source: LearningEventSource;
+    eventType: LearningEvent['eventType'];
+    questionHash?: string;
+    skillTag?: string;
+    result?: LearningEventResult;
+}
+
+export interface LearningTask {
+    id?: number;
+    taskId: string;
+    metric: LearningTaskMetric;
+    title: string;
+    description: string;
+    goal: number;
+    progress: number;
+    status: LearningTaskStatus;
+    periodStart: number;
+    periodEnd: number;
+    rewardXp: number;
+    rewardGold: number;
+    evidence: LearningTaskEvidence[];
+    completedAt?: number;
+    rewardGrantedAt?: number;
+    updatedAt: number;
+}
+
 export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
 
 export interface SkillMasteryRecord {
@@ -173,6 +204,7 @@ export class WordQuestDB extends Dexie {
     fsrsCards!: Table<FSRSCard>;
     playerProfile!: Table<GlobalPlayerProfile>;
     learningEvents!: Table<LearningEvent>;
+    learningTasks!: Table<LearningTask>;
     skillMastery!: Table<SkillMasteryRecord>;
 
     constructor() {
@@ -220,10 +252,64 @@ export class WordQuestDB extends Dexie {
             learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
+        this.version(8).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
     }
 }
 
 export const db = new WordQuestDB();
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+const TASK_EVIDENCE_LIMIT = 5;
+
+interface LearningTaskBlueprint {
+    taskId: string;
+    metric: LearningTaskMetric;
+    title: string;
+    description: string;
+    goal: number;
+    rewardXp: number;
+    rewardGold: number;
+}
+
+const WEEKLY_TASK_BLUEPRINTS: LearningTaskBlueprint[] = [
+    {
+        taskId: 'daily_champion_weekly',
+        metric: 'daily_sessions',
+        title: 'Daily Champion',
+        description: 'Complete 3 daily challenges this week.',
+        goal: 3,
+        rewardXp: 45,
+        rewardGold: 30
+    },
+    {
+        taskId: 'srs_guardian_weekly',
+        metric: 'srs_answers',
+        title: 'SRS Guardian',
+        description: 'Finish 12 SRS review answers this week.',
+        goal: 12,
+        rewardXp: 60,
+        rewardGold: 35
+    },
+    {
+        taskId: 'battle_precision_weekly',
+        metric: 'battle_correct',
+        title: 'Battle Precision',
+        description: 'Get 15 correct battle answers this week.',
+        goal: 15,
+        rewardXp: 80,
+        rewardGold: 45
+    }
+];
 
 // ========== Player Profile Functions ==========
 
@@ -349,12 +435,177 @@ export async function updatePlayerProfile(updates: PlayerProfileUpdates): Promis
     return merged;
 }
 
+export function getWeeklyWindow(now = Date.now()): { periodStart: number; periodEnd: number; } {
+    const localDay = new Date(now);
+    localDay.setHours(0, 0, 0, 0);
+    const weekday = (localDay.getDay() + 6) % 7; // Monday=0 ... Sunday=6
+    localDay.setDate(localDay.getDate() - weekday);
+    const periodStart = localDay.getTime();
+    return {
+        periodStart,
+        periodEnd: periodStart + WEEK_MS
+    };
+}
+
+export function eventMatchesTaskMetric(metric: LearningTaskMetric, event: LearningEvent): boolean {
+    if (metric === 'daily_sessions') {
+        return event.eventType === 'session_complete' && event.source === 'daily';
+    }
+    if (metric === 'srs_answers') {
+        return event.eventType === 'answer' && event.source === 'srs';
+    }
+    return event.eventType === 'answer' && event.source === 'battle' && event.result === 'correct';
+}
+
+function toTaskEvidence(event: LearningEvent): LearningTaskEvidence {
+    return {
+        timestamp: event.timestamp,
+        source: event.source,
+        eventType: event.eventType,
+        questionHash: event.questionHash,
+        skillTag: event.skillTag,
+        result: event.result
+    };
+}
+
+type ExistingTaskMap = Record<string, LearningTask | undefined>;
+
+export function buildWeeklyLearningTasksFromEvents(
+    events: LearningEvent[],
+    now = Date.now(),
+    existingTaskMap: ExistingTaskMap = {}
+): LearningTask[] {
+    const { periodStart, periodEnd } = getWeeklyWindow(now);
+    const inWindow = events.filter((event) => event.timestamp >= periodStart && event.timestamp < periodEnd);
+
+    return WEEKLY_TASK_BLUEPRINTS.map((task) => {
+        const existing = existingTaskMap[task.taskId];
+        const matched = inWindow.filter((event) => eventMatchesTaskMetric(task.metric, event));
+        const progress = Math.min(task.goal, matched.length);
+        const status: LearningTaskStatus = progress >= task.goal
+            ? 'completed'
+            : now >= periodEnd
+                ? 'expired'
+                : 'active';
+        const completedAt = status === 'completed'
+            ? (existing?.completedAt || now)
+            : undefined;
+        return {
+            id: existing?.id,
+            taskId: task.taskId,
+            metric: task.metric,
+            title: task.title,
+            description: task.description,
+            goal: task.goal,
+            progress,
+            status,
+            periodStart,
+            periodEnd,
+            rewardXp: task.rewardXp,
+            rewardGold: task.rewardGold,
+            evidence: matched
+                .slice(-TASK_EVIDENCE_LIMIT)
+                .reverse()
+                .map(toTaskEvidence),
+            completedAt,
+            rewardGrantedAt: existing?.rewardGrantedAt,
+            updatedAt: now
+        };
+    });
+}
+
+function sortLearningTasks(tasks: LearningTask[]): LearningTask[] {
+    const statusRank: Record<LearningTaskStatus, number> = {
+        active: 0,
+        completed: 1,
+        expired: 2
+    };
+    return [...tasks].sort((a, b) => {
+        if (statusRank[a.status] !== statusRank[b.status]) {
+            return statusRank[a.status] - statusRank[b.status];
+        }
+        const aRatio = a.goal > 0 ? a.progress / a.goal : 0;
+        const bRatio = b.goal > 0 ? b.progress / b.goal : 0;
+        if (bRatio !== aRatio) return bRatio - aRatio;
+        return a.taskId.localeCompare(b.taskId);
+    });
+}
+
+export async function syncWeeklyLearningTasks(now = Date.now()): Promise<LearningTask[]> {
+    const { periodStart, periodEnd } = getWeeklyWindow(now);
+
+    const [events, existingCurrent, staleActive] = await Promise.all([
+        db.learningEvents
+            .where('timestamp')
+            .between(periodStart, Math.min(now, periodEnd - 1), true, true)
+            .toArray(),
+        db.learningTasks
+            .where('periodStart')
+            .equals(periodStart)
+            .toArray(),
+        db.learningTasks
+            .where('status')
+            .equals('active')
+            .and((row) => row.periodEnd <= now)
+            .toArray()
+    ]);
+
+    if (staleActive.length > 0) {
+        await Promise.all(staleActive.map((row) => db.learningTasks.update(row.id!, {
+            status: row.progress >= row.goal ? 'completed' : 'expired',
+            updatedAt: now
+        })));
+    }
+
+    const existingMap = existingCurrent.reduce((acc, row) => {
+        acc[row.taskId] = row;
+        return acc;
+    }, {} as ExistingTaskMap);
+
+    const computed = buildWeeklyLearningTasksFromEvents(events, now, existingMap);
+    await db.learningTasks.bulkPut(computed);
+
+    const refreshed = await db.learningTasks
+        .where('periodStart')
+        .equals(periodStart)
+        .toArray();
+
+    const newlyCompleted = refreshed.filter((task) => task.status === 'completed' && !task.rewardGrantedAt);
+    for (const task of newlyCompleted) {
+        await updatePlayerProfile({
+            totalXp: task.rewardXp,
+            totalGold: task.rewardGold
+        });
+        await db.learningTasks.update(task.id!, {
+            rewardGrantedAt: now,
+            updatedAt: now
+        });
+    }
+
+    const finalRows = await db.learningTasks
+        .where('periodStart')
+        .equals(periodStart)
+        .toArray();
+    return sortLearningTasks(finalRows);
+}
+
+export async function getWeeklyLearningTasks(now = Date.now()): Promise<LearningTask[]> {
+    return syncWeeklyLearningTasks(now);
+}
+
 export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {
     const payload: LearningEvent = {
         ...event,
         timestamp: event.timestamp ?? Date.now()
     };
     await db.learningEvents.add(payload);
+    if (payload.eventType === 'answer' || payload.eventType === 'session_complete') {
+        try {
+            await syncWeeklyLearningTasks(payload.timestamp);
+        } catch (error) {
+            console.error('syncWeeklyLearningTasks error', error);
+        }
+    }
 }
 
 function masteryStateFromScore(score: number, attempts: number, accuracy: number): MasteryState {
