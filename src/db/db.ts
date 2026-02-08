@@ -167,6 +167,30 @@ export interface LearningTask {
     updatedAt: number;
 }
 
+export type EngagementMetricStatus = 'met' | 'not_met' | 'insufficient';
+
+export interface EngagementMetricRow {
+    currentRate: number;
+    previousRate: number;
+    absoluteDelta: number;
+    relativeDelta: number;
+    numerator: number;
+    denominator: number;
+    previousNumerator: number;
+    previousDenominator: number;
+    target: number;
+    targetType: 'absolute_rate' | 'absolute_lift' | 'relative_lift';
+    status: EngagementMetricStatus;
+}
+
+export interface EngagementSnapshot {
+    windowDays: number;
+    generatedAt: number;
+    dailyChallengeParticipation: EngagementMetricRow;
+    weeklyTaskCompletion: EngagementMetricRow;
+    nextDayRetention: EngagementMetricRow;
+}
+
 export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
 
 export interface SkillMasteryRecord {
@@ -310,6 +334,158 @@ const WEEKLY_TASK_BLUEPRINTS: LearningTaskBlueprint[] = [
         rewardGold: 45
     }
 ];
+
+function toDayKey(timestamp: number): string {
+    return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+interface WindowRange {
+    start: number;
+    end: number;
+}
+
+function getWindowRange(now: number, windowDays: number, offsetWindows = 0): WindowRange {
+    const span = windowDays * DAY_MS;
+    const end = now - (offsetWindows * span);
+    const start = end - span;
+    return { start, end };
+}
+
+function filterEventsInRange(events: LearningEvent[], range: WindowRange): LearningEvent[] {
+    return events.filter((event) => event.timestamp > range.start && event.timestamp <= range.end);
+}
+
+function createMetricRow(input: {
+    numerator: number;
+    denominator: number;
+    previousNumerator: number;
+    previousDenominator: number;
+    target: number;
+    targetType: EngagementMetricRow['targetType'];
+    minDenominator?: number;
+}): EngagementMetricRow {
+    const {
+        numerator,
+        denominator,
+        previousNumerator,
+        previousDenominator,
+        target,
+        targetType,
+        minDenominator = 3
+    } = input;
+
+    const currentRate = denominator > 0 ? numerator / denominator : 0;
+    const previousRate = previousDenominator > 0 ? previousNumerator / previousDenominator : 0;
+    const absoluteDelta = currentRate - previousRate;
+    const relativeDelta = previousRate > 0 ? absoluteDelta / previousRate : 0;
+
+    let status: EngagementMetricStatus = 'not_met';
+    if (denominator < minDenominator) {
+        status = 'insufficient';
+    } else if (targetType === 'absolute_rate') {
+        status = currentRate >= target ? 'met' : 'not_met';
+    } else if (previousDenominator < minDenominator || (targetType === 'relative_lift' && previousRate <= 0)) {
+        status = 'insufficient';
+    } else if (targetType === 'absolute_lift') {
+        status = absoluteDelta >= target ? 'met' : 'not_met';
+    } else {
+        status = relativeDelta >= target ? 'met' : 'not_met';
+    }
+
+    return {
+        currentRate,
+        previousRate,
+        absoluteDelta,
+        relativeDelta,
+        numerator,
+        denominator,
+        previousNumerator,
+        previousDenominator,
+        target,
+        targetType,
+        status
+    };
+}
+
+function computeDailyParticipationMetric(events: LearningEvent[], now: number, windowDays: number): EngagementMetricRow {
+    const current = filterEventsInRange(events, getWindowRange(now, windowDays, 0));
+    const previous = filterEventsInRange(events, getWindowRange(now, windowDays, 1));
+
+    const currentActive = new Set(current.map((event) => toDayKey(event.timestamp)));
+    const currentDaily = new Set(
+        current
+            .filter((event) => event.source === 'daily' && event.eventType === 'session_complete')
+            .map((event) => toDayKey(event.timestamp))
+    );
+    const previousActive = new Set(previous.map((event) => toDayKey(event.timestamp)));
+    const previousDaily = new Set(
+        previous
+            .filter((event) => event.source === 'daily' && event.eventType === 'session_complete')
+            .map((event) => toDayKey(event.timestamp))
+    );
+
+    return createMetricRow({
+        numerator: currentDaily.size,
+        denominator: currentActive.size,
+        previousNumerator: previousDaily.size,
+        previousDenominator: previousActive.size,
+        target: 0.15,
+        targetType: 'relative_lift'
+    });
+}
+
+function computeWeeklyTaskCompletionMetric(events: LearningEvent[], now: number): EngagementMetricRow {
+    const currentTasks = buildWeeklyLearningTasksFromEvents(events, now);
+    const previousTasks = buildWeeklyLearningTasksFromEvents(events, now - WEEK_MS);
+
+    const currentCompleted = currentTasks.filter((task) => task.status === 'completed').length;
+    const previousCompleted = previousTasks.filter((task) => task.status === 'completed').length;
+
+    return createMetricRow({
+        numerator: currentCompleted,
+        denominator: currentTasks.length,
+        previousNumerator: previousCompleted,
+        previousDenominator: previousTasks.length,
+        target: 0.6,
+        targetType: 'absolute_rate',
+        minDenominator: 1
+    });
+}
+
+function computeRetentionRate(events: LearningEvent[], range: WindowRange): { retained: number; eligible: number; } {
+    const inRange = filterEventsInRange(events, range);
+    const activeDays = Array.from(new Set(inRange.map((event) => toDayKey(event.timestamp)))).sort();
+    const activeSet = new Set(activeDays);
+    let eligible = 0;
+    let retained = 0;
+
+    activeDays.forEach((dayKey) => {
+        const dayStart = new Date(`${dayKey}T00:00:00.000Z`).getTime();
+        const nextDayKey = toDayKey(dayStart + DAY_MS);
+        const nextDayStart = dayStart + DAY_MS;
+        if (nextDayStart > range.end) return;
+        eligible += 1;
+        if (activeSet.has(nextDayKey)) retained += 1;
+    });
+
+    return { retained, eligible };
+}
+
+function computeNextDayRetentionMetric(events: LearningEvent[], now: number, windowDays: number): EngagementMetricRow {
+    const currentRange = getWindowRange(now, windowDays, 0);
+    const previousRange = getWindowRange(now, windowDays, 1);
+    const current = computeRetentionRate(events, currentRange);
+    const previous = computeRetentionRate(events, previousRange);
+
+    return createMetricRow({
+        numerator: current.retained,
+        denominator: current.eligible,
+        previousNumerator: previous.retained,
+        previousDenominator: previous.eligible,
+        target: 0.05,
+        targetType: 'absolute_lift'
+    });
+}
 
 // ========== Player Profile Functions ==========
 
@@ -591,6 +767,29 @@ export async function syncWeeklyLearningTasks(now = Date.now()): Promise<Learnin
 
 export async function getWeeklyLearningTasks(now = Date.now()): Promise<LearningTask[]> {
     return syncWeeklyLearningTasks(now);
+}
+
+export function computeEngagementSnapshotFromEvents(
+    events: LearningEvent[],
+    now = Date.now(),
+    windowDays = 14
+): EngagementSnapshot {
+    return {
+        windowDays,
+        generatedAt: now,
+        dailyChallengeParticipation: computeDailyParticipationMetric(events, now, windowDays),
+        weeklyTaskCompletion: computeWeeklyTaskCompletionMetric(events, now),
+        nextDayRetention: computeNextDayRetentionMetric(events, now, windowDays)
+    };
+}
+
+export async function getEngagementSnapshot(windowDays = 14, lookbackDays = 120, now = Date.now()): Promise<EngagementSnapshot> {
+    const start = now - (lookbackDays * DAY_MS);
+    const events = await db.learningEvents
+        .where('timestamp')
+        .aboveOrEqual(start)
+        .toArray();
+    return computeEngagementSnapshotFromEvents(events, now, windowDays);
 }
 
 export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {

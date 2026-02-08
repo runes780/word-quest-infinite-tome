@@ -23,7 +23,10 @@ import {
 } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import {
+    EngagementMetricRow,
+    EngagementSnapshot,
     FSRSCard,
+    getEngagementSnapshot,
     getDueCardsWithPriority,
     getMasteryAggregateSnapshot,
     getMemoryStatus,
@@ -50,6 +53,7 @@ export function ParentDashboard() {
     const [srsDueCount, setSrsDueCount] = useState(0);
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
     const [learningTasks, setLearningTasks] = useState<LearningTask[]>([]);
+    const [engagementSnapshot, setEngagementSnapshot] = useState<EngagementSnapshot | null>(null);
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
@@ -71,6 +75,7 @@ export function ParentDashboard() {
                 srsStats,
                 masteryData,
                 weeklyTasks,
+                engagementData,
                 repeatedCauseData,
                 repeatedCauseTrendData,
                 repeatedCauseBaseline
@@ -81,6 +86,7 @@ export function ParentDashboard() {
                 getSRSStats(),
                 getMasteryAggregateSnapshot(range),
                 getWeeklyLearningTasks(),
+                getEngagementSnapshot(range),
                 getRepeatedCauseSnapshot(range),
                 getRepeatedCauseTrends([7, 14, 30]),
                 getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800)
@@ -91,6 +97,7 @@ export function ParentDashboard() {
             setSrsDueCount(srsStats.due);
             setMasterySnapshot(masteryData);
             setLearningTasks(weeklyTasks);
+            setEngagementSnapshot(engagementData);
             setRepeatedCauseSnapshot(repeatedCauseData);
             setRepeatedCauseTrends(repeatedCauseTrendData);
             setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
@@ -128,6 +135,7 @@ export function ParentDashboard() {
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
     const dailyRows = snapshot?.daily ?? [];
     const weeklyTaskRows = learningTasks.slice(0, 3);
+    const engagement = engagementSnapshot;
 
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
@@ -410,6 +418,49 @@ export function ParentDashboard() {
                                     )}
                                 </section>
 
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? 'Phase 2 验收指标' : 'Phase 2 Acceptance Metrics'}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {engagement?.windowDays || range}d
+                                        </span>
+                                    </div>
+                                    {engagement ? (
+                                        <div className="grid md:grid-cols-3 gap-3">
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="每日挑战参与率"
+                                                labelEn="Daily Challenge Participation"
+                                                metric={engagement.dailyChallengeParticipation}
+                                                targetTextZh="目标：较上一窗口提升 15%"
+                                                targetTextEn="Target: +15% vs previous window"
+                                            />
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="任务完成率"
+                                                labelEn="Quest Completion Rate"
+                                                metric={engagement.weeklyTaskCompletion}
+                                                targetTextZh="目标：当前周 >= 60%"
+                                                targetTextEn="Target: >=60% this week"
+                                            />
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="次日留存"
+                                                labelEn="Next-day Retention"
+                                                metric={engagement.nextDayRetention}
+                                                targetTextZh="目标：较上一窗口提升 5pp"
+                                                targetTextEn="Target: +5pp vs previous window"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground">
+                                            {isZh ? '暂无指标数据，继续完成学习活动后将自动更新。' : 'No metrics yet. Continue learning activities to populate the acceptance panel.'}
+                                        </div>
+                                    )}
+                                </section>
+
                                 <div className="grid lg:grid-cols-2 gap-6">
                                     <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
                                         <header className="flex items-center justify-between mb-4">
@@ -659,6 +710,58 @@ function SummaryCard({ label, value, helper }: { label: string; value: string | 
             <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">{label}</div>
             <div className="text-2xl font-bold text-foreground">{value}</div>
             {helper && <div className="text-[11px] text-muted-foreground mt-1">{helper}</div>}
+        </div>
+    );
+}
+
+function MetricTile({
+    isZh,
+    labelZh,
+    labelEn,
+    metric,
+    targetTextZh,
+    targetTextEn
+}: {
+    isZh: boolean;
+    labelZh: string;
+    labelEn: string;
+    metric: EngagementMetricRow;
+    targetTextZh: string;
+    targetTextEn: string;
+}) {
+    const statusTone = metric.status === 'met'
+        ? 'text-green-500'
+        : metric.status === 'not_met'
+            ? 'text-destructive'
+            : 'text-muted-foreground';
+    const statusText = metric.status === 'met'
+        ? (isZh ? '达标' : 'Met')
+        : metric.status === 'not_met'
+            ? (isZh ? '未达标' : 'Not Met')
+            : (isZh ? '样本不足' : 'Insufficient');
+    const currentPct = `${(metric.currentRate * 100).toFixed(1)}%`;
+    const previousPct = `${(metric.previousRate * 100).toFixed(1)}%`;
+    const delta = metric.targetType === 'absolute_rate'
+        ? metric.currentRate - metric.target
+        : metric.absoluteDelta;
+    const deltaPrefix = delta >= 0 ? '+' : '';
+    const deltaPct = `${deltaPrefix}${(delta * 100).toFixed(1)}pp`;
+
+    return (
+        <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
+            <div className="flex justify-between items-start gap-2">
+                <div className="font-semibold">{isZh ? labelZh : labelEn}</div>
+                <span className={`font-semibold ${statusTone}`}>{statusText}</span>
+            </div>
+            <div className="mt-1 text-muted-foreground">
+                {isZh ? '当前' : 'Current'}: {currentPct} · {isZh ? '上一窗口' : 'Prev'}: {previousPct}
+            </div>
+            <div className="mt-1 text-muted-foreground">
+                {isZh ? '变化' : 'Delta'}: {deltaPct}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+                {isZh ? targetTextZh : targetTextEn}
+            </div>
         </div>
     );
 }
