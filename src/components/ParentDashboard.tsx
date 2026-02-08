@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useGameStore } from '@/store/gameStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
+import { DataConsistencyAuditSnapshot, getDataConsistencyAuditSnapshot } from '@/lib/data/consistency';
 import {
     buildRepeatedCauseActionSuggestion,
     buildRepeatedCauseIntensityAlert,
@@ -91,6 +92,7 @@ export function ParentDashboard() {
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
+    const [consistencyAudit, setConsistencyAudit] = useState<DataConsistencyAuditSnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -119,7 +121,8 @@ export function ParentDashboard() {
                 engagement30,
                 repeatedCauseData,
                 repeatedCauseTrendData,
-                repeatedCauseBaseline
+                repeatedCauseBaseline,
+                consistencyAuditData
             ] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
@@ -137,7 +140,8 @@ export function ParentDashboard() {
                 getEngagementSnapshot(30),
                 getRepeatedCauseSnapshot(range),
                 getRepeatedCauseTrends([7, 14, 30]),
-                getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800)
+                getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800),
+                getDataConsistencyAuditSnapshot()
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
@@ -158,6 +162,7 @@ export function ParentDashboard() {
             setRepeatedCauseSnapshot(repeatedCauseData);
             setRepeatedCauseTrends(repeatedCauseTrendData);
             setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
+            setConsistencyAudit(consistencyAuditData);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -540,6 +545,69 @@ export function ParentDashboard() {
                                             {isZh ? '开始定向复习包' : 'Start Targeted Pack'}
                                         </button>
                                     </div>
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '数据一致性巡检' : 'Data Consistency Audit'}
+                                        </div>
+                                        <span className={`text-xs font-semibold ${
+                                            consistencyAudit?.overallStatus === 'ok'
+                                                ? 'text-green-500'
+                                                : consistencyAudit?.overallStatus === 'warning'
+                                                    ? 'text-destructive'
+                                                    : 'text-muted-foreground'
+                                        }`}>
+                                            {consistencyAudit?.overallStatus === 'ok'
+                                                ? (isZh ? '正常' : 'OK')
+                                                : consistencyAudit?.overallStatus === 'warning'
+                                                    ? (isZh ? '告警' : 'Warning')
+                                                    : (isZh ? '样本不足' : 'Insufficient')}
+                                        </span>
+                                    </div>
+                                    {consistencyAudit ? (
+                                        <div className="space-y-2">
+                                            {consistencyAudit.checks.map((check) => {
+                                                const tone = check.status === 'ok'
+                                                    ? 'text-green-500'
+                                                    : check.status === 'warning'
+                                                        ? 'text-destructive'
+                                                        : 'text-muted-foreground';
+                                                return (
+                                                    <div key={check.id} className="p-2 rounded-lg bg-background/40 border border-border/40 text-xs">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="font-medium">{check.label}</div>
+                                                            <span className={`font-semibold ${tone}`}>
+                                                                {check.status === 'ok'
+                                                                    ? (isZh ? '正常' : 'OK')
+                                                                    : check.status === 'warning'
+                                                                        ? (isZh ? '告警' : 'Warning')
+                                                                        : (isZh ? '不足' : 'Insufficient')}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-muted-foreground mt-1">
+                                                            {isZh ? '期望' : 'Expected'}: {check.expected} · {isZh ? '实际' : 'Actual'}: {check.actual} · Δ {check.delta}
+                                                        </div>
+                                                        <div className="text-[11px] text-muted-foreground mt-1">
+                                                            {check.note}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            <div className="text-[11px] text-muted-foreground">
+                                                {consistencyAudit.comparedSince
+                                                    ? (isZh
+                                                        ? `对齐比较起点：${new Date(consistencyAudit.comparedSince).toLocaleDateString()}`
+                                                        : `Aligned comparison since ${new Date(consistencyAudit.comparedSince).toLocaleDateString()}`)
+                                                    : (isZh ? '暂无可对齐样本窗口' : 'No aligned comparison window yet')}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground">
+                                            {isZh ? '暂无巡检数据。完成一次学习会话后重试。' : 'No audit data yet. Complete one learning session and refresh.'}
+                                        </div>
+                                    )}
                                 </section>
 
                                 <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
