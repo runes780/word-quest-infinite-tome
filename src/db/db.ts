@@ -1,6 +1,10 @@
 
 import Dexie, { Table } from 'dexie';
 import { createEmptyCard, fsrs, generatorParameters, Rating, State, Card as FSRSCardType, RecordLogItem } from 'ts-fsrs';
+import {
+    DEFAULT_QUESTION_CACHE_POLICY,
+    mergeQuestionCache
+} from '@/lib/data/questionCachePolicy';
 
 export interface SkillStatSlice {
     correct: number;
@@ -441,6 +445,9 @@ export const db = new WordQuestDB();
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const TASK_EVIDENCE_LIMIT = 5;
+export const QUESTION_CACHE_TTL_MS = DEFAULT_QUESTION_CACHE_POLICY.ttlMs;
+export const QUESTION_CACHE_MAX_TOTAL = DEFAULT_QUESTION_CACHE_POLICY.maxTotal;
+export const QUESTION_CACHE_MAX_PER_CONTEXT = DEFAULT_QUESTION_CACHE_POLICY.maxPerContext;
 
 interface LearningTaskBlueprint {
     taskId: string;
@@ -1802,29 +1809,58 @@ export function getMemoryStatus(card: FSRSCard): {
 
 // ========== Cache Functions ==========
 
+async function persistQuestionCacheRows(rows: CachedQuestion[]): Promise<void> {
+    await db.questionCache.clear();
+    if (rows.length === 0) return;
+    const payload = rows.map(({ id, ...rest }) => {
+        void id;
+        return rest;
+    });
+    await db.questionCache.bulkAdd(payload);
+}
+
 export async function cacheQuestions(questions: CachedQuestion[]): Promise<void> {
-    await db.questionCache.bulkAdd(questions);
+    if (!Array.isArray(questions) || questions.length === 0) return;
+    await db.transaction('rw', db.questionCache, async () => {
+        const existing = await db.questionCache.toArray();
+        const retained = mergeQuestionCache(existing, questions);
+        await persistQuestionCacheRows(retained);
+    });
 }
 
 export async function getCachedQuestions(contextHash: string, limit = 10): Promise<CachedQuestion[]> {
-    const unused = await db.questionCache
-        .where('contextHash').equals(contextHash)
-        .filter(q => !q.used)
-        .limit(limit)
-        .toArray();
+    if (!contextHash || limit <= 0) return [];
 
-    if (unused.length >= limit) return unused;
+    return db.transaction('rw', db.questionCache, async () => {
+        // Applying retention policy on read keeps cache size bounded over time.
+        const retained = mergeQuestionCache(await db.questionCache.toArray(), []);
+        await persistQuestionCacheRows(retained);
 
-    const used = await db.questionCache
-        .where('contextHash').equals(contextHash)
-        .filter(q => q.used)
-        .limit(limit - unused.length)
-        .toArray();
+        const contextRows = await db.questionCache
+            .where('contextHash').equals(contextHash)
+            .toArray();
 
-    return [...unused, ...used];
+        const sorted = contextRows.sort((a, b) => b.timestamp - a.timestamp);
+        const unused = sorted.filter((q) => !q.used);
+        const used = sorted.filter((q) => q.used);
+        const selected = [
+            ...unused.slice(0, limit),
+            ...used.slice(0, Math.max(0, limit - unused.length))
+        ];
+
+        const ids = selected
+            .map((row) => row.id)
+            .filter((id): id is number => typeof id === 'number');
+        if (ids.length > 0) {
+            await db.questionCache.where('id').anyOf(ids).modify({ used: true });
+        }
+
+        return selected;
+    });
 }
 
 export async function markQuestionsAsUsed(ids: number[]): Promise<void> {
+    if (!Array.isArray(ids) || ids.length === 0) return;
     await db.questionCache.where('id').anyOf(ids).modify({ used: true });
 }
 
