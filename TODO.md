@@ -95,7 +95,7 @@
 ### 架构与质量
 - [ ] `gameStore` 按领域拆分（learning/combat/economy）
 - [ ] `BattleInterface` 拆分子模块
-- [ ] 建立学习主流程 E2E（mission -> battle -> srs -> report）
+- [x] 建立学习主流程 E2E（mission -> battle -> srs -> report）
 - [x] 增加数据一致性巡检（events/profile/dashboard）
 
 ### 性能与稳定性
