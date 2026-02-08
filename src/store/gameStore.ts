@@ -3,7 +3,20 @@ import { create } from 'zustand';
 import { logMistake } from '@/lib/data/mistakes';
 import { getCurrentBlessingEffect } from '@/components/InputSection';
 import { loadPlayerStats, savePlayerStats, checkAchievements, PlayerAchievementStats, Achievement } from '@/components/AchievementSystem';
-import { updatePlayerProfile, reviewCard, hashQuestion, logLearningEvent, LearningEventSource } from '@/db/db';
+import {
+    updatePlayerProfile,
+    reviewCard,
+    hashQuestion,
+    logLearningEvent,
+    LearningEventSource,
+    SkillMasteryRecord,
+    MasteryState,
+    updateSkillMastery,
+    seedSkillMasteryFromLearningEvents,
+    getSkillMasteryMap,
+    getSkillReviewRiskMap,
+    getRecentMistakeIntensity
+} from '@/db/db';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -245,17 +258,78 @@ const accuracyFor = (stats: Record<string, { correct: number; total: number }>, 
     return data.correct / data.total;
 };
 
-const reorderBySkill = (questions: Monster[], currentIndex: number, stats: Record<string, { correct: number; total: number }>) => {
+const masteryPressure = (mastery?: SkillMasteryRecord) => {
+    if (!mastery) return 2.5;
+    if (mastery.state === 'new') return 2.8;
+    if (mastery.state === 'learning') return 2.2;
+    if (mastery.state === 'consolidated') return 1.2;
+    return 0.5;
+};
+
+const reorderBySkill = (
+    questions: Monster[],
+    currentIndex: number,
+    stats: Record<string, { correct: number; total: number }>,
+    masteryBySkill: Record<string, SkillMasteryRecord>,
+    reviewRiskBySkill: Record<string, number>,
+    recentMistakeBySkill: Record<string, number>
+) => {
     if (currentIndex >= questions.length - 1) return questions;
     const head = questions.slice(0, currentIndex + 1);
     const tail = [...questions.slice(currentIndex + 1)];
-    tail.sort((a, b) => accuracyFor(stats, a) - accuracyFor(stats, b));
+    const priorityFor = (question: Monster) => {
+        const key = getSkillKey(question);
+        const accuracy = accuracyFor(stats, question);
+        const accuracyPressure = 1 - accuracy;
+        const mastery = masteryBySkill[key];
+        const masteryScore = masteryPressure(mastery);
+        const reviewRisk = Math.min(3, reviewRiskBySkill[key] || 0);
+        const recentMistakes = Math.min(3, recentMistakeBySkill[key] || 0);
+        const difficultyWeight = question.difficulty === 'hard' ? 0.8 : question.difficulty === 'medium' ? 0.4 : 0.1;
+        return masteryScore + accuracyPressure + reviewRisk + recentMistakes + difficultyWeight;
+    };
+    tail.sort((a, b) => priorityFor(b) - priorityFor(a));
     return [...head, ...tail];
 };
 
 export const BOSS_COMBO_THRESHOLD = 2;
 
 const formatSkillLabel = (skill: string) => skill.replace(/_/g, ' ');
+
+const MASTERY_STATE_RANK: Record<MasteryState, number> = {
+    new: 0,
+    learning: 1,
+    consolidated: 2,
+    mastered: 3
+};
+
+const masteryBonusByState: Record<MasteryState, { xp: number; gold: number }> = {
+    new: { xp: 0, gold: 0 },
+    learning: { xp: 8, gold: 6 },
+    consolidated: { xp: 16, gold: 12 },
+    mastered: { xp: 24, gold: 20 }
+};
+
+const isMasteryUpgrade = (fromState: MasteryState, toState: MasteryState) =>
+    MASTERY_STATE_RANK[toState] > MASTERY_STATE_RANK[fromState];
+
+const applyProgressionReward = (stats: PlayerStats, xpGain: number, goldGain: number): PlayerStats => {
+    let xp = stats.xp + xpGain;
+    let level = stats.level;
+    let maxXp = stats.maxXp;
+    while (xp >= maxXp) {
+        xp -= maxXp;
+        level += 1;
+        maxXp = Math.floor(maxXp * 1.2);
+    }
+    return {
+        ...stats,
+        xp,
+        level,
+        maxXp,
+        gold: stats.gold + goldGain
+    };
+};
 
 const findWeakSkill = (stats: Record<string, { correct: number; total: number }>) => {
     const sorted = Object.entries(stats)
@@ -279,6 +353,16 @@ export interface UserAnswer {
     userChoice: string;
     correctChoice: string;
     isCorrect: boolean;
+}
+
+export interface MasteryCelebration {
+    id: string;
+    skillTag: string;
+    fromState: MasteryState;
+    toState: MasteryState;
+    bonusXp: number;
+    bonusGold: number;
+    timestamp: number;
 }
 
 interface GameState {
@@ -307,6 +391,10 @@ interface GameState {
     rootFragments: number;
     sessionSource: LearningEventSource;
     questionStartedAt: number;
+    masteryBySkill: Record<string, SkillMasteryRecord>;
+    reviewRiskBySkill: Record<string, number>;
+    recentMistakeBySkill: Record<string, number>;
+    masteryCelebrations: MasteryCelebration[];
 
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource) => void;
@@ -330,6 +418,7 @@ interface GameState {
     hasSavedGame: () => boolean;
     resumeGame: () => boolean;
     clearSavedGame: () => void;
+    dismissMasteryCelebration: (id: string) => void;
 }
 
 // Game state persistence for error recovery
@@ -444,6 +533,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     rootFragments: 0,
     sessionSource: 'battle',
     questionStartedAt: Date.now(),
+    masteryBySkill: {},
+    reviewRiskBySkill: {},
+    recentMistakeBySkill: {},
+    masteryCelebrations: [],
 
     startGame: (questions, context, source = 'battle') => {
         const revengeEntries = [...get().revengeQueue];
@@ -475,13 +568,29 @@ export const useGameStore = create<GameState>((set, get) => ({
             knowledgeCards: state.knowledgeCards,
             rootFragments: state.rootFragments,
             sessionSource: source,
-            questionStartedAt: Date.now()
+            questionStartedAt: Date.now(),
+            masteryBySkill: state.masteryBySkill,
+            reviewRiskBySkill: state.reviewRiskBySkill,
+            recentMistakeBySkill: state.recentMistakeBySkill,
+            masteryCelebrations: []
         }));
         persistRevengeQueue([]);
+
+        const allSkillTags = Array.from(new Set(combined.map((q) => getSkillKey(q))));
+        seedSkillMasteryFromLearningEvents()
+            .then(() => Promise.all([
+                getSkillMasteryMap(allSkillTags),
+                getSkillReviewRiskMap(allSkillTags),
+                getRecentMistakeIntensity(allSkillTags)
+            ]))
+            .then(([masteryBySkill, reviewRiskBySkill, recentMistakeBySkill]) => {
+                set({ masteryBySkill, reviewRiskBySkill, recentMistakeBySkill });
+            })
+            .catch(console.error);
     },
 
     answerQuestion: (optionIndex, meta) => {
-        const { questions, currentIndex, health, maxHealth, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, questionStartedAt, sessionSource } = get();
+        const { questions, currentIndex, health, maxHealth, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, questionStartedAt, sessionSource, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
         const skillKey = getSkillKey(currentQuestion);
@@ -525,7 +634,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         let nextBossShieldProgress = bossShieldProgress;
         let nextMonsterHp = currentMonsterHp;
 
-        const reorderedQuestions = reorderBySkill(questions, currentIndex, updatedSkillStats);
+        const reorderedQuestions = reorderBySkill(
+            questions,
+            currentIndex,
+            updatedSkillStats,
+            masteryBySkill,
+            reviewRiskBySkill,
+            recentMistakeBySkill
+        );
 
         if (isCorrect) {
             // RPG Logic
@@ -588,7 +704,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 },
                 skillStats: updatedSkillStats,
                 questions: reorderedQuestions,
-                bossShieldProgress: nextBossShieldProgress
+                bossShieldProgress: nextBossShieldProgress,
+                recentMistakeBySkill: {
+                    ...recentMistakeBySkill,
+                    [skillKey]: Math.max(0, (recentMistakeBySkill[skillKey] || 0) - 1)
+                }
             });
 
             // Track achievement stats
@@ -639,6 +759,49 @@ export const useGameStore = create<GameState>((set, get) => ({
                 skillTag: currentQuestion.skillTag
             }).catch(console.error);
 
+            updateSkillMastery(skillKey, 'correct')
+                .then((record) => {
+                    const previousState = masteryBySkill[skillKey]?.state || 'new';
+                    const upgraded = isMasteryUpgrade(previousState, record.state);
+                    const rewardPayload = upgraded ? masteryBonusByState[record.state] : null;
+                    const celebration: MasteryCelebration | null = rewardPayload
+                        ? {
+                            id: `mastery_${skillKey}_${Date.now()}`,
+                            skillTag: skillKey,
+                            fromState: previousState,
+                            toState: record.state,
+                            bonusXp: rewardPayload.xp,
+                            bonusGold: rewardPayload.gold,
+                            timestamp: Date.now()
+                        }
+                        : null;
+
+                    set((state) => ({
+                        masteryBySkill: {
+                            ...state.masteryBySkill,
+                            [skillKey]: record
+                        },
+                        ...(rewardPayload && celebration
+                            ? {
+                                playerStats: applyProgressionReward(state.playerStats, rewardPayload.xp, rewardPayload.gold),
+                                masteryCelebrations: [...state.masteryCelebrations, celebration]
+                            }
+                            : {})
+                    }));
+                    if (rewardPayload) {
+                        updateAchievementStats({
+                            totalGoldEarned: rewardPayload.gold,
+                            totalXpEarned: rewardPayload.xp
+                        });
+                        updatePlayerProfile({
+                            totalXp: rewardPayload.xp,
+                            totalGold: rewardPayload.gold,
+                            dailyXpEarned: rewardPayload.xp
+                        }).catch(console.error);
+                    }
+                })
+                .catch(console.error);
+
             // Blessing: Heal on streak threshold (e.g., Vampiric Wisdom)
             if (healOnCorrectThreshold > 0 && healAmount > 0 && newStreak % healOnCorrectThreshold === 0) {
                 get().heal(healAmount);
@@ -670,7 +833,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 },
                 skillStats: updatedSkillStats,
                 questions: reorderedQuestions,
-                bossShieldProgress: currentQuestion.isBoss ? 0 : bossShieldProgress
+                bossShieldProgress: currentQuestion.isBoss ? 0 : bossShieldProgress,
+                recentMistakeBySkill: {
+                    ...recentMistakeBySkill,
+                    [skillKey]: (recentMistakeBySkill[skillKey] || 0) + 1
+                }
             });
 
             logMistake({
@@ -703,6 +870,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 hint: currentQuestion.hint,
                 skillTag: currentQuestion.skillTag
             }).catch(console.error);
+
+            updateSkillMastery(skillKey, 'wrong')
+                .then((record) => {
+                    set((state) => ({
+                        masteryBySkill: {
+                            ...state.masteryBySkill,
+                            [skillKey]: record
+                        }
+                    }));
+                })
+                .catch(console.error);
 
             logLearningEvent({
                 eventType: 'answer',
@@ -862,9 +1040,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         clarityEffect: null,
         knowledgeCards: state.knowledgeCards,
         rootFragments: state.rootFragments,
-        sessionSource: 'battle',
-        questionStartedAt: Date.now()
-    })),
+            sessionSource: 'battle',
+            questionStartedAt: Date.now(),
+            masteryCelebrations: []
+        })),
 
     generateRewards: (type) => {
         const rewards: Reward[] = [];
@@ -1092,6 +1271,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const saved = loadSavedGameState();
         if (!saved || saved.questions.length === 0) return false;
         const restoredQuestions = saved.questions.map((q, idx) => applyQuestionDefaults(q, idx));
+        const allSkillTags = Array.from(new Set(restoredQuestions.map((q) => getSkillKey(q))));
 
         set({
             health: saved.health,
@@ -1114,15 +1294,34 @@ export const useGameStore = create<GameState>((set, get) => ({
             showRewardScreen: false,
             clarityEffect: null,
             sessionSource: saved.sessionSource,
-            questionStartedAt: saved.questionStartedAt
+            questionStartedAt: saved.questionStartedAt,
+            masteryBySkill: {},
+            reviewRiskBySkill: {},
+            recentMistakeBySkill: {},
+            masteryCelebrations: []
         });
+
+        seedSkillMasteryFromLearningEvents()
+            .then(() => Promise.all([
+                getSkillMasteryMap(allSkillTags),
+                getSkillReviewRiskMap(allSkillTags),
+                getRecentMistakeIntensity(allSkillTags)
+            ]))
+            .then(([masteryBySkill, reviewRiskBySkill, recentMistakeBySkill]) => {
+                set({ masteryBySkill, reviewRiskBySkill, recentMistakeBySkill });
+            })
+            .catch(console.error);
         console.log('[Recovery] Game resumed from saved state');
         return true;
     },
 
     clearSavedGame: () => {
         clearGameState();
-    }
+    },
+
+    dismissMasteryCelebration: (id) => set((state) => ({
+        masteryCelebrations: state.masteryCelebrations.filter((entry) => entry.id !== id)
+    }))
 }));
 
 // Auto-save game state after every action that modifies important state

@@ -8,11 +8,11 @@
 
 ## 本周优先（2026-02-09 ~ 2026-02-16）
 
-- [ ] 建立 mastery 状态机字段与迁移脚本（new/learning/consolidated/mastered）
-- [ ] 把题目排序逻辑从 `accuracy` 升级为 `mastery + FSRS + recent mistakes`
-- [ ] 导师触发策略加入“重复错因”与“高风险到期卡”判断
-- [ ] 为 mastery 升级事件增加奖励和可视化反馈
-- [ ] 为 battle/srs/daily 三入口补齐统一回归测试
+- [x] 建立 mastery 状态机字段与迁移脚本（new/learning/consolidated/mastered）
+- [x] 把题目排序逻辑从 `accuracy` 升级为 `mastery + FSRS + recent mistakes`
+- [x] 导师触发策略加入“重复错因”与“高风险到期卡”判断
+- [x] 为 mastery 升级事件增加奖励和可视化反馈
+- [x] 为 battle/srs/daily 三入口补齐统一回归测试
 
 ---
 
@@ -113,4 +113,3 @@
 - [ ] 所有数据字段变更必须补迁移与回归
 - [ ] 每周固定更新 `ROADMAP.md` 与本 TODO
 - [ ] 发布前执行：`tsc --noEmit` + `npm test` + 关键路径手测
-

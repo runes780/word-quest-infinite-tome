@@ -31,6 +31,14 @@ interface DailyChallengeStats {
     completed: boolean;
 }
 
+interface ChallengeSnapshotOverride {
+    score?: number;
+    correct?: number;
+    answeredCount?: number;
+    skillStats?: Record<string, { correct: number; total: number }>;
+    timeLeft?: number;
+}
+
 // LocalStorage key
 const DAILY_STATS_KEY = 'word-quest-daily-challenge';
 
@@ -119,32 +127,37 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
         if (soundEnabled) sound.click();
     }, [soundEnabled]);
 
-    const endChallenge = useCallback(() => {
+    const endChallenge = useCallback((override?: ChallengeSnapshotOverride) => {
+        const finalScore = override?.score ?? score;
+        const finalCorrect = override?.correct ?? correct;
+        const finalAnsweredCount = override?.answeredCount ?? answeredCount;
+        const finalSkillStats = override?.skillStats ?? skillStats;
+        const finalTimeLeft = override?.timeLeft ?? timeLeft;
         const stats: DailyChallengeStats = {
             date: getTodayKey(),
-            score,
-            correct,
-            total: answeredCount,
-            timeUsed: DAILY_CHALLENGE_TIME - timeLeft,
+            score: finalScore,
+            correct: finalCorrect,
+            total: finalAnsweredCount,
+            timeUsed: DAILY_CHALLENGE_TIME - finalTimeLeft,
             completed: true
         };
         saveDailyStats(stats);
         setTodayStats(stats);
         setPhase('result');
         logMissionHistory({
-            score,
-            totalQuestions: answeredCount,
+            score: finalScore,
+            totalQuestions: finalAnsweredCount,
             levelTitle: 'Daily Challenge',
-            totalCorrect: correct,
-            accuracy: answeredCount > 0 ? correct / answeredCount : 0,
-            skillStats
+            totalCorrect: finalCorrect,
+            accuracy: finalAnsweredCount > 0 ? finalCorrect / finalAnsweredCount : 0,
+            skillStats: finalSkillStats
         }).catch(console.error);
         updatePlayerProfile({
-            totalXp: score,
-            dailyXpEarned: score,
-            wordsLearned: correct,
+            totalXp: finalScore,
+            dailyXpEarned: finalScore,
+            wordsLearned: finalCorrect,
             lessonsCompleted: 1,
-            totalStudyMinutes: Math.max(1, Math.round((DAILY_CHALLENGE_TIME - timeLeft) / 60))
+            totalStudyMinutes: Math.max(1, Math.round((DAILY_CHALLENGE_TIME - finalTimeLeft) / 60))
         }).catch(console.error);
         logLearningEvent({
             eventType: 'session_complete',
@@ -178,8 +191,17 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
         const currentQ = questions[currentIndex];
         const isCorrect = optionIndex === currentQ.correct_index;
         const responseLatencyMs = Math.max(0, nowMs() - questionStartedAt);
-        setAnsweredCount((prev) => prev + 1);
+        const nextAnsweredCount = answeredCount + 1;
+        setAnsweredCount(nextAnsweredCount);
         const skillKey = currentQ.skillTag || `${currentQ.type}_daily`;
+        const existingSkill = skillStats[skillKey] || { correct: 0, total: 0 };
+        const nextSkillStats = {
+            ...skillStats,
+            [skillKey]: {
+                correct: existingSkill.correct + (isCorrect ? 1 : 0),
+                total: existingSkill.total + 1
+            }
+        };
         setSkillStats((prev) => {
             const existing = prev[skillKey] || { correct: 0, total: 0 };
             return {
@@ -201,12 +223,17 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
             latencyMs: responseLatencyMs
         }).catch(console.error);
 
+        let nextScore = score;
+        let nextCorrect = correct;
+
         if (isCorrect) {
             const newStreak = streak + 1;
             setStreak(newStreak);
             const points = 10 + (newStreak > 1 ? newStreak * 2 : 0); // Streak bonus
-            setScore(prev => prev + points);
-            setCorrect(prev => prev + 1);
+            nextScore = score + points;
+            nextCorrect = correct + 1;
+            setScore(nextScore);
+            setCorrect(nextCorrect);
             if (soundEnabled) sound.correct();
         } else {
             setStreak(0);
@@ -217,7 +244,13 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
 
         setTimeout(() => {
             if (currentIndex + 1 >= questions.length) {
-                endChallenge();
+                endChallenge({
+                    score: nextScore,
+                    correct: nextCorrect,
+                    answeredCount: nextAnsweredCount,
+                    skillStats: nextSkillStats,
+                    timeLeft
+                });
             } else {
                 setCurrentIndex(prev => prev + 1);
                 setSelectedOption(null);

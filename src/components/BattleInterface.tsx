@@ -44,7 +44,12 @@ export function BattleInterface() {
         inventory,
         knowledgeCards,
         rootFragments,
-        recordHintUsed
+        recordHintUsed,
+        masteryBySkill,
+        reviewRiskBySkill,
+        recentMistakeBySkill,
+        masteryCelebrations,
+        dismissMasteryCelebration
 
     } = useGameStore();
 
@@ -70,10 +75,11 @@ export function BattleInterface() {
     const [comboScale, setComboScale] = useState(1);
     const [goldScale, setGoldScale] = useState(1);
     const [wrongAnswerText, setWrongAnswerText] = useState('');
-    const [consecutiveWrong, setConsecutiveWrong] = useState(0);
+    const [, setConsecutiveWrong] = useState(0);
     const [showHint, setShowHint] = useState(false);
     const [activeAchievement, setActiveAchievement] = useState<Achievement | null>(null);
     const [queuedAchievements, setQueuedAchievements] = useState<Achievement[]>([]);
+    const activeMasteryCelebration = masteryCelebrations[0] || null;
 
     const currentQuestion = questions[currentIndex];
 
@@ -83,11 +89,61 @@ export function BattleInterface() {
         setQueuedAchievements((prev) => prev.slice(1));
     }, [activeAchievement, queuedAchievements]);
 
+    useEffect(() => {
+        if (!activeMasteryCelebration) return;
+        const timer = setTimeout(() => {
+            dismissMasteryCelebration(activeMasteryCelebration.id);
+        }, 3200);
+        return () => clearTimeout(timer);
+    }, [activeMasteryCelebration, dismissMasteryCelebration]);
+
     const queueUnlockedAchievements = () => {
         const unlocked = getPendingAchievements();
         if (unlocked.length > 0) {
             setQueuedAchievements((prev) => [...prev, ...unlocked]);
         }
+    };
+
+    const masteryStateLabel = (state: 'new' | 'learning' | 'consolidated' | 'mastered') => {
+        if (language === 'zh') {
+            return {
+                new: '新学',
+                learning: '学习中',
+                consolidated: '巩固',
+                mastered: '精通'
+            }[state];
+        }
+        return {
+            new: 'New',
+            learning: 'Learning',
+            consolidated: 'Consolidated',
+            mastered: 'Mastered'
+        }[state];
+    };
+
+    const shouldAutoMentor = (nextWrongCount: number) => {
+        const skillTag = currentQuestion.skillTag;
+        const masteryState = masteryBySkill[skillTag]?.state;
+        const reviewRisk = reviewRiskBySkill[skillTag] || 0;
+        const repeatedMistakes = recentMistakeBySkill[skillTag] || 0;
+        const highValueMistake = currentQuestion.difficulty === 'hard' ||
+            reviewRisk >= 1.5 ||
+            repeatedMistakes >= 2 ||
+            masteryState === 'new';
+
+        return nextWrongCount >= 3 || health <= 1 || highValueMistake;
+    };
+
+    const markWrongAndMaybeMentor = (wrongText: string) => {
+        setWrongAnswerText(wrongText);
+        if (soundEnabled) playSound.hit();
+        setConsecutiveWrong((prev) => {
+            const next = prev + 1;
+            if (shouldAutoMentor(next)) {
+                setTimeout(() => setShowMentor(true), 1500);
+            }
+            return next;
+        });
     };
 
     // Endless Mode: Generate more questions when running low
@@ -282,14 +338,7 @@ export function BattleInterface() {
         setShowResult(true);
 
         if (!result.correct) {
-            setWrongAnswerText(currentQuestion.options[index]);
-            setConsecutiveWrong(prev => prev + 1);
-            if (soundEnabled) playSound.hit(); // Player takes damage
-
-            // Trigger mentor on 3rd wrong or if health is critical
-            if (consecutiveWrong >= 2 || health <= 1) {
-                setTimeout(() => setShowMentor(true), 1500);
-            }
+            markWrongAndMaybeMentor(currentQuestion.options[index]);
         } else {
             setConsecutiveWrong(0);
         }
@@ -756,11 +805,7 @@ export function BattleInterface() {
                                     setResultMessage(result.explanation);
                                     queueUnlockedAchievements();
                                     if (!correct) {
-                                        setWrongAnswerText(input);
-                                        setConsecutiveWrong(prev => prev + 1);
-                                        if (consecutiveWrong >= 2 || health <= 1) {
-                                            setTimeout(() => setShowMentor(true), 1500);
-                                        }
+                                        markWrongAndMaybeMentor(input);
                                     } else {
                                         setConsecutiveWrong(0);
                                     }
@@ -779,11 +824,7 @@ export function BattleInterface() {
                                     setResultMessage(result.explanation);
                                     queueUnlockedAchievements();
                                     if (!correct) {
-                                        setWrongAnswerText(input);
-                                        setConsecutiveWrong(prev => prev + 1);
-                                        if (consecutiveWrong >= 2 || health <= 1) {
-                                            setTimeout(() => setShowMentor(true), 1500);
-                                        }
+                                        markWrongAndMaybeMentor(input);
                                     } else {
                                         setConsecutiveWrong(0);
                                     }
@@ -819,11 +860,7 @@ export function BattleInterface() {
                                         setResultMessage(result.explanation);
                                         queueUnlockedAchievements();
                                         if (!correct) {
-                                            setWrongAnswerText(spokenText);
-                                            setConsecutiveWrong(prev => prev + 1);
-                                            if (consecutiveWrong >= 2 || health <= 1) {
-                                                setTimeout(() => setShowMentor(true), 1500);
-                                            }
+                                            markWrongAndMaybeMentor(spokenText);
                                         } else {
                                             setConsecutiveWrong(0);
                                         }
@@ -961,6 +998,32 @@ export function BattleInterface() {
                         achievement={activeAchievement}
                         onClose={() => setActiveAchievement(null)}
                     />
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {activeMasteryCelebration && (
+                    <motion.div
+                        key={activeMasteryCelebration.id}
+                        initial={{ x: -240, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -240, opacity: 0 }}
+                        className="fixed top-20 left-4 z-50 bg-emerald-50 border-2 border-emerald-400 text-emerald-900 rounded-xl p-4 shadow-xl max-w-xs"
+                    >
+                        <p className="text-xs font-semibold uppercase tracking-wide">
+                            {language === 'zh' ? '技能进阶' : 'Mastery Up'}
+                        </p>
+                        <p className="font-bold text-sm mt-1">
+                            {activeMasteryCelebration.skillTag.replace(/_/g, ' ')}
+                        </p>
+                        <p className="text-xs mt-1">
+                            {masteryStateLabel(activeMasteryCelebration.fromState)} -&gt; {masteryStateLabel(activeMasteryCelebration.toState)}
+                        </p>
+                        <div className="mt-2 text-xs font-semibold flex items-center gap-3">
+                            <span>+{activeMasteryCelebration.bonusXp} XP</span>
+                            <span>+{activeMasteryCelebration.bonusGold} Gold</span>
+                        </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
         </div >

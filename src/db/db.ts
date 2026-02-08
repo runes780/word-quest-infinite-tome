@@ -134,6 +134,19 @@ export interface LearningEvent {
     timestamp: number;
 }
 
+export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
+
+export interface SkillMasteryRecord {
+    id?: number;
+    skillTag: string;
+    score: number; // 0-100
+    state: MasteryState;
+    attempts: number;
+    correct: number;
+    lastReviewedAt: number;
+    updatedAt: number;
+}
+
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
     mistakes!: Table<MistakeRecord>;
@@ -141,6 +154,7 @@ export class WordQuestDB extends Dexie {
     fsrsCards!: Table<FSRSCard>;
     playerProfile!: Table<GlobalPlayerProfile>;
     learningEvents!: Table<LearningEvent>;
+    skillMastery!: Table<SkillMasteryRecord>;
 
     constructor() {
         super('WordQuestDB');
@@ -177,6 +191,15 @@ export class WordQuestDB extends Dexie {
             fsrsCards: '++id, questionHash, due, state',
             playerProfile: '++id',
             learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag'
+        });
+        this.version(7).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
         });
     }
 }
@@ -313,6 +336,135 @@ export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timest
         timestamp: event.timestamp ?? Date.now()
     };
     await db.learningEvents.add(payload);
+}
+
+function masteryStateFromScore(score: number, attempts: number, accuracy: number): MasteryState {
+    if (attempts < 2) return 'new';
+    if (score >= 85 && attempts >= 8 && accuracy >= 0.85) return 'mastered';
+    if (score >= 65 && attempts >= 5 && accuracy >= 0.7) return 'consolidated';
+    if (score >= 30) return 'learning';
+    return 'new';
+}
+
+export async function updateSkillMastery(skillTag: string, result: LearningEventResult): Promise<SkillMasteryRecord> {
+    const now = Date.now();
+    const existing = await db.skillMastery.where('skillTag').equals(skillTag).first();
+
+    const attempts = (existing?.attempts || 0) + 1;
+    const correct = (existing?.correct || 0) + (result === 'correct' ? 1 : 0);
+    const accuracy = attempts > 0 ? correct / attempts : 0;
+
+    const previousScore = existing?.score ?? 20;
+    const trendAdjust = accuracy >= 0.8 ? 2 : accuracy <= 0.5 ? -2 : 0;
+    const resultAdjust = result === 'correct' ? 6 : -8;
+    const score = clamp(previousScore + resultAdjust + trendAdjust, 0, 100);
+    const state = masteryStateFromScore(score, attempts, accuracy);
+
+    const nextRecord: SkillMasteryRecord = {
+        id: existing?.id,
+        skillTag,
+        score,
+        state,
+        attempts,
+        correct,
+        lastReviewedAt: now,
+        updatedAt: now
+    };
+
+    if (existing?.id) {
+        await db.skillMastery.update(existing.id, nextRecord);
+        return nextRecord;
+    }
+
+    const id = await db.skillMastery.add(nextRecord);
+    return { ...nextRecord, id };
+}
+
+export async function getSkillMasteryMap(skillTags?: string[]): Promise<Record<string, SkillMasteryRecord>> {
+    const rows = skillTags && skillTags.length > 0
+        ? await db.skillMastery.where('skillTag').anyOf(skillTags).toArray()
+        : await db.skillMastery.toArray();
+
+    return rows.reduce((acc, row) => {
+        acc[row.skillTag] = row;
+        return acc;
+    }, {} as Record<string, SkillMasteryRecord>);
+}
+
+export async function seedSkillMasteryFromLearningEvents(): Promise<number> {
+    const existingCount = await db.skillMastery.count();
+    if (existingCount > 0) return 0;
+
+    const events = await db.learningEvents
+        .where('eventType')
+        .equals('answer')
+        .toArray();
+
+    const grouped = new Map<string, { attempts: number; correct: number; lastTs: number }>();
+    events.forEach((event) => {
+        if (!event.skillTag || !event.result) return;
+        const bucket = grouped.get(event.skillTag) || { attempts: 0, correct: 0, lastTs: 0 };
+        bucket.attempts += 1;
+        bucket.correct += event.result === 'correct' ? 1 : 0;
+        bucket.lastTs = Math.max(bucket.lastTs, event.timestamp);
+        grouped.set(event.skillTag, bucket);
+    });
+
+    const now = Date.now();
+    const records: SkillMasteryRecord[] = Array.from(grouped.entries()).map(([skillTag, value]) => {
+        const accuracy = value.attempts > 0 ? value.correct / value.attempts : 0;
+        const score = clamp(Math.round(accuracy * 100), 0, 100);
+        return {
+            skillTag,
+            attempts: value.attempts,
+            correct: value.correct,
+            score,
+            state: masteryStateFromScore(score, value.attempts, accuracy),
+            lastReviewedAt: value.lastTs || now,
+            updatedAt: now
+        };
+    });
+
+    if (records.length > 0) {
+        await db.skillMastery.bulkPut(records);
+    }
+    return records.length;
+}
+
+export async function getSkillReviewRiskMap(skillTags: string[]): Promise<Record<string, number>> {
+    if (!skillTags.length) return {};
+    const now = Date.now();
+    const dueCards = await db.fsrsCards
+        .where('due')
+        .belowOrEqual(now)
+        .toArray();
+
+    const riskMap: Record<string, number> = {};
+    dueCards.forEach((card) => {
+        if (!card.skillTag || !skillTags.includes(card.skillTag)) return;
+        const overdueDays = Math.max(0, (now - card.due) / (24 * 60 * 60 * 1000));
+        const weight = 1 + Math.min(2, overdueDays / 3);
+        riskMap[card.skillTag] = (riskMap[card.skillTag] || 0) + weight;
+    });
+
+    return riskMap;
+}
+
+export async function getRecentMistakeIntensity(skillTags: string[], windowDays = 14): Promise<Record<string, number>> {
+    if (!skillTags.length) return {};
+    const cutoff = Date.now() - (windowDays * 24 * 60 * 60 * 1000);
+    const rows = await db.mistakes
+        .where('timestamp')
+        .aboveOrEqual(cutoff)
+        .toArray();
+
+    const result: Record<string, number> = {};
+    rows.forEach((row) => {
+        const key = row.skillTag;
+        if (!key || !skillTags.includes(key)) return;
+        result[key] = (result[key] || 0) + 1;
+    });
+    return result;
 }
 
 // XP to Level calculation (similar to Duolingo)
