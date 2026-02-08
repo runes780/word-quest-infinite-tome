@@ -1,5 +1,10 @@
 import type { MistakeRecord } from '@/db/db';
-import { computeRepeatedCauseSnapshot, computeRepeatedCauseTrends, evaluateRepeatedCauseGoal } from './mistakes';
+import {
+    computeRepeatedCauseSnapshot,
+    computeRepeatedCauseTrends,
+    evaluateRepeatedCauseGoal,
+    evaluateRepeatedCauseGoalAgainstBaseline
+} from './mistakes';
 
 function row(overrides: Partial<MistakeRecord>): MistakeRecord {
     return {
@@ -125,6 +130,53 @@ describe('evaluateRepeatedCauseGoal', () => {
             }
         ], 0.2, 5);
 
+        expect(summary.rows[0].status).toBe('insufficient');
+        expect(summary.overallStatus).toBe('insufficient');
+    });
+});
+
+describe('evaluateRepeatedCauseGoalAgainstBaseline', () => {
+    test('uses historical baseline window and marks passed when >=20% lower', () => {
+        const day = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const records: MistakeRecord[] = [];
+
+        // Current 7d window: 10 tagged, 2 repeated => 20%
+        for (let i = 0; i < 8; i++) {
+            records.push(row({ mentorCauseTag: `tag_${i}`, timestamp: now - (i * 0.5 * day) }));
+        }
+        records.push(row({ mentorCauseTag: 'repeat_a', timestamp: now - (5 * 60 * 1000) }));
+        records.push(row({ mentorCauseTag: 'repeat_a', timestamp: now - (10 * 60 * 1000) }));
+
+        // Baseline window 4 periods back: 10 tagged, 6 repeated => 60%
+        const baselineBase = now - (4 * 7 * day) + day;
+        records.push(row({ mentorCauseTag: 'repeat_b', timestamp: baselineBase }));
+        records.push(row({ mentorCauseTag: 'repeat_b', timestamp: baselineBase + 1000 }));
+        records.push(row({ mentorCauseTag: 'repeat_c', timestamp: baselineBase + 2000 }));
+        records.push(row({ mentorCauseTag: 'repeat_c', timestamp: baselineBase + 3000 }));
+        records.push(row({ mentorCauseTag: 'repeat_d', timestamp: baselineBase + 4000 }));
+        records.push(row({ mentorCauseTag: 'repeat_d', timestamp: baselineBase + 5000 }));
+        records.push(row({ mentorCauseTag: 'uniq_1', timestamp: baselineBase + 6000 }));
+        records.push(row({ mentorCauseTag: 'uniq_2', timestamp: baselineBase + 7000 }));
+        records.push(row({ mentorCauseTag: 'uniq_3', timestamp: baselineBase + 8000 }));
+        records.push(row({ mentorCauseTag: 'uniq_4', timestamp: baselineBase + 9000 }));
+
+        const summary = evaluateRepeatedCauseGoalAgainstBaseline(records, [7], 0.2, 5, 8, now);
+        expect(summary.rows[0].status).toBe('passed');
+        expect(summary.rows[0].baselineWindowOffset).toBeGreaterThan(0);
+        expect(summary.rows[0].reductionFromBaseline).toBeGreaterThanOrEqual(0.2);
+        expect(summary.overallStatus).toBe('passed');
+    });
+
+    test('marks insufficient when no baseline with enough tagged data', () => {
+        const now = Date.now();
+        const records: MistakeRecord[] = [
+            row({ mentorCauseTag: 'repeat_a', timestamp: now - 1000 }),
+            row({ mentorCauseTag: 'repeat_a', timestamp: now - 2000 }),
+            row({ mentorCauseTag: 'unique', timestamp: now - 3000 })
+        ];
+
+        const summary = evaluateRepeatedCauseGoalAgainstBaseline(records, [7], 0.2, 5, 8, now);
         expect(summary.rows[0].status).toBe('insufficient');
         expect(summary.overallStatus).toBe('insufficient');
     });

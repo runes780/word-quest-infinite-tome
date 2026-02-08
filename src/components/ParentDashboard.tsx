@@ -8,11 +8,13 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
 import {
-    evaluateRepeatedCauseGoal,
+    evaluateRepeatedCauseGoalAgainstBaseline,
     getMistakes,
+    getRepeatedCauseGoalAgainstBaseline,
     getRepeatedCauseSnapshot,
     getRepeatedCauseTrends,
     MistakeRecord,
+    RepeatedCauseBaselineSummary,
     RepeatedCauseSnapshot,
     RepeatedCauseTrend
 } from '@/lib/data/mistakes';
@@ -35,6 +37,7 @@ export function ParentDashboard() {
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
+    const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -46,14 +49,15 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const [historyData, mistakeData, dueCardData, srsStats, masteryData, repeatedCauseData, repeatedCauseTrendData] = await Promise.all([
+            const [historyData, mistakeData, dueCardData, srsStats, masteryData, repeatedCauseData, repeatedCauseTrendData, repeatedCauseBaseline] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
                 getDueCardsWithPriority(3),
                 getSRSStats(),
                 getMasteryAggregateSnapshot(range),
                 getRepeatedCauseSnapshot(range),
-                getRepeatedCauseTrends([7, 14, 30])
+                getRepeatedCauseTrends([7, 14, 30]),
+                getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800)
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
@@ -62,6 +66,7 @@ export function ParentDashboard() {
             setMasterySnapshot(masteryData);
             setRepeatedCauseSnapshot(repeatedCauseData);
             setRepeatedCauseTrends(repeatedCauseTrendData);
+            setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -81,7 +86,7 @@ export function ParentDashboard() {
     }, [snapshot, t.dashboard.noHistoryShort]);
 
     const averageAccuracy = snapshot ? Math.round((snapshot.totals.accuracy || 0) * 100) : 0;
-    const repeatedGoal = evaluateRepeatedCauseGoal(repeatedCauseTrends, 0.2, 5);
+    const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
 
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
     const dailyRows = snapshot?.daily ?? [];
@@ -343,6 +348,8 @@ export function ParentDashboard() {
                                                                 : goalRow?.status === 'not_met'
                                                                     ? 'text-destructive'
                                                                     : 'text-muted-foreground';
+                                                            const baselinePct = goalRow ? `${(goalRow.baselineRate * 100).toFixed(1)}%` : '--';
+                                                            const reductionPct = goalRow ? `${Math.max(0, goalRow.reductionFromBaseline * 100).toFixed(1)}%` : '--';
                                                             return (
                                                                 <div key={trend.windowDays} className="flex justify-between">
                                                                     <span className="text-muted-foreground">{trend.windowDays}d</span>
@@ -350,11 +357,14 @@ export function ParentDashboard() {
                                                                     <span className={tone}>
                                                                         {improving ? '↓' : '↑'} {deltaPct}pp
                                                                     </span>
+                                                                    <span className="text-muted-foreground">
+                                                                        B:{baselinePct}
+                                                                    </span>
                                                                     <span className={goalTone}>
                                                                         {goalRow?.status === 'passed'
-                                                                            ? '✓'
+                                                                            ? `✓ ${reductionPct}`
                                                                             : goalRow?.status === 'not_met'
-                                                                                ? '×'
+                                                                                ? `× ${reductionPct}`
                                                                                 : '…'}
                                                                     </span>
                                                                 </div>

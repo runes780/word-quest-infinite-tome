@@ -90,6 +90,24 @@ export interface RepeatedCauseGoalSummary {
     overallStatus: RepeatedCauseGoalStatus;
 }
 
+export interface RepeatedCauseBaselineRow {
+    windowDays: number;
+    targetReduction: number;
+    status: RepeatedCauseGoalStatus;
+    currentRate: number;
+    baselineRate: number;
+    reductionFromBaseline: number;
+    currentTagged: number;
+    baselineTagged: number;
+    baselineWindowOffset: number;
+}
+
+export interface RepeatedCauseBaselineSummary {
+    targetReduction: number;
+    rows: RepeatedCauseBaselineRow[];
+    overallStatus: RepeatedCauseGoalStatus;
+}
+
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
     if (!isBrowser) return;
     try {
@@ -281,6 +299,90 @@ export function evaluateRepeatedCauseGoal(
         rows,
         overallStatus
     };
+}
+
+export function evaluateRepeatedCauseGoalAgainstBaseline(
+    records: MistakeRecord[],
+    windows: number[] = [7, 14, 30],
+    targetReduction = 0.2,
+    minTagged = 5,
+    lookbackWindows = 8,
+    now = Date.now()
+): RepeatedCauseBaselineSummary {
+    const rows: RepeatedCauseBaselineRow[] = windows.map((windowDays) => {
+        const ms = windowDays * 24 * 60 * 60 * 1000;
+        const currentRows = records.filter((row) => row.timestamp > now - ms && row.timestamp <= now);
+        const current = computeRepeatedCauseSnapshotFromRows(currentRows, windowDays);
+
+        const baselineCandidates: Array<{ offset: number; snapshot: RepeatedCauseSnapshot }> = [];
+        for (let offset = lookbackWindows; offset >= 1; offset--) {
+            const end = now - (offset * ms);
+            const start = end - ms;
+            const rowsInWindow = records.filter((row) => row.timestamp > start && row.timestamp <= end);
+            baselineCandidates.push({
+                offset,
+                snapshot: computeRepeatedCauseSnapshotFromRows(rowsInWindow, windowDays)
+            });
+        }
+
+        const baselineMatch = baselineCandidates.find((candidate) => candidate.snapshot.taggedMistakes >= minTagged);
+        if (!baselineMatch || current.taggedMistakes < minTagged || baselineMatch.snapshot.repeatRate <= 0) {
+            return {
+                windowDays,
+                targetReduction,
+                status: 'insufficient',
+                currentRate: current.repeatRate,
+                baselineRate: baselineMatch?.snapshot.repeatRate ?? 0,
+                reductionFromBaseline: 0,
+                currentTagged: current.taggedMistakes,
+                baselineTagged: baselineMatch?.snapshot.taggedMistakes ?? 0,
+                baselineWindowOffset: baselineMatch?.offset ?? -1
+            };
+        }
+
+        const reductionFromBaseline = (baselineMatch.snapshot.repeatRate - current.repeatRate) / baselineMatch.snapshot.repeatRate;
+        return {
+            windowDays,
+            targetReduction,
+            status: reductionFromBaseline >= targetReduction ? 'passed' : 'not_met',
+            currentRate: current.repeatRate,
+            baselineRate: baselineMatch.snapshot.repeatRate,
+            reductionFromBaseline,
+            currentTagged: current.taggedMistakes,
+            baselineTagged: baselineMatch.snapshot.taggedMistakes,
+            baselineWindowOffset: baselineMatch.offset
+        };
+    });
+
+    const actionable = rows.filter((row) => row.status !== 'insufficient');
+    const overallStatus: RepeatedCauseGoalStatus = actionable.length === 0
+        ? 'insufficient'
+        : actionable.some((row) => row.status === 'passed')
+            ? 'passed'
+            : 'not_met';
+
+    return {
+        targetReduction,
+        rows,
+        overallStatus
+    };
+}
+
+export async function getRepeatedCauseGoalAgainstBaseline(
+    windows: number[] = [7, 14, 30],
+    targetReduction = 0.2,
+    minTagged = 5,
+    lookbackWindows = 8,
+    limit = 800
+): Promise<RepeatedCauseBaselineSummary> {
+    const mistakes = await getMistakes(limit);
+    return evaluateRepeatedCauseGoalAgainstBaseline(
+        mistakes,
+        windows,
+        targetReduction,
+        minTagged,
+        lookbackWindows
+    );
 }
 
 export async function deleteMistake(id: number) {
