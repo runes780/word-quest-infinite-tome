@@ -1,5 +1,5 @@
 import type { MistakeRecord } from '@/db/db';
-import { computeRepeatedCauseSnapshot, computeRepeatedCauseTrends } from './mistakes';
+import { computeRepeatedCauseSnapshot, computeRepeatedCauseTrends, evaluateRepeatedCauseGoal } from './mistakes';
 
 function row(overrides: Partial<MistakeRecord>): MistakeRecord {
     return {
@@ -71,5 +71,61 @@ describe('computeRepeatedCauseTrends', () => {
         expect(trends[0].current.taggedMistakes).toBeGreaterThan(0);
         expect(typeof trends[0].deltaRate).toBe('number');
         expect(typeof trends[1].relativeDelta).toBe('number');
+    });
+});
+
+describe('evaluateRepeatedCauseGoal', () => {
+    test('marks row as passed when relative reduction reaches target', () => {
+        const summary = evaluateRepeatedCauseGoal([
+            {
+                windowDays: 14,
+                current: {
+                    windowDays: 14,
+                    taggedMistakes: 10,
+                    repeatedMistakes: 4,
+                    repeatRate: 0.4,
+                    topCauses: []
+                },
+                previous: {
+                    windowDays: 14,
+                    taggedMistakes: 10,
+                    repeatedMistakes: 6,
+                    repeatRate: 0.6,
+                    topCauses: []
+                },
+                deltaRate: -0.2,
+                relativeDelta: -1 / 3
+            }
+        ], 0.2, 5);
+
+        expect(summary.rows[0].status).toBe('passed');
+        expect(summary.overallStatus).toBe('passed');
+    });
+
+    test('marks insufficient when sample size is too small', () => {
+        const summary = evaluateRepeatedCauseGoal([
+            {
+                windowDays: 7,
+                current: {
+                    windowDays: 7,
+                    taggedMistakes: 3,
+                    repeatedMistakes: 2,
+                    repeatRate: 2 / 3,
+                    topCauses: []
+                },
+                previous: {
+                    windowDays: 7,
+                    taggedMistakes: 4,
+                    repeatedMistakes: 3,
+                    repeatRate: 0.75,
+                    topCauses: []
+                },
+                deltaRate: -0.0833,
+                relativeDelta: -0.111
+            }
+        ], 0.2, 5);
+
+        expect(summary.rows[0].status).toBe('insufficient');
+        expect(summary.overallStatus).toBe('insufficient');
     });
 });

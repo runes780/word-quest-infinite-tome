@@ -71,6 +71,25 @@ export interface RepeatedCauseTrend {
     relativeDelta: number;
 }
 
+export type RepeatedCauseGoalStatus = 'passed' | 'not_met' | 'insufficient';
+
+export interface RepeatedCauseGoalRow {
+    windowDays: number;
+    targetReduction: number;
+    status: RepeatedCauseGoalStatus;
+    currentRate: number;
+    previousRate: number;
+    relativeReduction: number;
+    currentTagged: number;
+    previousTagged: number;
+}
+
+export interface RepeatedCauseGoalSummary {
+    targetReduction: number;
+    rows: RepeatedCauseGoalRow[];
+    overallStatus: RepeatedCauseGoalStatus;
+}
+
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
     if (!isBrowser) return;
     try {
@@ -222,6 +241,46 @@ export async function getRepeatedCauseSnapshot(windowDays = 14, limit = 200): Pr
 export async function getRepeatedCauseTrends(windows: number[] = [7, 14, 30], limit = 400): Promise<RepeatedCauseTrend[]> {
     const mistakes = await getMistakes(limit);
     return computeRepeatedCauseTrends(mistakes, windows);
+}
+
+export function evaluateRepeatedCauseGoal(
+    trends: RepeatedCauseTrend[],
+    targetReduction = 0.2,
+    minTagged = 5
+): RepeatedCauseGoalSummary {
+    const rows: RepeatedCauseGoalRow[] = trends.map((trend) => {
+        const currentTagged = trend.current.taggedMistakes;
+        const previousTagged = trend.previous.taggedMistakes;
+        const enoughData = currentTagged >= minTagged && previousTagged >= minTagged;
+        const relativeReduction = -trend.relativeDelta;
+        let status: RepeatedCauseGoalStatus = 'insufficient';
+        if (enoughData) {
+            status = relativeReduction >= targetReduction ? 'passed' : 'not_met';
+        }
+        return {
+            windowDays: trend.windowDays,
+            targetReduction,
+            status,
+            currentRate: trend.current.repeatRate,
+            previousRate: trend.previous.repeatRate,
+            relativeReduction,
+            currentTagged,
+            previousTagged
+        };
+    });
+
+    const actionable = rows.filter((row) => row.status !== 'insufficient');
+    const overallStatus: RepeatedCauseGoalStatus = actionable.length === 0
+        ? 'insufficient'
+        : actionable.some((row) => row.status === 'passed')
+            ? 'passed'
+            : 'not_met';
+
+    return {
+        targetReduction,
+        rows,
+        overallStatus
+    };
 }
 
 export async function deleteMistake(id: number) {

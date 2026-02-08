@@ -7,7 +7,15 @@ import { GraduationCap, LineChart, RefreshCw, Download, Printer, X, Sparkles } f
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
-import { getMistakes, getRepeatedCauseSnapshot, getRepeatedCauseTrends, MistakeRecord, RepeatedCauseSnapshot, RepeatedCauseTrend } from '@/lib/data/mistakes';
+import {
+    evaluateRepeatedCauseGoal,
+    getMistakes,
+    getRepeatedCauseSnapshot,
+    getRepeatedCauseTrends,
+    MistakeRecord,
+    RepeatedCauseSnapshot,
+    RepeatedCauseTrend
+} from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import { FSRSCard, getDueCardsWithPriority, getMasteryAggregateSnapshot, getMemoryStatus, getSRSStats, MasteryAggregateSnapshot } from '@/db/db';
 
@@ -73,6 +81,7 @@ export function ParentDashboard() {
     }, [snapshot, t.dashboard.noHistoryShort]);
 
     const averageAccuracy = snapshot ? Math.round((snapshot.totals.accuracy || 0) * 100) : 0;
+    const repeatedGoal = evaluateRepeatedCauseGoal(repeatedCauseTrends, 0.2, 5);
 
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
     const dailyRows = snapshot?.daily ?? [];
@@ -306,18 +315,47 @@ export function ParentDashboard() {
                                                 )}
                                                 {repeatedCauseTrends.length > 0 && (
                                                     <div className="mt-3 pt-2 border-t border-border/40 space-y-1">
+                                                        <div className="flex justify-between font-medium">
+                                                            <span>{isZh ? '目标(-20%)' : 'Goal (-20%)'}</span>
+                                                            <span className={
+                                                                repeatedGoal.overallStatus === 'passed'
+                                                                    ? 'text-green-500'
+                                                                    : repeatedGoal.overallStatus === 'not_met'
+                                                                        ? 'text-destructive'
+                                                                        : 'text-muted-foreground'
+                                                            }>
+                                                                {repeatedGoal.overallStatus === 'passed'
+                                                                    ? (isZh ? '达标' : 'Passed')
+                                                                    : repeatedGoal.overallStatus === 'not_met'
+                                                                        ? (isZh ? '未达标' : 'Not Met')
+                                                                        : (isZh ? '样本不足' : 'Insufficient')}
+                                                            </span>
+                                                        </div>
                                                         {repeatedCauseTrends.map((trend) => {
                                                             const currentPct = (trend.current.repeatRate * 100).toFixed(1);
                                                             const previousPct = (trend.previous.repeatRate * 100).toFixed(1);
                                                             const deltaPct = Math.abs(trend.deltaRate * 100).toFixed(1);
                                                             const improving = trend.deltaRate <= 0;
                                                             const tone = improving ? 'text-green-500' : 'text-destructive';
+                                                            const goalRow = repeatedGoal.rows.find((row) => row.windowDays === trend.windowDays);
+                                                            const goalTone = goalRow?.status === 'passed'
+                                                                ? 'text-green-500'
+                                                                : goalRow?.status === 'not_met'
+                                                                    ? 'text-destructive'
+                                                                    : 'text-muted-foreground';
                                                             return (
                                                                 <div key={trend.windowDays} className="flex justify-between">
                                                                     <span className="text-muted-foreground">{trend.windowDays}d</span>
                                                                     <span>{currentPct}% vs {previousPct}%</span>
                                                                     <span className={tone}>
                                                                         {improving ? '↓' : '↑'} {deltaPct}pp
+                                                                    </span>
+                                                                    <span className={goalTone}>
+                                                                        {goalRow?.status === 'passed'
+                                                                            ? '✓'
+                                                                            : goalRow?.status === 'not_met'
+                                                                                ? '×'
+                                                                                : '…'}
                                                                     </span>
                                                                 </div>
                                                             );
