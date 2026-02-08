@@ -43,6 +43,7 @@ import {
     MasteryAggregateSnapshot,
     upsertStudyActionExecution
 } from '@/db/db';
+import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import type { Monster } from '@/store/gameStore';
 
@@ -56,9 +57,12 @@ interface TonightActionItem {
     priority: StudyActionPriority;
     estimatedMinutes: number;
     evidence: string;
+    evidenceRows: Array<{ label: string; value: string; }>;
     ctaLabel?: string;
     onCta?: () => void;
 }
+
+type ComparisonMetricKey = 'dailyChallengeParticipation' | 'weeklyTaskCompletion' | 'nextDayRetention';
 
 export function ParentDashboard() {
     const { language } = useSettingsStore();
@@ -76,6 +80,7 @@ export function ParentDashboard() {
     const [studyActionExecutions, setStudyActionExecutions] = useState<StudyActionExecution[]>([]);
     const [studyActionSummary, setStudyActionSummary] = useState<StudyActionExecutionSummary | null>(null);
     const [engagementSnapshot, setEngagementSnapshot] = useState<EngagementSnapshot | null>(null);
+    const [engagementByWindow, setEngagementByWindow] = useState<Record<number, EngagementSnapshot>>({});
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
@@ -100,6 +105,9 @@ export function ParentDashboard() {
                 actionRows,
                 actionSummary,
                 engagementData,
+                engagement7,
+                engagement14,
+                engagement30,
                 repeatedCauseData,
                 repeatedCauseTrendData,
                 repeatedCauseBaseline
@@ -113,6 +121,9 @@ export function ParentDashboard() {
                 getStudyActionExecutions(),
                 getStudyActionExecutionSummary(14),
                 getEngagementSnapshot(range),
+                getEngagementSnapshot(7),
+                getEngagementSnapshot(14),
+                getEngagementSnapshot(30),
                 getRepeatedCauseSnapshot(range),
                 getRepeatedCauseTrends([7, 14, 30]),
                 getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800)
@@ -126,6 +137,11 @@ export function ParentDashboard() {
             setStudyActionExecutions(actionRows);
             setStudyActionSummary(actionSummary);
             setEngagementSnapshot(engagementData);
+            setEngagementByWindow({
+                7: engagement7,
+                14: engagement14,
+                30: engagement30
+            });
             setRepeatedCauseSnapshot(repeatedCauseData);
             setRepeatedCauseTrends(repeatedCauseTrendData);
             setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
@@ -167,6 +183,9 @@ export function ParentDashboard() {
 
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
+    const primaryMistake = recentMistakes[0];
+    const primaryDueCard = dueCards[0];
+    const dueStatus = primaryDueCard ? getMemoryStatus(primaryDueCard) : null;
 
     const actionStatusById = useMemo(() => {
         return studyActionExecutions.reduce((acc, row) => {
@@ -241,6 +260,13 @@ export function ParentDashboard() {
     }, []);
 
     const tonightActions: TonightActionItem[] = useMemo(() => {
+        const mistakeEvidence = primaryMistake
+            ? `${primaryMistake.questionText.slice(0, 42)} · ${primaryMistake.wrongAnswer} -> ${primaryMistake.correctAnswer}`
+            : (isZh ? '暂无错题样本' : 'No recent mistake sample');
+        const fsrsEvidence = primaryDueCard
+            ? `${primaryDueCard.skillTag || primaryDueCard.type || 'skill'} · ${dueStatus?.statusText.en || 'due'}`
+            : (isZh ? '暂无到期复习卡' : 'No due SRS cards');
+
         const actions: TonightActionItem[] = [
             {
                 id: 'targeted_pack',
@@ -253,6 +279,10 @@ export function ParentDashboard() {
                 evidence: isZh
                     ? `证据：重复错因率 ${((repeatedCauseSnapshot?.repeatRate || 0) * 100).toFixed(1)}%`
                     : `Evidence: repeated-cause rate ${((repeatedCauseSnapshot?.repeatRate || 0) * 100).toFixed(1)}%`,
+                evidenceRows: [
+                    { label: isZh ? '错题样本' : 'Mistake evidence', value: mistakeEvidence },
+                    { label: isZh ? 'FSRS证据' : 'FSRS evidence', value: fsrsEvidence }
+                ],
                 ctaLabel: isZh ? '开始' : 'Start',
                 onCta: handleStartTargetedReview
             },
@@ -265,6 +295,10 @@ export function ParentDashboard() {
                 priority: srsDueCount >= 5 ? 'urgent' : 'important',
                 estimatedMinutes: Math.max(6, Math.min(20, srsDueCount * 2)),
                 evidence: isZh ? `证据：当前到期 ${srsDueCount} 张` : `Evidence: ${srsDueCount} cards due now`,
+                evidenceRows: [
+                    { label: isZh ? '错题样本' : 'Mistake evidence', value: mistakeEvidence },
+                    { label: isZh ? 'FSRS证据' : 'FSRS evidence', value: fsrsEvidence }
+                ],
                 ctaLabel: dueCards.length > 0 ? (isZh ? '开练' : 'Launch') : undefined,
                 onCta: dueCards.length > 0 ? handleStartSrsFocus : undefined
             },
@@ -278,7 +312,11 @@ export function ParentDashboard() {
                 estimatedMinutes: 10,
                 evidence: isZh
                     ? `证据：任务完成率 ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`
-                    : `Evidence: quest completion ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`
+                    : `Evidence: quest completion ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`,
+                evidenceRows: [
+                    { label: isZh ? '错题样本' : 'Mistake evidence', value: mistakeEvidence },
+                    { label: isZh ? 'FSRS证据' : 'FSRS evidence', value: fsrsEvidence }
+                ]
             }
         ];
         return actions;
@@ -290,9 +328,23 @@ export function ParentDashboard() {
         dueCards.length,
         weeklyTaskRows,
         engagement?.weeklyTaskCompletion.currentRate,
+        primaryMistake,
+        primaryDueCard,
+        dueStatus?.statusText.en,
         handleStartSrsFocus,
         handleStartTargetedReview
     ]);
+
+    const planVsCompletion = useMemo(() => {
+        return computeStudyPlanCompletionSnapshot(
+            tonightActions.map((action) => ({
+                id: action.id,
+                title: action.title,
+                estimatedMinutes: action.estimatedMinutes
+            })),
+            actionStatusById
+        );
+    }, [tonightActions, actionStatusById]);
 
     const handleExportImage = async () => {
         if (!reportRef.current || !hasHistory) return;
@@ -505,6 +557,53 @@ export function ParentDashboard() {
                                 <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '7/14/30 天对比' : '7/14/30 Day Comparison'}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">{isZh ? '关键指标' : 'Core metrics'}</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs">
+                                            <thead>
+                                                <tr className="text-muted-foreground">
+                                                    <th className="text-left py-2">{isZh ? '指标' : 'Metric'}</th>
+                                                    {[7, 14, 30].map((window) => (
+                                                        <th key={window} className="text-right py-2">{window}d</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/40">
+                                                {[
+                                                    { key: 'dailyChallengeParticipation' as ComparisonMetricKey, labelZh: '每日挑战参与率', labelEn: 'Daily participation' },
+                                                    { key: 'weeklyTaskCompletion' as ComparisonMetricKey, labelZh: '任务完成率', labelEn: 'Quest completion' },
+                                                    { key: 'nextDayRetention' as ComparisonMetricKey, labelZh: '次日留存', labelEn: 'Next-day retention' }
+                                                ].map((row) => (
+                                                    <tr key={row.key}>
+                                                        <td className="py-2 text-muted-foreground">{isZh ? row.labelZh : row.labelEn}</td>
+                                                        {[7, 14, 30].map((window) => {
+                                                            const snapshot = engagementByWindow[window];
+                                                            const metric = snapshot ? snapshot[row.key] : null;
+                                                            const text = metric ? `${(metric.currentRate * 100).toFixed(1)}%` : '--';
+                                                            const tone = metric?.status === 'met'
+                                                                ? 'text-green-500'
+                                                                : metric?.status === 'not_met'
+                                                                    ? 'text-destructive'
+                                                                    : 'text-muted-foreground';
+                                                            return (
+                                                                <td key={`${row.key}-${window}`} className={`py-2 text-right font-semibold ${tone}`}>
+                                                                    {text}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                                             {isZh ? '学习任务线（本周）' : 'Learning Questline (This Week)'}
                                         </div>
                                         <span className="text-xs text-muted-foreground">
@@ -653,6 +752,13 @@ export function ParentDashboard() {
                                                     <div className="mt-1 text-[11px] text-muted-foreground">
                                                         {isZh ? `预计 ${action.estimatedMinutes} 分钟` : `${action.estimatedMinutes} min estimate`} · {action.evidence}
                                                     </div>
+                                                    <div className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-1">
+                                                        {action.evidenceRows.map((evidenceRow) => (
+                                                            <div key={`${action.id}-${evidenceRow.label}`} className="text-[11px] text-muted-foreground">
+                                                                <span className="font-semibold">{evidenceRow.label}:</span> {evidenceRow.value}
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                     <div className="mt-2 flex flex-wrap gap-2">
                                                         {action.onCta && (
                                                             <button
@@ -678,6 +784,29 @@ export function ParentDashboard() {
                                                 </div>
                                             );
                                         })}
+                                    </div>
+                                    <div className="mt-3 pt-3 border-t border-border/40">
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                                            {isZh ? '计划 vs 完成' : 'Plan vs Completion'}
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '计划动作' : 'Planned actions'}</div>
+                                                <div className="font-semibold">{planVsCompletion.totalActions}</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '已完成动作' : 'Completed actions'}</div>
+                                                <div className="font-semibold">{planVsCompletion.completedActions}</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '计划时长' : 'Planned minutes'}</div>
+                                                <div className="font-semibold">{planVsCompletion.plannedMinutes}</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '完成时长' : 'Completed minutes'}</div>
+                                                <div className="font-semibold">{planVsCompletion.completedMinutes}</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </section>
 
