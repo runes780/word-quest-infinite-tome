@@ -193,6 +193,7 @@
 - 已落地主流程 E2E 回归：新增 `mission -> battle -> srs -> report` 自动化回归测试用例。
 - 已落地离线题库缓存策略 v1：接入 TTL（7 天）+ 全局容量（600）+ 单上下文容量（120）+ 去重与命中标记（used）。
 - 已启动架构拆分第一阶段：`gameStore` 抽离 `questionFlow`（题目调度/掌握度优先级）与 `revengeQueue`（错题队列持久化）模块，主 store 聚焦状态编排。
+- 已启动界面拆分第一阶段：`BattleInterface` 抽离 `BattleScene` 与 `BattleQuestionPanel`，保留原交互行为并降低组件复杂度。
 
 ### 目标
 - 为后续账号体系、班级协作、多端同步打好基础。
