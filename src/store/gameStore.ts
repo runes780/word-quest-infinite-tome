@@ -18,6 +18,24 @@ import {
     getRecentMistakeIntensity,
     logSessionRecoveryEvent
 } from '@/db/db';
+import {
+    applyQuestionDefaults,
+    buildRunObjectiveBonuses,
+    computeSkillPriority as computeSkillPriorityFromModule,
+    findBreakthroughSkill,
+    findWeakSkill,
+    formatSkillLabel,
+    getSkillKey,
+    isMasteryUpgrade,
+    type QuestionInput,
+    reorderQuestionsBySkill
+} from '@/store/modules/questionFlow';
+import {
+    loadInitialRevengeQueue,
+    persistRevengeQueue,
+    sanitizeForQueue,
+    type RevengeEntry
+} from '@/store/modules/revengeQueue';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -162,155 +180,14 @@ export const RELICS: Item[] = [
     }
 ];
 
-type RevengeEntry = Pick<Monster, 'id' | 'type' | 'question' | 'options' | 'correct_index' | 'explanation' | 'hint' | 'skillTag' | 'difficulty' | 'questionMode' | 'correctAnswer' | 'sourceContextSpan'>;
-
-const REVENGE_STORAGE_KEY = 'word-quest-revenge';
-
 const hasRelic = (inventory: Item[], type: ItemType) => inventory.some((item) => item.type === type);
 
 const applyGoldBonus = (base: number, inventory: Item[]) => Math.floor(base * (hasRelic(inventory, 'relic_midas') ? 1.5 : 1));
 
 const applyXpBonus = (base: number, inventory: Item[]) => Math.round(base * (hasRelic(inventory, 'relic_scholar') ? 1.2 : 1));
-
-const loadInitialRevengeQueue = (): RevengeEntry[] => {
-    if (typeof window === 'undefined') return [];
-    try {
-        const raw = window.localStorage.getItem(REVENGE_STORAGE_KEY);
-        if (!raw) return [];
-        return JSON.parse(raw);
-    } catch (error) {
-        console.error('Failed to load revenge queue', error);
-        return [];
-    }
-};
-
-const persistRevengeQueue = (entries: RevengeEntry[]) => {
-    if (typeof window === 'undefined') return;
-    try {
-        window.localStorage.setItem(REVENGE_STORAGE_KEY, JSON.stringify(entries));
-    } catch (error) {
-        console.error('Failed to persist revenge queue', error);
-    }
-};
-
-const sanitizeForQueue = (question: Monster): RevengeEntry => ({
-    id: Date.now(),
-    type: question.type,
-    question: question.question,
-    options: question.options,
-    correct_index: question.correct_index,
-    explanation: question.explanation,
-    hint: question.hint,
-    skillTag: question.skillTag,
-    difficulty: question.difficulty,
-    questionMode: question.questionMode,
-    correctAnswer: question.correctAnswer,
-    sourceContextSpan: 'revenge'
-});
-
-type QuestionInput = Partial<Monster> & {
-    id: number;
-    type: Monster['type'];
-    question: string;
-    options: string[];
-    correct_index: number;
-    explanation: string;
-};
-
-const defaultModeForIndex = (index: number): QuestionMode => {
-    const bucket = index % 10;
-    if (bucket < 5) return 'choice';
-    if (bucket < 8) return 'typing';
-    return 'fill-blank';
-};
-
-const applyQuestionDefaults = (
-    question: QuestionInput,
-    index = 0
-) => {
-    const safeCorrectIndex = question.correct_index >= 0 && question.correct_index < question.options.length
-        ? question.correct_index
-        : 0;
-    const mode = question.questionMode || defaultModeForIndex(index);
-    const fallbackCorrect = question.options[safeCorrectIndex] || '';
-    const providedAnswer = question.correctAnswer?.trim();
-    const correctAnswer = providedAnswer || fallbackCorrect;
-
-    return {
-        ...question,
-        correct_index: safeCorrectIndex,
-        skillTag: question.skillTag || `${question.type}_core`,
-        difficulty: question.difficulty || 'medium',
-        questionMode: mode,
-        correctAnswer,
-        hp: question.isBoss ? 3 : 1,
-        maxHp: question.isBoss ? 3 : 1,
-        element: question.type === 'grammar' ? 'water' : question.type === 'vocab' ? 'fire' : 'grass',
-        sourceContextSpan: question.sourceContextSpan || 'mission'
-    } as Monster;
-};
-
-const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
-
-const accuracyFor = (stats: Record<string, { correct: number; total: number }>, question: Monster) => {
-    const key = getSkillKey(question);
-    const data = stats[key];
-    if (!data || data.total === 0) return 0;
-    return data.correct / data.total;
-};
-
-const masteryPressure = (mastery?: SkillMasteryRecord) => {
-    if (!mastery) return 2.5;
-    if (mastery.state === 'new') return 2.8;
-    if (mastery.state === 'learning') return 2.2;
-    if (mastery.state === 'consolidated') return 1.2;
-    return 0.5;
-};
-
-export function computeSkillPriority(
-    question: Monster,
-    stats: Record<string, { correct: number; total: number }>,
-    masteryBySkill: Record<string, SkillMasteryRecord>,
-    reviewRiskBySkill: Record<string, number>,
-    recentMistakeBySkill: Record<string, number>
-): number {
-    const key = getSkillKey(question);
-    const accuracy = accuracyFor(stats, question);
-    const accuracyPressure = 1 - accuracy;
-    const mastery = masteryBySkill[key];
-    const masteryScore = masteryPressure(mastery);
-    const reviewRisk = Math.min(3, reviewRiskBySkill[key] || 0);
-    const recentMistakes = Math.min(3, recentMistakeBySkill[key] || 0);
-    const difficultyWeight = question.difficulty === 'hard' ? 0.8 : question.difficulty === 'medium' ? 0.4 : 0.1;
-    return masteryScore + accuracyPressure + reviewRisk + recentMistakes + difficultyWeight;
-}
-
-const reorderBySkill = (
-    questions: Monster[],
-    currentIndex: number,
-    stats: Record<string, { correct: number; total: number }>,
-    masteryBySkill: Record<string, SkillMasteryRecord>,
-    reviewRiskBySkill: Record<string, number>,
-    recentMistakeBySkill: Record<string, number>
-) => {
-    if (currentIndex >= questions.length - 1) return questions;
-    const head = questions.slice(0, currentIndex + 1);
-    const tail = [...questions.slice(currentIndex + 1)];
-    tail.sort((a, b) => computeSkillPriority(b, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill) -
-        computeSkillPriority(a, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill));
-    return [...head, ...tail];
-};
+export const computeSkillPriority = computeSkillPriorityFromModule;
 
 export const BOSS_COMBO_THRESHOLD = 2;
-
-const formatSkillLabel = (skill: string) => skill.replace(/_/g, ' ');
-
-const MASTERY_STATE_RANK: Record<MasteryState, number> = {
-    new: 0,
-    learning: 1,
-    consolidated: 2,
-    mastered: 3
-};
 
 const masteryBonusByState: Record<MasteryState, { xp: number; gold: number }> = {
     new: { xp: 0, gold: 0 },
@@ -318,9 +195,6 @@ const masteryBonusByState: Record<MasteryState, { xp: number; gold: number }> = 
     consolidated: { xp: 16, gold: 12 },
     mastered: { xp: 24, gold: 20 }
 };
-
-const isMasteryUpgrade = (fromState: MasteryState, toState: MasteryState) =>
-    MASTERY_STATE_RANK[toState] > MASTERY_STATE_RANK[fromState];
 
 const applyProgressionReward = (stats: PlayerStats, xpGain: number, goldGain: number): PlayerStats => {
     let xp = stats.xp + xpGain;
@@ -340,66 +214,6 @@ const applyProgressionReward = (stats: PlayerStats, xpGain: number, goldGain: nu
     };
 };
 
-const findWeakSkill = (stats: Record<string, { correct: number; total: number }>) => {
-    const sorted = Object.entries(stats)
-        .filter(([, value]) => value.total >= 1)
-        .sort((a, b) => (a[1].correct / a[1].total) - (b[1].correct / b[1].total));
-    return sorted[0]?.[0];
-};
-
-const getSkillSnapshot = (stats: Record<string, { correct: number; total: number }>, skillTag?: string) => {
-    if (!skillTag) return null;
-    const row = stats[skillTag];
-    if (!row || row.total <= 0) return null;
-    return {
-        skillTag,
-        attempts: row.total,
-        accuracy: row.correct / row.total
-    };
-};
-
-const findBreakthroughSkill = (stats: Record<string, { correct: number; total: number }>) => {
-    const weakest = findWeakSkill(stats);
-    const snapshot = getSkillSnapshot(stats, weakest);
-    if (!snapshot) return null;
-    if (snapshot.attempts < 4 || snapshot.accuracy < 0.75) return null;
-    return snapshot;
-};
-
-const buildRunObjectiveBonuses = (
-    source: LearningEventSource,
-    stats: Record<string, { correct: number; total: number }>,
-    answers: UserAnswer[]
-): RunObjectiveBonus[] => {
-    const bonuses: RunObjectiveBonus[] = [];
-    const totalAnswers = answers.length;
-    const totalCorrect = answers.filter((answer) => answer.isCorrect).length;
-    const accuracy = totalAnswers > 0 ? totalCorrect / totalAnswers : 0;
-
-    if (source === 'srs' && totalAnswers >= 6 && accuracy >= 0.7) {
-        bonuses.push({
-            id: `bonus_review_${Date.now()}`,
-            title: 'Review Completion',
-            description: 'Completed a qualified SRS review run.',
-            xp: 30,
-            gold: 20
-        });
-    }
-
-    const breakthrough = findBreakthroughSkill(stats);
-    if (breakthrough) {
-        bonuses.push({
-            id: `bonus_breakthrough_${breakthrough.skillTag}_${Date.now()}`,
-            title: 'Weakness Breakthrough',
-            description: `${formatSkillLabel(breakthrough.skillTag)} reached ${Math.round(breakthrough.accuracy * 100)}% in ${breakthrough.attempts} attempts.`,
-            xp: 24,
-            gold: 18,
-            skillTag: breakthrough.skillTag
-        });
-    }
-
-    return bonuses;
-};
 
 const craftRelic = (inventory: Item[]) => {
     const ownedTypes = new Set(inventory.map((item) => item.type));
@@ -772,7 +586,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         let nextBossShieldProgress = bossShieldProgress;
         let nextMonsterHp = currentMonsterHp;
 
-        const reorderedQuestions = reorderBySkill(
+        const reorderedQuestions = reorderQuestionsBySkill(
             questions,
             currentIndex,
             updatedSkillStats,

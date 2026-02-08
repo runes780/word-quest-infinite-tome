@@ -93,6 +93,7 @@
 ## Phase 4：规模化基础（2026-04-11 ~ 2026-05-15）
 
 ### 架构与质量
+- [x] `gameStore` 第一阶段拆分：抽离 `questionFlow` 与 `revengeQueue` 模块
 - [ ] `gameStore` 按领域拆分（learning/combat/economy）
 - [ ] `BattleInterface` 拆分子模块
 - [x] 建立学习主流程 E2E（mission -> battle -> srs -> report）
