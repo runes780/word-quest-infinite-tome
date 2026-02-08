@@ -26,19 +26,39 @@ import {
     EngagementMetricRow,
     EngagementSnapshot,
     FSRSCard,
+    StudyActionExecution,
+    StudyActionExecutionSummary,
+    StudyActionPriority,
+    StudyActionStatus,
+    computeStudyActionExecutionSummaryFromRows,
     getEngagementSnapshot,
     getDueCardsWithPriority,
     getMasteryAggregateSnapshot,
     getMemoryStatus,
     getSRSStats,
+    getStudyActionExecutions,
+    getStudyActionExecutionSummary,
     getWeeklyLearningTasks,
     LearningTask,
-    MasteryAggregateSnapshot
+    MasteryAggregateSnapshot,
+    upsertStudyActionExecution
 } from '@/db/db';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
+import type { Monster } from '@/store/gameStore';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
+
+interface TonightActionItem {
+    id: string;
+    title: string;
+    description: string;
+    priority: StudyActionPriority;
+    estimatedMinutes: number;
+    evidence: string;
+    ctaLabel?: string;
+    onCta?: () => void;
+}
 
 export function ParentDashboard() {
     const { language } = useSettingsStore();
@@ -53,6 +73,8 @@ export function ParentDashboard() {
     const [srsDueCount, setSrsDueCount] = useState(0);
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
     const [learningTasks, setLearningTasks] = useState<LearningTask[]>([]);
+    const [studyActionExecutions, setStudyActionExecutions] = useState<StudyActionExecution[]>([]);
+    const [studyActionSummary, setStudyActionSummary] = useState<StudyActionExecutionSummary | null>(null);
     const [engagementSnapshot, setEngagementSnapshot] = useState<EngagementSnapshot | null>(null);
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
@@ -75,6 +97,8 @@ export function ParentDashboard() {
                 srsStats,
                 masteryData,
                 weeklyTasks,
+                actionRows,
+                actionSummary,
                 engagementData,
                 repeatedCauseData,
                 repeatedCauseTrendData,
@@ -86,6 +110,8 @@ export function ParentDashboard() {
                 getSRSStats(),
                 getMasteryAggregateSnapshot(range),
                 getWeeklyLearningTasks(),
+                getStudyActionExecutions(),
+                getStudyActionExecutionSummary(14),
                 getEngagementSnapshot(range),
                 getRepeatedCauseSnapshot(range),
                 getRepeatedCauseTrends([7, 14, 30]),
@@ -97,6 +123,8 @@ export function ParentDashboard() {
             setSrsDueCount(srsStats.due);
             setMasterySnapshot(masteryData);
             setLearningTasks(weeklyTasks);
+            setStudyActionExecutions(actionRows);
+            setStudyActionSummary(actionSummary);
             setEngagementSnapshot(engagementData);
             setRepeatedCauseSnapshot(repeatedCauseData);
             setRepeatedCauseTrends(repeatedCauseTrendData);
@@ -140,7 +168,16 @@ export function ParentDashboard() {
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
 
-    const handleStartTargetedReview = () => {
+    const actionStatusById = useMemo(() => {
+        return studyActionExecutions.reduce((acc, row) => {
+            acc[row.actionId] = row.status;
+            return acc;
+        }, {} as Record<string, StudyActionStatus>);
+    }, [studyActionExecutions]);
+
+    const actionSummary = studyActionSummary ?? computeStudyActionExecutionSummaryFromRows(studyActionExecutions, 14);
+
+    const handleStartTargetedReview = useCallback(() => {
         const pack = buildTargetedReviewPack({
             mistakes,
             focusCauseTag: repeatedAction.focusCauseTag,
@@ -150,7 +187,112 @@ export function ParentDashboard() {
         if (pack.monsters.length === 0) return;
         startGame(pack.monsters, `Targeted Review: ${repeatedAction.focusCauseTag || 'core_skills'}`, 'battle');
         setIsOpen(false);
-    };
+    }, [mistakes, repeatedAction.focusCauseTag, repeatedAction.recommendedQuestions, startGame, weakestSkill?.skill]);
+
+    const handleStartSrsFocus = useCallback(() => {
+        const reviewCards = dueCards.slice(0, Math.min(8, dueCards.length));
+        if (reviewCards.length === 0) return;
+        const monsters: Monster[] = reviewCards.map((card, idx) => {
+            const options = card.options && card.options.length >= 2
+                ? card.options
+                : [card.question || 'Review item', 'Option B', 'Option C', 'Option D'];
+            const safeIndex = card.correct_index >= 0 && card.correct_index < options.length ? card.correct_index : 0;
+            const fallbackType: Monster['type'] = card.type === 'grammar' || card.type === 'reading' ? card.type : 'vocab';
+            return {
+                id: Number(card.id || Date.now() + idx),
+                type: fallbackType,
+                question: card.question || 'Review item',
+                options,
+                correct_index: safeIndex,
+                explanation: card.explanation || 'Review the rule and recall actively.',
+                hint: card.hint,
+                skillTag: card.skillTag || `${fallbackType}_srs`,
+                difficulty: 'medium',
+                questionMode: 'choice',
+                correctAnswer: options[safeIndex]
+            };
+        });
+        startGame(monsters, `SRS Focus: ${reviewCards.length} cards`, 'srs');
+        setIsOpen(false);
+    }, [dueCards, startGame]);
+
+    const handleSetActionStatus = useCallback(async (
+        actionId: string,
+        status: StudyActionStatus,
+        priority: StudyActionPriority,
+        estimatedMinutes: number
+    ) => {
+        try {
+            await upsertStudyActionExecution({
+                actionId,
+                status,
+                priority,
+                estimatedMinutes
+            });
+            const [rows, summary] = await Promise.all([
+                getStudyActionExecutions(),
+                getStudyActionExecutionSummary(14)
+            ]);
+            setStudyActionExecutions(rows);
+            setStudyActionSummary(summary);
+        } catch (e) {
+            console.error(e);
+        }
+    }, []);
+
+    const tonightActions: TonightActionItem[] = useMemo(() => {
+        const actions: TonightActionItem[] = [
+            {
+                id: 'targeted_pack',
+                title: isZh ? '定向复习包' : 'Targeted Review Pack',
+                description: isZh
+                    ? `围绕 ${repeatedAction.focusCauseTag || '核心错因'} 完成 ${repeatedAction.recommendedQuestions} 题。`
+                    : `Run ${repeatedAction.recommendedQuestions} questions on ${repeatedAction.focusCauseTag || 'the top repeated cause'}.`,
+                priority: repeatedAction.status === 'not_met' ? 'urgent' : 'important',
+                estimatedMinutes: Math.max(8, repeatedAction.recommendedQuestions * 2),
+                evidence: isZh
+                    ? `证据：重复错因率 ${((repeatedCauseSnapshot?.repeatRate || 0) * 100).toFixed(1)}%`
+                    : `Evidence: repeated-cause rate ${((repeatedCauseSnapshot?.repeatRate || 0) * 100).toFixed(1)}%`,
+                ctaLabel: isZh ? '开始' : 'Start',
+                onCta: handleStartTargetedReview
+            },
+            {
+                id: 'srs_focus',
+                title: isZh ? 'SRS 到期复习' : 'SRS Due Review',
+                description: isZh
+                    ? `完成 ${Math.min(8, Math.max(1, srsDueCount))} 张到期卡。`
+                    : `Finish ${Math.min(8, Math.max(1, srsDueCount))} due cards in one focused run.`,
+                priority: srsDueCount >= 5 ? 'urgent' : 'important',
+                estimatedMinutes: Math.max(6, Math.min(20, srsDueCount * 2)),
+                evidence: isZh ? `证据：当前到期 ${srsDueCount} 张` : `Evidence: ${srsDueCount} cards due now`,
+                ctaLabel: dueCards.length > 0 ? (isZh ? '开练' : 'Launch') : undefined,
+                onCta: dueCards.length > 0 ? handleStartSrsFocus : undefined
+            },
+            {
+                id: 'questline_push',
+                title: isZh ? '任务线推进' : 'Questline Push',
+                description: isZh
+                    ? `本周已完成 ${weeklyTaskRows.filter((task) => task.status === 'completed').length}/${weeklyTaskRows.length}，优先推进未完成任务。`
+                    : `Weekly completion is ${weeklyTaskRows.filter((task) => task.status === 'completed').length}/${weeklyTaskRows.length}; push the next incomplete quest.`,
+                priority: weeklyTaskRows.some((task) => task.status === 'active') ? 'important' : 'optional',
+                estimatedMinutes: 10,
+                evidence: isZh
+                    ? `证据：任务完成率 ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`
+                    : `Evidence: quest completion ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`
+            }
+        ];
+        return actions;
+    }, [
+        isZh,
+        repeatedAction,
+        repeatedCauseSnapshot?.repeatRate,
+        srsDueCount,
+        dueCards.length,
+        weeklyTaskRows,
+        engagement?.weeklyTaskCompletion.currentRate,
+        handleStartSrsFocus,
+        handleStartTargetedReview
+    ]);
 
     const handleExportImage = async () => {
         if (!reportRef.current || !hasHistory) return;
@@ -459,6 +601,84 @@ export function ParentDashboard() {
                                             {isZh ? '暂无指标数据，继续完成学习活动后将自动更新。' : 'No metrics yet. Continue learning activities to populate the acceptance panel.'}
                                         </div>
                                     )}
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '今晚复习计划' : 'Tonight Study Plan'}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {isZh ? '14天执行率' : '14d execution'}: {(actionSummary.executionRate * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground mb-3">
+                                        {isZh
+                                            ? `已完成 ${actionSummary.completed} · 待办 ${actionSummary.pending} · 跳过 ${actionSummary.skipped}`
+                                            : `Completed ${actionSummary.completed} · Pending ${actionSummary.pending} · Skipped ${actionSummary.skipped}`}
+                                    </div>
+                                    <div className="space-y-2">
+                                        {tonightActions.map((action) => {
+                                            const status = actionStatusById[action.id] || 'pending';
+                                            const priorityTone = action.priority === 'urgent'
+                                                ? 'text-destructive'
+                                                : action.priority === 'important'
+                                                    ? 'text-amber-500'
+                                                    : 'text-muted-foreground';
+                                            const statusTone = status === 'completed'
+                                                ? 'text-green-500'
+                                                : status === 'skipped'
+                                                    ? 'text-muted-foreground'
+                                                    : 'text-amber-500';
+                                            return (
+                                                <div key={action.id} className="p-3 rounded-xl bg-background/40 border border-border/40">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div>
+                                                            <div className="text-sm font-semibold">{action.title}</div>
+                                                            <div className="text-xs text-muted-foreground">{action.description}</div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className={`text-[11px] font-semibold ${priorityTone}`}>
+                                                                {action.priority.toUpperCase()}
+                                                            </div>
+                                                            <div className={`text-[11px] font-semibold ${statusTone}`}>
+                                                                {status === 'completed'
+                                                                    ? (isZh ? '已完成' : 'Completed')
+                                                                    : status === 'skipped'
+                                                                        ? (isZh ? '已跳过' : 'Skipped')
+                                                                        : (isZh ? '待执行' : 'Pending')}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                                        {isZh ? `预计 ${action.estimatedMinutes} 分钟` : `${action.estimatedMinutes} min estimate`} · {action.evidence}
+                                                    </div>
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        {action.onCta && (
+                                                            <button
+                                                                onClick={action.onCta}
+                                                                className="px-2.5 py-1 rounded-md bg-primary text-primary-foreground text-[11px] font-semibold"
+                                                            >
+                                                                {action.ctaLabel || (isZh ? '开始' : 'Start')}
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleSetActionStatus(action.id, 'completed', action.priority, action.estimatedMinutes)}
+                                                            className="px-2.5 py-1 rounded-md border border-green-500/40 text-green-500 text-[11px] font-semibold"
+                                                        >
+                                                            {isZh ? '标记完成' : 'Mark Done'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleSetActionStatus(action.id, 'skipped', action.priority, action.estimatedMinutes)}
+                                                            className="px-2.5 py-1 rounded-md border border-border text-muted-foreground text-[11px] font-semibold"
+                                                        >
+                                                            {isZh ? '跳过' : 'Skip'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </section>
 
                                 <div className="grid lg:grid-cols-2 gap-6">

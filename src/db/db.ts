@@ -191,6 +191,30 @@ export interface EngagementSnapshot {
     nextDayRetention: EngagementMetricRow;
 }
 
+export type StudyActionPriority = 'urgent' | 'important' | 'optional';
+export type StudyActionStatus = 'pending' | 'completed' | 'skipped';
+
+export interface StudyActionExecution {
+    id?: number;
+    actionId: string;
+    dateKey: string; // YYYY-MM-DD
+    status: StudyActionStatus;
+    priority: StudyActionPriority;
+    estimatedMinutes: number;
+    source: 'guardian_dashboard';
+    completedAt?: number;
+    updatedAt: number;
+}
+
+export interface StudyActionExecutionSummary {
+    windowDays: number;
+    completed: number;
+    skipped: number;
+    pending: number;
+    totalTracked: number;
+    executionRate: number;
+}
+
 export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
 
 export interface SkillMasteryRecord {
@@ -229,6 +253,7 @@ export class WordQuestDB extends Dexie {
     playerProfile!: Table<GlobalPlayerProfile>;
     learningEvents!: Table<LearningEvent>;
     learningTasks!: Table<LearningTask>;
+    studyActionExecutions!: Table<StudyActionExecution>;
     skillMastery!: Table<SkillMasteryRecord>;
 
     constructor() {
@@ -284,6 +309,17 @@ export class WordQuestDB extends Dexie {
             playerProfile: '++id',
             learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
             learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
+        this.version(9).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
     }
@@ -790,6 +826,97 @@ export async function getEngagementSnapshot(windowDays = 14, lookbackDays = 120,
         .aboveOrEqual(start)
         .toArray();
     return computeEngagementSnapshotFromEvents(events, now, windowDays);
+}
+
+export function dateKeyFromTimestamp(timestamp: number): string {
+    return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export async function upsertStudyActionExecution(input: {
+    actionId: string;
+    status: StudyActionStatus;
+    priority: StudyActionPriority;
+    estimatedMinutes: number;
+    now?: number;
+}): Promise<StudyActionExecution> {
+    const now = input.now ?? Date.now();
+    const dateKey = dateKeyFromTimestamp(now);
+    const existing = await db.studyActionExecutions
+        .where('[actionId+dateKey]')
+        .equals([input.actionId, dateKey])
+        .first();
+
+    const payload: StudyActionExecution = {
+        id: existing?.id,
+        actionId: input.actionId,
+        dateKey,
+        status: input.status,
+        priority: input.priority,
+        estimatedMinutes: input.estimatedMinutes,
+        source: 'guardian_dashboard',
+        completedAt: input.status === 'completed'
+            ? (existing?.completedAt || now)
+            : undefined,
+        updatedAt: now
+    };
+
+    if (existing?.id) {
+        await db.studyActionExecutions.update(existing.id, payload);
+        return payload;
+    }
+
+    const id = await db.studyActionExecutions.add(payload);
+    return { ...payload, id };
+}
+
+export async function getStudyActionExecutions(dateKey = dateKeyFromTimestamp(Date.now())): Promise<StudyActionExecution[]> {
+    const rows = await db.studyActionExecutions
+        .where('dateKey')
+        .equals(dateKey)
+        .toArray();
+    return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export function computeStudyActionExecutionSummaryFromRows(
+    rows: StudyActionExecution[],
+    windowDays = 14,
+    now = Date.now()
+): StudyActionExecutionSummary {
+    const start = now - (windowDays * DAY_MS);
+    const inWindow = rows.filter((row) => row.updatedAt >= start && row.updatedAt <= now);
+    const latestByActionDay = new Map<string, StudyActionExecution>();
+    inWindow.forEach((row) => {
+        const key = `${row.actionId}::${row.dateKey}`;
+        const existing = latestByActionDay.get(key);
+        if (!existing || row.updatedAt > existing.updatedAt) {
+            latestByActionDay.set(key, row);
+        }
+    });
+
+    const latestRows = Array.from(latestByActionDay.values());
+    const completed = latestRows.filter((row) => row.status === 'completed').length;
+    const skipped = latestRows.filter((row) => row.status === 'skipped').length;
+    const pending = latestRows.filter((row) => row.status === 'pending').length;
+    const totalTracked = latestRows.length;
+    const executionRate = totalTracked > 0 ? completed / totalTracked : 0;
+
+    return {
+        windowDays,
+        completed,
+        skipped,
+        pending,
+        totalTracked,
+        executionRate
+    };
+}
+
+export async function getStudyActionExecutionSummary(windowDays = 14, now = Date.now()): Promise<StudyActionExecutionSummary> {
+    const start = now - (windowDays * DAY_MS);
+    const rows = await db.studyActionExecutions
+        .where('updatedAt')
+        .aboveOrEqual(start)
+        .toArray();
+    return computeStudyActionExecutionSummaryFromRows(rows, windowDays, now);
 }
 
 export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {
