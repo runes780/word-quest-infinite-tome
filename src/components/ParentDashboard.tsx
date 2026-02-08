@@ -90,15 +90,19 @@ export function ParentDashboard() {
     }, [snapshot, t.dashboard.noHistoryShort]);
 
     const averageAccuracy = snapshot ? Math.round((snapshot.totals.accuracy || 0) * 100) : 0;
+    const targetedSummary = snapshot?.targetedReview;
     const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
-    const repeatedAction = buildRepeatedCauseActionSuggestion(repeatedGoal, repeatedCauseSnapshot || undefined);
+    const repeatedAction = buildRepeatedCauseActionSuggestion(repeatedGoal, repeatedCauseSnapshot || undefined, {
+        targetedSessions: targetedSummary?.sessions || 0,
+        targetedAvgAccuracy: targetedSummary?.avgAccuracy || 0,
+        targetedSuccessRuns: targetedSummary?.successRuns || 0
+    });
 
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
     const dailyRows = snapshot?.daily ?? [];
 
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
-    const targetedSummary = snapshot?.targetedReview;
 
     const handleStartTargetedReview = () => {
         const pack = buildTargetedReviewPack({
@@ -254,6 +258,11 @@ export function ParentDashboard() {
                                         {isZh
                                             ? `建议今晚聚焦${repeatedAction.priorityWindowDays || range}天窗口，围绕 ${repeatedAction.focusCauseTag || '核心错因'} 完成 ${repeatedAction.recommendedQuestions} 题定向练习。`
                                             : `Tonight focus on the ${repeatedAction.priorityWindowDays || range}d window and run ${repeatedAction.recommendedQuestions} targeted questions on ${repeatedAction.focusCauseTag || 'the top cause tag'}.`}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground mt-1">
+                                        {isZh
+                                            ? `建议强度：${repeatedAction.intensity} · ${repeatedAction.rationale}`
+                                            : `Intensity: ${repeatedAction.intensity} · ${repeatedAction.rationale}`}
                                     </div>
                                     <div className="mt-3 flex justify-end">
                                         <button

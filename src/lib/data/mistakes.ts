@@ -114,6 +114,14 @@ export interface RepeatedCauseActionSuggestion {
     priorityWindowDays?: number;
     recommendedQuestions: number;
     reason: 'maintain' | 'reduce' | 'collect';
+    intensity: 'light' | 'standard' | 'intensive';
+    rationale: string;
+}
+
+export interface RepeatedCauseActionContext {
+    targetedSessions?: number;
+    targetedAvgAccuracy?: number;
+    targetedSuccessRuns?: number;
 }
 
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
@@ -395,29 +403,43 @@ export async function getRepeatedCauseGoalAgainstBaseline(
 
 export function buildRepeatedCauseActionSuggestion(
     summary: RepeatedCauseBaselineSummary,
-    snapshot?: RepeatedCauseSnapshot
+    snapshot?: RepeatedCauseSnapshot,
+    context: RepeatedCauseActionContext = {}
 ): RepeatedCauseActionSuggestion {
     const focusCauseTag = snapshot?.topCauses[0]?.causeTag;
     const notMetRows = summary.rows.filter((row) => row.status === 'not_met');
     const priority = notMetRows.sort((a, b) => b.currentRate - a.currentRate)[0] || summary.rows[0];
+    const sessions = context.targetedSessions || 0;
+    const avgAccuracy = context.targetedAvgAccuracy || 0;
+    const successRuns = context.targetedSuccessRuns || 0;
 
     if (summary.overallStatus === 'passed') {
         return {
             status: 'passed',
             focusCauseTag,
             priorityWindowDays: priority?.windowDays,
-            recommendedQuestions: 3,
-            reason: 'maintain'
+            recommendedQuestions: avgAccuracy < 0.75 && sessions >= 2 ? 4 : 3,
+            reason: 'maintain',
+            intensity: 'light',
+            rationale: 'Goal is met; keep a light maintenance pack to preserve retention.'
         };
     }
 
     if (summary.overallStatus === 'not_met') {
+        const intensive = sessions >= 2 && avgAccuracy < 0.65;
+        const recommendedQuestions = intensive ? 7 : 5;
         return {
             status: 'not_met',
             focusCauseTag,
             priorityWindowDays: priority?.windowDays,
-            recommendedQuestions: 5,
-            reason: 'reduce'
+            recommendedQuestions,
+            reason: 'reduce',
+            intensity: intensive ? 'intensive' : 'standard',
+            rationale: intensive
+                ? 'Goal is not met and recent targeted accuracy is low; increase volume for focused correction.'
+                : successRuns >= 2
+                    ? 'Goal is not met but execution quality exists; keep a standard focused pack.'
+                    : 'Goal is not met; run a standard focused pack on the top repeated cause.'
         };
     }
 
@@ -425,8 +447,10 @@ export function buildRepeatedCauseActionSuggestion(
         status: 'insufficient',
         focusCauseTag,
         priorityWindowDays: priority?.windowDays,
-        recommendedQuestions: 3,
-        reason: 'collect'
+        recommendedQuestions: sessions > 0 ? 4 : 3,
+        reason: 'collect',
+        intensity: 'standard',
+        rationale: 'Data is insufficient; run a short pack to collect stable evidence for goal evaluation.'
     };
 }
 

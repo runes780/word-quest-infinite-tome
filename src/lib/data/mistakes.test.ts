@@ -211,6 +211,7 @@ describe('buildRepeatedCauseActionSuggestion', () => {
         const action = buildRepeatedCauseActionSuggestion(summary, snapshot);
         expect(action.reason).toBe('reduce');
         expect(action.recommendedQuestions).toBe(5);
+        expect(action.intensity).toBe('standard');
         expect(action.focusCauseTag).toBe('tense_confusion');
     });
 
@@ -234,5 +235,33 @@ describe('buildRepeatedCauseActionSuggestion', () => {
         const action = buildRepeatedCauseActionSuggestion(summary);
         expect(action.reason).toBe('collect');
         expect(action.recommendedQuestions).toBe(3);
+        expect(action.intensity).toBe('standard');
+    });
+
+    test('escalates to intensive pack when not met and targeted accuracy is low', () => {
+        const summary = {
+            targetReduction: 0.2,
+            overallStatus: 'not_met' as const,
+            rows: [{
+                windowDays: 14,
+                targetReduction: 0.2,
+                status: 'not_met' as const,
+                currentRate: 0.6,
+                baselineRate: 0.7,
+                reductionFromBaseline: 0.14,
+                currentTagged: 12,
+                baselineTagged: 12,
+                baselineWindowOffset: 2
+            }]
+        };
+
+        const action = buildRepeatedCauseActionSuggestion(summary, undefined, {
+            targetedSessions: 3,
+            targetedAvgAccuracy: 0.5,
+            targetedSuccessRuns: 0
+        });
+        expect(action.reason).toBe('reduce');
+        expect(action.intensity).toBe('intensive');
+        expect(action.recommendedQuestions).toBe(7);
     });
 });
