@@ -7,7 +7,7 @@ import { GraduationCap, LineChart, RefreshCw, Download, Printer, X, Sparkles } f
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
-import { getMistakes, getRepeatedCauseSnapshot, MistakeRecord, RepeatedCauseSnapshot } from '@/lib/data/mistakes';
+import { getMistakes, getRepeatedCauseSnapshot, getRepeatedCauseTrends, MistakeRecord, RepeatedCauseSnapshot, RepeatedCauseTrend } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import { FSRSCard, getDueCardsWithPriority, getMasteryAggregateSnapshot, getMemoryStatus, getSRSStats, MasteryAggregateSnapshot } from '@/db/db';
 
@@ -26,6 +26,7 @@ export function ParentDashboard() {
     const [srsDueCount, setSrsDueCount] = useState(0);
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
+    const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -37,13 +38,14 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const [historyData, mistakeData, dueCardData, srsStats, masteryData, repeatedCauseData] = await Promise.all([
+            const [historyData, mistakeData, dueCardData, srsStats, masteryData, repeatedCauseData, repeatedCauseTrendData] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
                 getDueCardsWithPriority(3),
                 getSRSStats(),
                 getMasteryAggregateSnapshot(range),
-                getRepeatedCauseSnapshot(range)
+                getRepeatedCauseSnapshot(range),
+                getRepeatedCauseTrends([7, 14, 30])
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
@@ -51,6 +53,7 @@ export function ParentDashboard() {
             setSrsDueCount(srsStats.due);
             setMasterySnapshot(masteryData);
             setRepeatedCauseSnapshot(repeatedCauseData);
+            setRepeatedCauseTrends(repeatedCauseTrendData);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -299,6 +302,26 @@ export function ParentDashboard() {
                                                 {repeatedCauseSnapshot.topCauses.length > 0 && (
                                                     <div className="mt-1 text-muted-foreground">
                                                         Top: {repeatedCauseSnapshot.topCauses.map((row) => `${row.causeTag}(${row.count})`).join(', ')}
+                                                    </div>
+                                                )}
+                                                {repeatedCauseTrends.length > 0 && (
+                                                    <div className="mt-3 pt-2 border-t border-border/40 space-y-1">
+                                                        {repeatedCauseTrends.map((trend) => {
+                                                            const currentPct = (trend.current.repeatRate * 100).toFixed(1);
+                                                            const previousPct = (trend.previous.repeatRate * 100).toFixed(1);
+                                                            const deltaPct = Math.abs(trend.deltaRate * 100).toFixed(1);
+                                                            const improving = trend.deltaRate <= 0;
+                                                            const tone = improving ? 'text-green-500' : 'text-destructive';
+                                                            return (
+                                                                <div key={trend.windowDays} className="flex justify-between">
+                                                                    <span className="text-muted-foreground">{trend.windowDays}d</span>
+                                                                    <span>{currentPct}% vs {previousPct}%</span>
+                                                                    <span className={tone}>
+                                                                        {improving ? '↓' : '↑'} {deltaPct}pp
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>

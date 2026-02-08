@@ -1,5 +1,5 @@
 import type { MistakeRecord } from '@/db/db';
-import { computeRepeatedCauseSnapshot } from './mistakes';
+import { computeRepeatedCauseSnapshot, computeRepeatedCauseTrends } from './mistakes';
 
 function row(overrides: Partial<MistakeRecord>): MistakeRecord {
     return {
@@ -46,5 +46,30 @@ describe('computeRepeatedCauseSnapshot', () => {
         expect(snapshot.repeatedMistakes).toBe(0);
         expect(snapshot.repeatRate).toBe(0);
         expect(snapshot.topCauses).toHaveLength(0);
+    });
+});
+
+describe('computeRepeatedCauseTrends', () => {
+    test('calculates current vs previous window deltas for 7/14/30 days', () => {
+        const day = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const records: MistakeRecord[] = [
+            row({ mentorCauseTag: 'tense_confusion', timestamp: now - day }),
+            row({ mentorCauseTag: 'tense_confusion', timestamp: now - (2 * day) }),
+            row({ mentorCauseTag: 'inference_gap', timestamp: now - (3 * day) }),
+            row({ mentorCauseTag: 'collocation_mixup', timestamp: now - (8 * day) }),
+            row({ mentorCauseTag: 'collocation_mixup', timestamp: now - (9 * day) }),
+            row({ mentorCauseTag: 'inference_gap', timestamp: now - (10 * day) }),
+            row({ mentorCauseTag: 'inference_gap', timestamp: now - (11 * day) }),
+            row({ mentorCauseTag: 'inference_gap', timestamp: now - (20 * day) }),
+            row({ mentorCauseTag: 'inference_gap', timestamp: now - (21 * day) })
+        ];
+
+        const trends = computeRepeatedCauseTrends(records, [7, 14, 30], now);
+        expect(trends).toHaveLength(3);
+        expect(trends[0].windowDays).toBe(7);
+        expect(trends[0].current.taggedMistakes).toBeGreaterThan(0);
+        expect(typeof trends[0].deltaRate).toBe('number');
+        expect(typeof trends[1].relativeDelta).toBe('number');
     });
 });

@@ -63,6 +63,14 @@ export interface RepeatedCauseSnapshot {
     topCauses: RepeatedCauseRow[];
 }
 
+export interface RepeatedCauseTrend {
+    windowDays: number;
+    current: RepeatedCauseSnapshot;
+    previous: RepeatedCauseSnapshot;
+    deltaRate: number;
+    relativeDelta: number;
+}
+
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
     if (!isBrowser) return;
     try {
@@ -145,7 +153,14 @@ export function computeRepeatedCauseSnapshot(
     now = Date.now()
 ): RepeatedCauseSnapshot {
     const cutoff = now - (windowDays * 24 * 60 * 60 * 1000);
-    const inWindow = records.filter((row) => row.timestamp >= cutoff);
+    const inWindow = records.filter((row) => row.timestamp >= cutoff && row.timestamp <= now);
+    return computeRepeatedCauseSnapshotFromRows(inWindow, windowDays);
+}
+
+function computeRepeatedCauseSnapshotFromRows(
+    inWindow: MistakeRecord[],
+    windowDays: number
+): RepeatedCauseSnapshot {
     const tags = inWindow
         .map((row) => row.mentorCauseTag?.trim())
         .filter((value): value is string => Boolean(value));
@@ -174,9 +189,39 @@ export function computeRepeatedCauseSnapshot(
     };
 }
 
+export function computeRepeatedCauseTrends(
+    records: MistakeRecord[],
+    windows: number[] = [7, 14, 30],
+    now = Date.now()
+): RepeatedCauseTrend[] {
+    return windows.map((windowDays) => {
+        const ms = windowDays * 24 * 60 * 60 * 1000;
+        const currentRows = records.filter((row) => row.timestamp > now - ms && row.timestamp <= now);
+        const previousRows = records.filter((row) => row.timestamp > now - (2 * ms) && row.timestamp <= now - ms);
+
+        const current = computeRepeatedCauseSnapshotFromRows(currentRows, windowDays);
+        const previous = computeRepeatedCauseSnapshotFromRows(previousRows, windowDays);
+        const deltaRate = current.repeatRate - previous.repeatRate;
+        const relativeDelta = previous.repeatRate > 0 ? deltaRate / previous.repeatRate : 0;
+
+        return {
+            windowDays,
+            current,
+            previous,
+            deltaRate,
+            relativeDelta
+        };
+    });
+}
+
 export async function getRepeatedCauseSnapshot(windowDays = 14, limit = 200): Promise<RepeatedCauseSnapshot> {
     const mistakes = await getMistakes(limit);
     return computeRepeatedCauseSnapshot(mistakes, windowDays);
+}
+
+export async function getRepeatedCauseTrends(windows: number[] = [7, 14, 30], limit = 400): Promise<RepeatedCauseTrend[]> {
+    const mistakes = await getMistakes(limit);
+    return computeRepeatedCauseTrends(mistakes, windows);
 }
 
 export async function deleteMistake(id: number) {
