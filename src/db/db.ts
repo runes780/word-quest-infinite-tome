@@ -217,6 +217,17 @@ export interface AIRequestMetric {
     timestamp: number;
 }
 
+export type SessionRecoveryEventType = 'attempt' | 'success' | 'failure';
+
+export interface SessionRecoveryEvent {
+    id?: number;
+    eventType: SessionRecoveryEventType;
+    hasSave: boolean;
+    savedAgeMs?: number;
+    reason?: string;
+    timestamp: number;
+}
+
 export type StudyActionPriority = 'urgent' | 'important' | 'optional';
 export type StudyActionStatus = 'pending' | 'completed' | 'skipped';
 
@@ -265,6 +276,14 @@ export interface AIRequestMonitorSnapshot {
     status: 'healthy' | 'warning' | 'critical' | 'insufficient';
 }
 
+export interface SessionRecoverySnapshot {
+    windowDays: number;
+    generatedAt: number;
+    attempts: number;
+    successRate: EngagementMetricRow;
+    status: 'healthy' | 'warning' | 'critical' | 'insufficient';
+}
+
 export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
 
 export interface SkillMasteryRecord {
@@ -306,6 +325,7 @@ export class WordQuestDB extends Dexie {
     studyActionExecutions!: Table<StudyActionExecution>;
     guardianDashboardEvents!: Table<GuardianDashboardEvent>;
     aiRequestMetrics!: Table<AIRequestMetric>;
+    sessionRecoveryEvents!: Table<SessionRecoveryEvent>;
     skillMastery!: Table<SkillMasteryRecord>;
 
     constructor() {
@@ -397,6 +417,20 @@ export class WordQuestDB extends Dexie {
             studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
             guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
             aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
+        this.version(12).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
+            sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
     }
@@ -1178,6 +1212,79 @@ export async function getAIRequestMonitorSnapshot(
         .aboveOrEqual(start)
         .toArray();
     return computeAIRequestMonitorSnapshotFromRows(rows, now, windowDays);
+}
+
+export async function logSessionRecoveryEvent(
+    eventType: SessionRecoveryEventType,
+    input: {
+        hasSave: boolean;
+        savedAgeMs?: number;
+        reason?: string;
+        timestamp?: number;
+    }
+): Promise<void> {
+    await db.sessionRecoveryEvents.add({
+        eventType,
+        hasSave: input.hasSave,
+        savedAgeMs: input.savedAgeMs,
+        reason: input.reason,
+        timestamp: input.timestamp ?? Date.now()
+    });
+}
+
+export function computeSessionRecoverySnapshotFromEvents(
+    events: SessionRecoveryEvent[],
+    now = Date.now(),
+    windowDays = 14
+): SessionRecoverySnapshot {
+    const current = filterEventsInRange(events, getWindowRange(now, windowDays, 0));
+    const previous = filterEventsInRange(events, getWindowRange(now, windowDays, 1));
+    const currentAttempts = current.filter((event) => event.eventType === 'attempt').length;
+    const currentSuccesses = current.filter((event) => event.eventType === 'success').length;
+    const previousAttempts = previous.filter((event) => event.eventType === 'attempt').length;
+    const previousSuccesses = previous.filter((event) => event.eventType === 'success').length;
+
+    const successRate = createMetricRow({
+        numerator: currentSuccesses,
+        denominator: currentAttempts,
+        previousNumerator: previousSuccesses,
+        previousDenominator: previousAttempts,
+        target: 0.85,
+        targetType: 'absolute_rate',
+        minDenominator: 3
+    });
+
+    let status: SessionRecoverySnapshot['status'] = 'healthy';
+    if (currentAttempts < 3) {
+        status = 'insufficient';
+    } else if (successRate.status === 'not_met' && successRate.currentRate < 0.6) {
+        status = 'critical';
+    } else if (successRate.status === 'not_met' || successRate.status === 'insufficient') {
+        status = 'warning';
+    } else {
+        status = 'healthy';
+    }
+
+    return {
+        windowDays,
+        generatedAt: now,
+        attempts: currentAttempts,
+        successRate,
+        status
+    };
+}
+
+export async function getSessionRecoverySnapshot(
+    windowDays = 14,
+    lookbackDays = 120,
+    now = Date.now()
+): Promise<SessionRecoverySnapshot> {
+    const start = now - (lookbackDays * DAY_MS);
+    const rows = await db.sessionRecoveryEvents
+        .where('timestamp')
+        .aboveOrEqual(start)
+        .toArray();
+    return computeSessionRecoverySnapshotFromEvents(rows, now, windowDays);
 }
 
 export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {

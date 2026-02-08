@@ -34,6 +34,7 @@ import {
     StudyActionExecutionSummary,
     StudyActionPriority,
     StudyActionStatus,
+    SessionRecoverySnapshot,
     computeStudyActionExecutionSummaryFromRows,
     getAIRequestMonitorSnapshot,
     getGuardianAcceptanceSnapshot,
@@ -45,6 +46,7 @@ import {
     getStudyActionExecutionGoalSnapshot,
     getStudyActionExecutions,
     getStudyActionExecutionSummary,
+    getSessionRecoverySnapshot,
     getWeeklyLearningTasks,
     LearningTask,
     MasteryAggregateSnapshot,
@@ -96,6 +98,7 @@ export function ParentDashboard() {
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
     const [consistencyAudit, setConsistencyAudit] = useState<DataConsistencyAuditSnapshot | null>(null);
     const [aiMonitor, setAiMonitor] = useState<AIRequestMonitorSnapshot | null>(null);
+    const [sessionRecovery, setSessionRecovery] = useState<SessionRecoverySnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -126,7 +129,8 @@ export function ParentDashboard() {
                 repeatedCauseTrendData,
                 repeatedCauseBaseline,
                 consistencyAuditData,
-                aiMonitorData
+                aiMonitorData,
+                sessionRecoveryData
             ] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
@@ -146,7 +150,8 @@ export function ParentDashboard() {
                 getRepeatedCauseTrends([7, 14, 30]),
                 getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800),
                 getDataConsistencyAuditSnapshot(),
-                getAIRequestMonitorSnapshot(7)
+                getAIRequestMonitorSnapshot(7),
+                getSessionRecoverySnapshot(14)
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
@@ -169,6 +174,7 @@ export function ParentDashboard() {
             setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
             setConsistencyAudit(consistencyAuditData);
             setAiMonitor(aiMonitorData);
+            setSessionRecovery(sessionRecoveryData);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -904,6 +910,59 @@ export function ParentDashboard() {
                                     ) : (
                                         <div className="text-xs text-muted-foreground">
                                             {isZh ? '暂无 AI 请求样本，触发一次关卡生成/导师分析后将自动显示。' : 'No AI request sample yet. Generate one mission or mentor analysis to populate this panel.'}
+                                        </div>
+                                    )}
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '会话恢复监控' : 'Session Recovery Monitor'}
+                                        </div>
+                                        <span className={`text-xs font-semibold ${
+                                            sessionRecovery?.status === 'healthy'
+                                                ? 'text-green-500'
+                                                : sessionRecovery?.status === 'critical'
+                                                    ? 'text-destructive'
+                                                    : sessionRecovery?.status === 'warning'
+                                                        ? 'text-amber-500'
+                                                        : 'text-muted-foreground'
+                                        }`}>
+                                            {sessionRecovery?.status === 'healthy'
+                                                ? (isZh ? '健康' : 'Healthy')
+                                                : sessionRecovery?.status === 'critical'
+                                                    ? (isZh ? '严重' : 'Critical')
+                                                    : sessionRecovery?.status === 'warning'
+                                                        ? (isZh ? '预警' : 'Warning')
+                                                        : (isZh ? '样本不足' : 'Insufficient')}
+                                        </span>
+                                    </div>
+                                    {sessionRecovery ? (
+                                        <div className="grid md:grid-cols-2 gap-3">
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="恢复成功率"
+                                                labelEn="Recovery Success Rate"
+                                                metric={sessionRecovery.successRate}
+                                                targetTextZh="目标：恢复成功率 >= 85%"
+                                                targetTextEn="Target: recovery success >= 85%"
+                                            />
+                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
+                                                <div className="font-semibold">{isZh ? '恢复尝试' : 'Recovery Attempts'}</div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    {isZh ? '窗口' : 'Window'}: {sessionRecovery.windowDays}d
+                                                </div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    {isZh ? '尝试次数' : 'Attempts'}: {sessionRecovery.attempts}
+                                                </div>
+                                                <div className="mt-1 text-muted-foreground">
+                                                    {isZh ? '当前成功率' : 'Current rate'}: {(sessionRecovery.successRate.currentRate * 100).toFixed(1)}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground">
+                                            {isZh ? '暂无恢复样本。触发一次恢复流程后会自动判定。' : 'No recovery sample yet. Trigger one resume flow to evaluate this metric.'}
                                         </div>
                                     )}
                                 </section>

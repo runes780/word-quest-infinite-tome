@@ -15,7 +15,8 @@ import {
     seedSkillMasteryFromLearningEvents,
     getSkillMasteryMap,
     getSkillReviewRiskMap,
-    getRecentMistakeIntensity
+    getRecentMistakeIntensity,
+    logSessionRecoveryEvent
 } from '@/db/db';
 
 // Achievement stats update helper
@@ -1430,7 +1431,19 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     resumeGame: () => {
         const saved = loadSavedGameState();
-        if (!saved || saved.questions.length === 0) return false;
+        const savedAgeMs = saved ? Math.max(0, Date.now() - saved.savedAt) : undefined;
+        void logSessionRecoveryEvent('attempt', {
+            hasSave: Boolean(saved),
+            savedAgeMs
+        });
+        if (!saved || saved.questions.length === 0) {
+            void logSessionRecoveryEvent('failure', {
+                hasSave: false,
+                reason: 'missing_save',
+                savedAgeMs
+            });
+            return false;
+        }
         const restoredQuestions = saved.questions.map((q, idx) => applyQuestionDefaults(q, idx));
         const allSkillTags = Array.from(new Set(restoredQuestions.map((q) => getSkillKey(q))));
 
@@ -1473,6 +1486,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                 set({ masteryBySkill, reviewRiskBySkill, recentMistakeBySkill });
             })
             .catch(console.error);
+        void logSessionRecoveryEvent('success', {
+            hasSave: true,
+            savedAgeMs
+        });
         console.log('[Recovery] Game resumed from saved state');
         return true;
     },
