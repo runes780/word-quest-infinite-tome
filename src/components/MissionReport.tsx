@@ -14,7 +14,7 @@ import { updatePlayerProfile } from '@/db/db';
 import { translations } from '@/lib/translations';
 
 export function MissionReport() {
-    const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue, recordRunCompletion } = useGameStore();
+    const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue, recordRunCompletion, runObjectiveBonuses } = useGameStore();
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
@@ -151,6 +151,23 @@ export function MissionReport() {
                             <div className="text-3xl font-mono font-bold text-foreground">{questions.length}</div>
                         </div>
                     </div>
+
+                    {runObjectiveBonuses.length > 0 && (
+                        <div className="mb-8 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-left">
+                            <div className="text-sm font-bold text-emerald-400 uppercase tracking-wide mb-2">
+                                {language === 'zh' ? '目标奖励' : 'Objective Rewards'}
+                            </div>
+                            <div className="space-y-2">
+                                {runObjectiveBonuses.map((bonus) => (
+                                    <div key={bonus.id} className="text-sm">
+                                        <div className="font-semibold text-emerald-300">{bonus.title}</div>
+                                        <div className="text-xs text-muted-foreground">{bonus.description}</div>
+                                        <div className="text-xs text-emerald-400">+{bonus.xp} XP · +{bonus.gold} Gold</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {skillEntries.length > 0 && (
                         <div className="mb-8 bg-secondary/40 rounded-2xl p-6 border border-border/50">

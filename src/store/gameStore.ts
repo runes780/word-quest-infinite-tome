@@ -113,7 +113,7 @@ export interface Item {
 
 export interface Reward {
     id: string;
-    type: 'gold' | 'relic' | 'potion' | 'card' | 'fragment';
+    type: 'gold' | 'relic' | 'potion' | 'card' | 'fragment' | 'objective';
     value: number | string | KnowledgeCardReward;
     icon: string;
     label: string;
@@ -346,12 +346,129 @@ const findWeakSkill = (stats: Record<string, { correct: number; total: number }>
     return sorted[0]?.[0];
 };
 
+const getSkillSnapshot = (stats: Record<string, { correct: number; total: number }>, skillTag?: string) => {
+    if (!skillTag) return null;
+    const row = stats[skillTag];
+    if (!row || row.total <= 0) return null;
+    return {
+        skillTag,
+        attempts: row.total,
+        accuracy: row.correct / row.total
+    };
+};
+
+const findBreakthroughSkill = (stats: Record<string, { correct: number; total: number }>) => {
+    const weakest = findWeakSkill(stats);
+    const snapshot = getSkillSnapshot(stats, weakest);
+    if (!snapshot) return null;
+    if (snapshot.attempts < 4 || snapshot.accuracy < 0.75) return null;
+    return snapshot;
+};
+
+const buildRunObjectiveBonuses = (
+    source: LearningEventSource,
+    stats: Record<string, { correct: number; total: number }>,
+    answers: UserAnswer[]
+): RunObjectiveBonus[] => {
+    const bonuses: RunObjectiveBonus[] = [];
+    const totalAnswers = answers.length;
+    const totalCorrect = answers.filter((answer) => answer.isCorrect).length;
+    const accuracy = totalAnswers > 0 ? totalCorrect / totalAnswers : 0;
+
+    if (source === 'srs' && totalAnswers >= 6 && accuracy >= 0.7) {
+        bonuses.push({
+            id: `bonus_review_${Date.now()}`,
+            title: 'Review Completion',
+            description: 'Completed a qualified SRS review run.',
+            xp: 30,
+            gold: 20
+        });
+    }
+
+    const breakthrough = findBreakthroughSkill(stats);
+    if (breakthrough) {
+        bonuses.push({
+            id: `bonus_breakthrough_${breakthrough.skillTag}_${Date.now()}`,
+            title: 'Weakness Breakthrough',
+            description: `${formatSkillLabel(breakthrough.skillTag)} reached ${Math.round(breakthrough.accuracy * 100)}% in ${breakthrough.attempts} attempts.`,
+            xp: 24,
+            gold: 18,
+            skillTag: breakthrough.skillTag
+        });
+    }
+
+    return bonuses;
+};
+
 const craftRelic = (inventory: Item[]) => {
     const ownedTypes = new Set(inventory.map((item) => item.type));
     const options = RELICS.filter((relic) => !ownedTypes.has(relic.type));
     if (options.length === 0) return null;
     const relic = options[Math.floor(Math.random() * options.length)];
     return { ...relic, id: `${relic.id}_${Date.now()}` };
+};
+
+const buildBossRewardBundle = (
+    inventory: Item[],
+    skillStats: Record<string, { correct: number; total: number }>
+): Reward[] => {
+    const rewards: Reward[] = [];
+    const ownedRelicTypes = new Set(inventory.map((entry) => entry.type));
+    const availableRelics = RELICS.filter((relic) => !ownedRelicTypes.has(relic.type));
+
+    const guaranteedGold = applyGoldBonus(100, inventory);
+    rewards.push({
+        id: `gold_${Date.now()}`,
+        type: 'gold',
+        value: guaranteedGold,
+        icon: '💰',
+        label: `${guaranteedGold} Gold`,
+        description: 'Guaranteed mission payout.'
+    });
+
+    rewards.push({
+        id: `fragment_${Date.now()}`,
+        type: 'fragment',
+        value: 2,
+        icon: '🪨',
+        label: 'Root Fragment x2',
+        description: 'Guaranteed progression drop with crafting pity.'
+    });
+
+    const breakthrough = findBreakthroughSkill(skillStats);
+    if (breakthrough) {
+        rewards.push({
+            id: `objective_breakthrough_${Date.now()}`,
+            type: 'objective',
+            value: 'weakness_breakthrough',
+            icon: '🎯',
+            label: 'Weakness Breakthrough',
+            description: `${formatSkillLabel(breakthrough.skillTag)} stabilized at ${Math.round(breakthrough.accuracy * 100)}%.`
+        });
+    }
+
+    if (availableRelics.length > 0) {
+        const guaranteedRelic = availableRelics[0];
+        rewards.push({
+            id: `relic_${Date.now()}`,
+            type: 'relic',
+            value: guaranteedRelic.id,
+            icon: guaranteedRelic.icon,
+            label: guaranteedRelic.name,
+            description: 'Guaranteed relic drop (pity protection active).'
+        });
+    } else {
+        rewards.push({
+            id: `potion_${Date.now()}`,
+            type: 'potion',
+            value: 'potion_clarity',
+            icon: '💎',
+            label: 'Clarity Potion',
+            description: 'All relics collected, converted to guaranteed utility drop.'
+        });
+    }
+
+    return rewards;
 };
 
 
@@ -371,6 +488,15 @@ export interface MasteryCelebration {
     bonusXp: number;
     bonusGold: number;
     timestamp: number;
+}
+
+export interface RunObjectiveBonus {
+    id: string;
+    title: string;
+    description: string;
+    xp: number;
+    gold: number;
+    skillTag?: string;
 }
 
 interface GameState {
@@ -403,6 +529,7 @@ interface GameState {
     reviewRiskBySkill: Record<string, number>;
     recentMistakeBySkill: Record<string, number>;
     masteryCelebrations: MasteryCelebration[];
+    runObjectiveBonuses: RunObjectiveBonus[];
 
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource) => void;
@@ -545,6 +672,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     reviewRiskBySkill: {},
     recentMistakeBySkill: {},
     masteryCelebrations: [],
+    runObjectiveBonuses: [],
 
     startGame: (questions, context, source = 'battle') => {
         const revengeEntries = [...get().revengeQueue];
@@ -580,7 +708,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             masteryBySkill: state.masteryBySkill,
             reviewRiskBySkill: state.reviewRiskBySkill,
             recentMistakeBySkill: state.recentMistakeBySkill,
-            masteryCelebrations: []
+            masteryCelebrations: [],
+            runObjectiveBonuses: []
         }));
         persistRevengeQueue([]);
 
@@ -1042,87 +1171,67 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentIndex: 0,
         isGameOver: false,
         isVictory: false,
-        pendingRewards: [],
-        showRewardScreen: false,
-        bossShieldProgress: 0,
-        clarityEffect: null,
-        knowledgeCards: state.knowledgeCards,
-        rootFragments: state.rootFragments,
+            pendingRewards: [],
+            showRewardScreen: false,
+            bossShieldProgress: 0,
+            clarityEffect: null,
+            knowledgeCards: state.knowledgeCards,
+            rootFragments: state.rootFragments,
             sessionSource: 'battle',
             questionStartedAt: Date.now(),
-            masteryCelebrations: []
+            masteryCelebrations: [],
+            runObjectiveBonuses: []
         })),
 
     generateRewards: (type) => {
-        const rewards: Reward[] = [];
         const { playerStats, inventory, skillStats } = get();
+        let rewards: Reward[] = [];
 
-        // Gold Reward
-        const baseGold = type === 'boss' ? 100 : type === 'elite' ? 50 : 20;
-        const goldAmount = applyGoldBonus(baseGold, inventory);
+        if (type === 'boss') {
+            rewards = buildBossRewardBundle(inventory, skillStats);
+        } else {
+            const baseGold = type === 'elite' ? 50 : 20;
+            const goldAmount = applyGoldBonus(baseGold, inventory);
+            rewards.push({
+                id: `gold_${Date.now()}`,
+                type: 'gold',
+                value: goldAmount,
+                icon: '💰',
+                label: `${goldAmount} Gold`,
+                description: 'Guaranteed mission payout.'
+            });
 
-        rewards.push({
-            id: `gold_${Date.now()}`,
-            type: 'gold',
-            value: goldAmount,
-            icon: '💰',
-            label: `${goldAmount} Gold`,
-            description: 'Currency for the shop'
-        });
-
-        // Relic Reward (Guaranteed for Boss, Chance for others)
-        if (type === 'boss' || (type === 'elite' && Math.random() > 0.5)) {
-            // Find unowned relics
-            const ownedRelicTypes = new Set(inventory.map(i => i.type));
-            const availableRelics = RELICS.filter(r => !ownedRelicTypes.has(r.type));
-
-            if (availableRelics.length > 0) {
-                const randomRelic = availableRelics[Math.floor(Math.random() * availableRelics.length)];
+            const weakSkill = findWeakSkill(skillStats);
+            if (weakSkill && playerStats.streak >= 2) {
                 rewards.push({
-                    id: `relic_${Date.now()}`,
-                    type: 'relic',
-                    value: randomRelic.id,
-                    icon: randomRelic.icon,
-                    label: randomRelic.name,
-                    description: randomRelic.description
+                    id: `card_${Date.now()}`,
+                    type: 'card',
+                    value: { skillTag: weakSkill, hint: formatSkillLabel(weakSkill) },
+                    icon: '📘',
+                    label: `Knowledge Card: ${formatSkillLabel(weakSkill)}`,
+                    description: 'Targeted practice reward for current weakness.'
                 });
             }
-        }
 
-        const weakSkill = findWeakSkill(skillStats);
-        if ((type === 'boss' || playerStats.streak >= 3) && weakSkill) {
-            rewards.push({
-                id: `card_${Date.now()}`,
-                type: 'card',
-                value: { skillTag: weakSkill, hint: formatSkillLabel(weakSkill) },
-                icon: '📘',
-                label: `Knowledge Card: ${formatSkillLabel(weakSkill)}`,
-                description: 'Adds a targeted review card based on your weakest skill.'
-            });
-        }
-
-        const fragmentsAwarded = type === 'boss' ? 2 : playerStats.streak >= 3 ? 2 : 1;
-        if (fragmentsAwarded > 0) {
             rewards.push({
                 id: `fragment_${Date.now()}`,
                 type: 'fragment',
-                value: fragmentsAwarded,
+                value: playerStats.streak >= 3 ? 2 : 1,
                 icon: '🪨',
-                label: `Root Fragment x${fragmentsAwarded}`,
-                description: 'Collect fragments to craft rare relics. Perfekt streaks grant extras.'
+                label: `Root Fragment x${playerStats.streak >= 3 ? 2 : 1}`,
+                description: 'Guaranteed progression drop.'
             });
-        }
 
-        // Potion Reward (Chance)
-        if (Math.random() > 0.3) {
-            rewards.push({
-                id: `potion_${Date.now()}`,
-                type: 'potion',
-                value: 'potion_health',
-                icon: '❤️',
-                label: 'Health Potion',
-                description: 'Restores 1 Heart'
-            });
+            if (playerStats.streak >= 3) {
+                rewards.push({
+                    id: `potion_${Date.now()}`,
+                    type: 'potion',
+                    value: 'potion_health',
+                    icon: '❤️',
+                    label: 'Health Potion',
+                    description: 'Streak guarantee reward.'
+                });
+            }
         }
 
         set({ pendingRewards: rewards, showRewardScreen: true });
@@ -1134,7 +1243,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (!reward) return;
 
         if (reward.type === 'gold') {
-            set({ playerStats: { ...playerStats, gold: playerStats.gold + (reward.value as number) } });
+            const goldValue = Number(reward.value || 0);
+            set({ playerStats: { ...playerStats, gold: playerStats.gold + goldValue } });
+            updateAchievementStats({ totalGoldEarned: goldValue });
+            updatePlayerProfile({ totalGold: goldValue }).catch(console.error);
         } else if (reward.type === 'relic') {
             const relic = RELICS.find(r => r.id === reward.value);
             if (relic) {
@@ -1147,14 +1259,16 @@ export const useGameStore = create<GameState>((set, get) => ({
                 updateAchievementStats({ relicsOwned: uniqueRelics });
             }
         } else if (reward.type === 'potion') {
-            // Simplified potion adding
+            const potionType = reward.value === 'potion_clarity' ? 'potion_clarity' : 'potion_health';
+            const potionName = potionType === 'potion_clarity' ? 'Clarity Potion' : 'Health Potion';
+            const potionDescription = potionType === 'potion_clarity' ? 'Hides wrong options once' : 'Restores 1 Heart';
             const potion: Item = {
                 id: `potion_${Date.now()}`,
-                type: 'potion_health',
-                name: 'Health Potion',
-                description: 'Restores 1 Heart',
+                type: potionType,
+                name: potionName,
+                description: potionDescription,
                 cost: 50,
-                icon: '❤️'
+                icon: potionType === 'potion_clarity' ? '💎' : '❤️'
             };
             set({ inventory: [...inventory, potion] });
         } else if (reward.type === 'card') {
@@ -1210,6 +1324,25 @@ export const useGameStore = create<GameState>((set, get) => ({
                     showRewardScreen: extraRewards.length > 0 ? true : state.showRewardScreen
                 };
             });
+        } else if (reward.type === 'objective') {
+            const objectiveRewards = {
+                weakness_breakthrough: { xp: 24, gold: 18 }
+            } as const;
+            const payload = objectiveRewards[String(reward.value) as keyof typeof objectiveRewards];
+            if (payload) {
+                set((state) => ({
+                    playerStats: applyProgressionReward(state.playerStats, payload.xp, payload.gold)
+                }));
+                updateAchievementStats({
+                    totalGoldEarned: payload.gold,
+                    totalXpEarned: payload.xp
+                });
+                updatePlayerProfile({
+                    totalXp: payload.xp,
+                    totalGold: payload.gold,
+                    dailyXpEarned: payload.xp
+                }).catch(console.error);
+            }
         }
 
         // Remove claimed reward from latest state
@@ -1253,6 +1386,26 @@ export const useGameStore = create<GameState>((set, get) => ({
             vocabMastered,
             grammarMastered
         });
+        const objectiveBonuses = buildRunObjectiveBonuses(state.sessionSource, state.skillStats, state.userAnswers);
+        if (objectiveBonuses.length > 0) {
+            const totalObjectiveXp = objectiveBonuses.reduce((sum, bonus) => sum + bonus.xp, 0);
+            const totalObjectiveGold = objectiveBonuses.reduce((sum, bonus) => sum + bonus.gold, 0);
+            set((current) => ({
+                playerStats: applyProgressionReward(current.playerStats, totalObjectiveXp, totalObjectiveGold),
+                runObjectiveBonuses: objectiveBonuses
+            }));
+            updateAchievementStats({
+                totalGoldEarned: totalObjectiveGold,
+                totalXpEarned: totalObjectiveXp
+            });
+            updatePlayerProfile({
+                totalXp: totalObjectiveXp,
+                totalGold: totalObjectiveGold,
+                dailyXpEarned: totalObjectiveXp
+            }).catch(console.error);
+        } else {
+            set({ runObjectiveBonuses: [] });
+        }
         logLearningEvent({
             eventType: 'session_complete',
             source: state.sessionSource
@@ -1306,7 +1459,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             masteryBySkill: {},
             reviewRiskBySkill: {},
             recentMistakeBySkill: {},
-            masteryCelebrations: []
+            masteryCelebrations: [],
+            runObjectiveBonuses: []
         });
 
         seedSkillMasteryFromLearningEvents()
