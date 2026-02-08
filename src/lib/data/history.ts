@@ -36,6 +36,14 @@ export interface DashboardSummary {
     records: HistoryRecord[];
     daily: DailyAccuracyRow[];
     skills: SkillAccuracyRow[];
+    targetedReview: {
+        sessions: number;
+        avgAccuracy: number;
+        avgScore: number;
+        successRuns: number;
+        lastFocusTag?: string;
+        lastRunAt?: number;
+    };
     totals: {
         missions: number;
         correct: number;
@@ -137,6 +145,53 @@ function computeSkillSeries(records: HistoryRecord[]): SkillAccuracyRow[] {
         .sort((a, b) => a.accuracy - b.accuracy);
 }
 
+function parseTargetedFocusTag(levelTitle: string): string | undefined {
+    if (!levelTitle.startsWith('Targeted Review:')) return undefined;
+    const raw = levelTitle.split(':')[1]?.trim();
+    return raw || undefined;
+}
+
+export function getTargetedReviewSummary(records: HistoryRecord[]) {
+    const targeted = records
+        .filter((record) => parseTargetedFocusTag(record.levelTitle || '') !== undefined)
+        .sort((a, b) => b.timestamp - a.timestamp);
+
+    if (targeted.length === 0) {
+        return {
+            sessions: 0,
+            avgAccuracy: 0,
+            avgScore: 0,
+            successRuns: 0,
+            lastFocusTag: undefined,
+            lastRunAt: undefined
+        };
+    }
+
+    const aggregate = targeted.reduce((acc, record) => {
+        const counts = deriveCounts(record);
+        const accuracy = counts.total > 0 ? counts.correct / counts.total : 0;
+        acc.totalCorrect += counts.correct;
+        acc.totalQuestions += counts.total;
+        acc.totalScore += record.score || 0;
+        if (accuracy >= 0.8) acc.successRuns += 1;
+        return acc;
+    }, {
+        totalCorrect: 0,
+        totalQuestions: 0,
+        totalScore: 0,
+        successRuns: 0
+    });
+
+    return {
+        sessions: targeted.length,
+        avgAccuracy: aggregate.totalQuestions > 0 ? aggregate.totalCorrect / aggregate.totalQuestions : 0,
+        avgScore: aggregate.totalScore / targeted.length,
+        successRuns: aggregate.successRuns,
+        lastFocusTag: parseTargetedFocusTag(targeted[0].levelTitle || ''),
+        lastRunAt: targeted[0].timestamp
+    };
+}
+
 export async function logMissionHistory(summary: MissionSummaryInput) {
     if (!isBrowser) return;
     try {
@@ -177,6 +232,7 @@ export async function getDashboardSummary(days = 7, limit = 60): Promise<Dashboa
     const records = await getMissionHistory(limit);
     const daily = computeDailySeries(records, days);
     const skills = computeSkillSeries(records);
+    const targetedReview = getTargetedReviewSummary(records);
     const totals = records.reduce(
         (acc, record) => {
             const counts = deriveCounts(record);
@@ -190,5 +246,5 @@ export async function getDashboardSummary(days = 7, limit = 60): Promise<Dashboa
     totals.accuracy = totals.total > 0 ? totals.correct / totals.total : 0;
     totals.lastActive = records[0]?.timestamp;
 
-    return { records, daily, skills, totals };
+    return { records, daily, skills, targetedReview, totals };
 }

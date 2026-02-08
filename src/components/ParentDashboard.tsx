@@ -98,6 +98,7 @@ export function ParentDashboard() {
 
     const recentMistakes = mistakes.slice(0, 5);
     const weakestSkill = skillRows[0];
+    const targetedSummary = snapshot?.targetedReview;
 
     const handleStartTargetedReview = () => {
         const pack = buildTargetedReviewPack({
@@ -262,6 +263,41 @@ export function ParentDashboard() {
                                             {isZh ? '开始定向复习包' : 'Start Targeted Pack'}
                                         </button>
                                     </div>
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '定向复习执行结果' : 'Targeted Pack Outcomes'}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {targetedSummary?.sessions || 0} {isZh ? '次' : 'runs'}
+                                        </span>
+                                    </div>
+                                    {(targetedSummary?.sessions || 0) > 0 ? (
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '平均正确率' : 'Avg Accuracy'}</div>
+                                                <div className="font-semibold">{Math.round((targetedSummary?.avgAccuracy || 0) * 100)}%</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '平均得分' : 'Avg Score'}</div>
+                                                <div className="font-semibold">{Math.round(targetedSummary?.avgScore || 0)}</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '高质量轮次' : 'High-quality Runs'}</div>
+                                                <div className="font-semibold">{targetedSummary?.successRuns || 0}</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '最近焦点' : 'Last Focus'}</div>
+                                                <div className="font-semibold truncate">{targetedSummary?.lastFocusTag || '-'}</div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-muted-foreground">
+                                            {isZh ? '还没有定向复习执行记录。建议先启动一次定向复习包。' : 'No targeted execution yet. Start one targeted pack to establish baseline outcomes.'}
+                                        </div>
+                                    )}
                                 </section>
 
                                 <div className="grid lg:grid-cols-2 gap-6">
