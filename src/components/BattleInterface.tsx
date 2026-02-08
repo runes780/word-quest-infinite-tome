@@ -20,6 +20,7 @@ import { TypingQuestion } from './TypingQuestion';
 import { FillBlankQuestion } from './FillBlankQuestion';
 import { VoiceInput } from './VoiceInput';
 import { Achievement, AchievementToast } from './AchievementSystem';
+import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 
 export function BattleInterface() {
     const {
@@ -155,7 +156,7 @@ export function BattleInterface() {
 
             // Import cache and fallback functions dynamically to avoid SSR issues
             const { cacheQuestions, getCachedQuestions, hashContext } = await import('@/db/db');
-            const { getBalancedFallbackQuestions } = await import('@/lib/data/fallbackQuestions');
+            const { getRandomFallbackQuestions } = await import('@/lib/data/fallbackQuestions');
             const contextHash = hashContext(context);
 
             try {
@@ -181,16 +182,21 @@ export function BattleInterface() {
                 const data = JSON.parse(cleanJson);
 
                 if (data.monsters && Array.isArray(data.monsters)) {
+                    const normalizedWave = normalizeMissionMonsters(data.monsters);
+                    if (normalizedWave.length === 0) {
+                        throw new Error('Generated mission has no valid questions');
+                    }
+
                     // Cache questions for future use
                     try {
-                        const questionsToCache = data.monsters.map((m: Record<string, unknown>) => ({
-                            question: m.question as string,
-                            options: m.options as string[],
-                            correct_index: m.correct_index as number,
-                            type: (m.type as string) || 'vocab',
-                            explanation: m.explanation as string,
-                            hint: m.hint as string | undefined,
-                            skillTag: m.skillTag as string | undefined,
+                        const questionsToCache = normalizedWave.map((m) => ({
+                            question: m.question,
+                            options: m.options,
+                            correct_index: m.correct_index,
+                            type: m.type,
+                            explanation: m.explanation,
+                            hint: m.hint,
+                            skillTag: m.skillTag,
                             contextHash,
                             timestamp: Date.now(),
                             used: false
@@ -201,7 +207,7 @@ export function BattleInterface() {
                         console.warn('[Cache] Failed to cache questions:', cacheError);
                     }
 
-                    setTimeout(() => addQuestions(data.monsters), 500);
+                    setTimeout(() => addQuestions(normalizedWave), 500);
                 }
             } catch (e) {
                 console.error("API failed, trying cache/fallback", e);
@@ -220,11 +226,12 @@ export function BattleInterface() {
                         hint: c.hint,
                         skillTag: c.skillTag
                     }));
-                    setTimeout(() => addQuestions(questions), 500);
+                    const normalizedCached = normalizeMissionMonsters(questions);
+                    setTimeout(() => addQuestions(normalizedCached), 500);
                 } else {
                     // Use local fallback questions
                     console.log('[Fallback] Using local question bank');
-                    const fallback = getBalancedFallbackQuestions(5);
+                    const fallback = getRandomFallbackQuestions(5, 'easy');
                     const questions = fallback.map(f => ({
                         id: f.id,
                         type: f.type,
@@ -235,7 +242,8 @@ export function BattleInterface() {
                         hint: f.hint,
                         skillTag: f.skillTag
                     }));
-                    setTimeout(() => addQuestions(questions), 500);
+                    const normalizedFallback = normalizeMissionMonsters(questions);
+                    setTimeout(() => addQuestions(normalizedFallback), 500);
                 }
             } finally {
                 setIsGeneratingMore(false);
@@ -486,9 +494,10 @@ export function BattleInterface() {
             <div className="grid lg:grid-cols-2 gap-8 items-stretch min-h-[500px]">
 
                 {/* Left Column: Battle Scene */}
-                <div className="relative bg-slate-900/50 rounded-3xl border-2 border-primary/20 overflow-hidden flex flex-col items-center justify-center p-8 shadow-inner">
+                <div className="relative battle-arena rounded-3xl border-2 border-primary/15 overflow-hidden flex flex-col items-center justify-center p-8 shadow-soft">
                     {/* Background Atmosphere */}
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-purple-900/20 via-slate-900/50 to-slate-950/80" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.24),transparent_46%),radial-gradient(circle_at_84%_78%,rgba(99,102,241,0.20),transparent_44%),radial-gradient(circle_at_52%_96%,rgba(251,191,36,0.16),transparent_42%)] dark:bg-[radial-gradient(circle_at_25%_20%,rgba(168,85,247,0.24),transparent_46%),radial-gradient(circle_at_80%_82%,rgba(14,165,233,0.22),transparent_44%)]" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-sky-50/30 to-blue-100/45 dark:from-slate-900/35 dark:via-slate-900/15 dark:to-slate-950/35" />
 
                     {/* Battle Stage */}
                     <div className="relative z-10 w-full flex justify-between items-center gap-4">
@@ -568,7 +577,7 @@ export function BattleInterface() {
                         </div>
 
                         {/* VS Badge */}
-                        <div className="text-4xl font-black text-white/10 italic absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
+                        <div className="text-4xl font-black text-primary/15 dark:text-white/10 italic absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none">
                             {t.battle.vs}
                         </div>
 

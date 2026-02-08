@@ -23,8 +23,10 @@ Generate **6-8** questions. Each must test a skill, not a random detail. Distrib
 # Constraints
 - **Question Stem**: short (<15 words), simple A1/A2 vocabulary.
 - **Options**: 4 options. 1 correct, 3 plausible distractors. Never output speaker names or labels (e.g., "Tom:", "Mike") as the correct option.
-- **Hint**: Subtle clue in Chinese or simple English. If a word is above A2, include a simple definition/translation.
-- **Explanation**: In Simplified Chinese. Explain the rule or meaning (not just restating the answer). Tie back to the grammar/word in the text.
+- **No placeholder options**: Never output bare placeholders like "A", "B", "C", "D", "Option A", or "Choice 1".
+- **Hint**: One short English clue in simple words.
+- **Explanation**: One short English explanation in simple words (not just restating the answer).
+- **Language**: Question, options, hint, explanation, and correctAnswer must be English-only text (no Chinese characters).
 - **Question Mode Mix (mandatory)**:
   - 50% "choice"
   - 30% "typing"
@@ -45,7 +47,7 @@ Each "monster" represents a question and includes:
 - "correct_index": Integer (0-3) indicating the correct option.
 - "correctAnswer": canonical text answer (required even for choice mode).
 - "hint": A short helpful hint string (e.g. "Look for the keyword 'Yesterday'").
-- "explanation": A short, encouraging explanation in Chinese (The battle log). E.g., "Great! 'Go' 变成过去式是 'Went'，不要被 'Goed' 骗了哦！"
+- "explanation": A short, encouraging explanation in English (The battle log). E.g., "Great! The past tense of 'go' is 'went'."
 - "learningObjectiveId": optional short objective id string.
 - "sourceContextSpan": optional quote/span from source text.
 `;

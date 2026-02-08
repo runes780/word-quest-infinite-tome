@@ -15,7 +15,7 @@ import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
 import { FSRSCard } from '@/db/db';
-import { rebalanceQuestionModes } from '@/lib/data/questionModes';
+import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -57,7 +57,7 @@ export function InputSection() {
             }
 
             // Store questions and show blessing selection
-            const normalizedMonsters = normalizeMonsters(data.monsters);
+            const normalizedMonsters = normalizeMissionMonsters(data.monsters);
             setPendingQuestions({ monsters: normalizedMonsters, context: input });
             setShowBlessingSelection(true);
             setFallbackLevel(null);
@@ -76,7 +76,7 @@ export function InputSection() {
 
     const handleUseSample = () => {
         if (!fallbackLevel) return;
-        const normalizedMonsters = normalizeMonsters(fallbackLevel.monsters);
+        const normalizedMonsters = normalizeMissionMonsters(fallbackLevel.monsters);
         // Store sample and show blessing selection
         setPendingQuestions({
             monsters: normalizedMonsters,
@@ -195,8 +195,9 @@ export function InputSection() {
                         questionMode: 'choice' as const,
                         correctAnswer: card.options[card.correct_index] || ''
                     }));
-                    if (monsters.length > 0) {
-                        startGame(monsters, 'SRS Review', 'srs');
+                    const normalized = normalizeMissionMonsters(monsters);
+                    if (normalized.length > 0) {
+                        startGame(normalized, 'SRS Review', 'srs');
                     }
                 }}
             />
@@ -354,45 +355,6 @@ export function InputSection() {
     );
 }
 
-const DEFAULT_MODE_SEQUENCE: Array<'choice' | 'typing' | 'fill-blank'> = [
-    'choice', 'choice', 'choice', 'choice', 'choice',
-    'typing', 'typing', 'typing',
-    'fill-blank', 'fill-blank'
-];
-
-function normalizeMonsters(input: unknown[]): Monster[] {
-    if (!Array.isArray(input)) return [];
-    const normalized = input.map((raw, index) => {
-        const source = (raw || {}) as Partial<Monster>;
-        const options = Array.isArray(source.options) ? source.options.filter(Boolean) : [];
-        const safeOptions = options.length >= 2
-            ? options.slice(0, 4)
-            : ['A', 'B', 'C', 'D'];
-        const safeCorrectIndex = typeof source.correct_index === 'number' && source.correct_index >= 0 && source.correct_index < safeOptions.length
-            ? source.correct_index
-            : 0;
-        const questionMode = source.questionMode || DEFAULT_MODE_SEQUENCE[index % DEFAULT_MODE_SEQUENCE.length];
-        const correctAnswer = (source.correctAnswer && source.correctAnswer.trim()) || safeOptions[safeCorrectIndex] || '';
-
-        return {
-            id: source.id ?? Date.now() + index,
-            type: source.type || 'vocab',
-            question: source.question || `Question ${index + 1}`,
-            options: safeOptions,
-            correct_index: safeCorrectIndex,
-            explanation: source.explanation || '',
-            hint: source.hint,
-            skillTag: source.skillTag || `${source.type || 'vocab'}_core`,
-            difficulty: source.difficulty || 'medium',
-            questionMode,
-            correctAnswer,
-            learningObjectiveId: source.learningObjectiveId,
-            sourceContextSpan: source.sourceContextSpan
-        };
-    });
-    return rebalanceQuestionModes(normalized) as Monster[];
-}
-
 const safeParseMission = (payload: string) => {
     const trimmed = payload.trim();
     if (!trimmed) {
@@ -427,11 +389,12 @@ const extractJsonBlock = (input: string) => {
 
 const fetchMissionWithRetry = async (text: string, apiKey: string, model: string) => {
     const client = new OpenRouterClient(apiKey, model);
-    const attempts = model.endsWith(':free') ? 3 : 2;
-    const baseDelay = model.endsWith(':free') ? 2000 : 1000;
+    const parseRetryLimit = 1;
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt < attempts; attempt++) {
+    // OpenRouterClient already has built-in retry/backoff.
+    // Keep only a lightweight retry here for parse-only failures.
+    for (let attempt = 0; attempt <= parseRetryLimit; attempt++) {
         try {
             const prompt = generateLevelPrompt(text);
             const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
@@ -439,11 +402,12 @@ const fetchMissionWithRetry = async (text: string, apiKey: string, model: string
             return safeParseMission(cleanJson);
         } catch (error) {
             lastError = error as Error;
-            if (attempt < attempts - 1) {
-                const jitter = 0.5 + Math.random();
-                await wait(baseDelay * (attempt + 1) * jitter);
+            const isParseError = lastError.message === 'MISSION_EMPTY' || lastError.message === 'MISSION_PARSE_FAILED';
+            if (isParseError && attempt < parseRetryLimit) {
+                await wait(500);
                 continue;
             }
+            break;
         }
     }
 

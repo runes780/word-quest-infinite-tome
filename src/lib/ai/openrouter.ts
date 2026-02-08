@@ -76,10 +76,9 @@ export class OpenRouterClient {
         this.isFreeModel = model.endsWith(':free');
         this.scheduler = this.isFreeModel ? sharedSchedulers.free : sharedSchedulers.paid;
         // Free models need more retries due to rate limits
-        this.maxRetries = this.isFreeModel ? 4 : 2;
-        if (!this.isFreeModel) {
-            this.fetchTimeoutMs = 20000;
-        }
+        this.maxRetries = this.isFreeModel ? 2 : 1;
+        // Keep free models responsive: avoid multi-minute waits on overloaded endpoints.
+        this.fetchTimeoutMs = 20000;
     }
 
     async generate(prompt: string, systemPrompt?: string): Promise<string> {
@@ -239,6 +238,10 @@ export class OpenRouterClient {
                         } else {
                             console.error(`[OpenRouter] Error:`, err.message);
                             lastError = err;
+                            // 400/401 are credential/request issues and should not be retried.
+                            if (/OpenRouter API Error:\s*(400|401)\b/.test(err.message)) {
+                                break;
+                            }
                         }
                     } finally {
                         if (fetchTimeoutId) clearTimeout(fetchTimeoutId);

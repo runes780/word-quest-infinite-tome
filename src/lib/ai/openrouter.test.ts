@@ -72,4 +72,20 @@ describe('OpenRouterClient shared scheduler', () => {
         await expect(p1).resolves.toContain('ok');
         await expect(p2).resolves.toContain('ok');
     });
+
+    test('does not retry on 401 auth errors', async () => {
+        (global.fetch as jest.Mock).mockReset();
+        (global.fetch as jest.Mock).mockImplementation(() => Promise.resolve({
+            ok: false,
+            status: 401,
+            text: async () => '{"error":{"message":"No cookie auth credentials found","code":401}}'
+        }));
+
+        const client = new OpenRouterClient('bad-key', 'anthropic/claude-3-opus');
+        const expectation = expect(client.generate('prompt-x')).rejects.toThrow(/401/);
+
+        await jest.advanceTimersByTimeAsync(600);
+        await expectation;
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
 });
