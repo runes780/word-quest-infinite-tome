@@ -7,7 +7,7 @@ import { GraduationCap, LineChart, RefreshCw, Download, Printer, X, Sparkles } f
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
-import { getMistakes, MistakeRecord } from '@/lib/data/mistakes';
+import { getMistakes, getRepeatedCauseSnapshot, MistakeRecord, RepeatedCauseSnapshot } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import { FSRSCard, getDueCardsWithPriority, getMasteryAggregateSnapshot, getMemoryStatus, getSRSStats, MasteryAggregateSnapshot } from '@/db/db';
 
@@ -25,6 +25,7 @@ export function ParentDashboard() {
     const [dueCards, setDueCards] = useState<FSRSCard[]>([]);
     const [srsDueCount, setSrsDueCount] = useState(0);
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
+    const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -36,18 +37,20 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const [historyData, mistakeData, dueCardData, srsStats, masteryData] = await Promise.all([
+            const [historyData, mistakeData, dueCardData, srsStats, masteryData, repeatedCauseData] = await Promise.all([
                 getDashboardSummary(range, range * 6),
                 getMistakes(40),
                 getDueCardsWithPriority(3),
                 getSRSStats(),
-                getMasteryAggregateSnapshot(range)
+                getMasteryAggregateSnapshot(range),
+                getRepeatedCauseSnapshot(range)
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
             setDueCards(dueCardData);
             setSrsDueCount(srsStats.due);
             setMasterySnapshot(masteryData);
+            setRepeatedCauseSnapshot(repeatedCauseData);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -285,6 +288,21 @@ export function ParentDashboard() {
                                         <div className="p-3 rounded-xl bg-background/40 border border-border/40">
                                             3. Review one recent mistake and explain the rule aloud in your own words.
                                         </div>
+                                        {repeatedCauseSnapshot && (
+                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
+                                                <div className="uppercase tracking-wide text-muted-foreground mb-1">
+                                                    {isZh ? '重复错因率' : 'Repeated Cause Rate'} ({repeatedCauseSnapshot.windowDays}d)
+                                                </div>
+                                                <div className="font-medium">
+                                                    {(repeatedCauseSnapshot.repeatRate * 100).toFixed(1)}% ({repeatedCauseSnapshot.repeatedMistakes}/{repeatedCauseSnapshot.taggedMistakes})
+                                                </div>
+                                                {repeatedCauseSnapshot.topCauses.length > 0 && (
+                                                    <div className="mt-1 text-muted-foreground">
+                                                        Top: {repeatedCauseSnapshot.topCauses.map((row) => `${row.causeTag}(${row.count})`).join(', ')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     {dueCards.length > 0 && (
                                         <div className="mt-4 pt-4 border-t border-border/40 space-y-2">

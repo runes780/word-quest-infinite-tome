@@ -50,6 +50,19 @@ export interface CacheMentorArgs extends LogMistakeArgs {
     revengeQuestion?: StoredRevengeQuestion;
 }
 
+export interface RepeatedCauseRow {
+    causeTag: string;
+    count: number;
+}
+
+export interface RepeatedCauseSnapshot {
+    windowDays: number;
+    taggedMistakes: number;
+    repeatedMistakes: number;
+    repeatRate: number;
+    topCauses: RepeatedCauseRow[];
+}
+
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
     if (!isBrowser) return;
     try {
@@ -124,6 +137,46 @@ export async function getMistakes(limit = 50): Promise<MistakeRecord[]> {
         console.error('getMistakes error', error);
         return [];
     }
+}
+
+export function computeRepeatedCauseSnapshot(
+    records: MistakeRecord[],
+    windowDays = 14,
+    now = Date.now()
+): RepeatedCauseSnapshot {
+    const cutoff = now - (windowDays * 24 * 60 * 60 * 1000);
+    const inWindow = records.filter((row) => row.timestamp >= cutoff);
+    const tags = inWindow
+        .map((row) => row.mentorCauseTag?.trim())
+        .filter((value): value is string => Boolean(value));
+
+    const counts = new Map<string, number>();
+    tags.forEach((tag) => {
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+    });
+
+    let repeatedMistakes = 0;
+    tags.forEach((tag) => {
+        if ((counts.get(tag) || 0) >= 2) repeatedMistakes += 1;
+    });
+
+    const topCauses = Array.from(counts.entries())
+        .map(([causeTag, count]) => ({ causeTag, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+    return {
+        windowDays,
+        taggedMistakes: tags.length,
+        repeatedMistakes,
+        repeatRate: tags.length > 0 ? repeatedMistakes / tags.length : 0,
+        topCauses
+    };
+}
+
+export async function getRepeatedCauseSnapshot(windowDays = 14, limit = 200): Promise<RepeatedCauseSnapshot> {
+    const mistakes = await getMistakes(limit);
+    return computeRepeatedCauseSnapshot(mistakes, windowDays);
 }
 
 export async function deleteMistake(id: number) {

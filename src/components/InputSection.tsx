@@ -15,6 +15,7 @@ import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
 import { FSRSCard } from '@/db/db';
+import { rebalanceQuestionModes } from '@/lib/data/questionModes';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -361,7 +362,7 @@ const DEFAULT_MODE_SEQUENCE: Array<'choice' | 'typing' | 'fill-blank'> = [
 
 function normalizeMonsters(input: unknown[]): Monster[] {
     if (!Array.isArray(input)) return [];
-    return input.map((raw, index) => {
+    const normalized = input.map((raw, index) => {
         const source = (raw || {}) as Partial<Monster>;
         const options = Array.isArray(source.options) ? source.options.filter(Boolean) : [];
         const safeOptions = options.length >= 2
@@ -389,6 +390,7 @@ function normalizeMonsters(input: unknown[]): Monster[] {
             sourceContextSpan: source.sourceContextSpan
         };
     });
+    return rebalanceQuestionModes(normalized) as Monster[];
 }
 
 const safeParseMission = (payload: string) => {
