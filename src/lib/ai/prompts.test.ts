@@ -15,6 +15,9 @@ describe('Prompt Generators', () => {
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Contextual Understanding');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('skillTag');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('difficulty');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('questionMode');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('correctAnswer');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never output all questions in "choice" mode');
     });
 
     test('generateMentorPrompt includes context', () => {
@@ -25,7 +28,7 @@ describe('Prompt Generators', () => {
     });
 
     test('generateReportPrompt calculates score correctly', () => {
-        const prompt = generateReportPrompt(50, 10);
+        const prompt = generateReportPrompt(50, 10, []);
         expect(prompt).toContain('Mission Score: 50 / 100');
         expect(prompt).toContain('Total Questions: 10');
     });

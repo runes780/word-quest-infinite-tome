@@ -9,11 +9,12 @@ import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle } fr
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
+import { updatePlayerProfile } from '@/db/db';
 
 import { translations } from '@/lib/translations';
 
 export function MissionReport() {
-    const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue } = useGameStore();
+    const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue, recordRunCompletion } = useGameStore();
     const { apiKey, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
@@ -35,8 +36,16 @@ export function MissionReport() {
             totalCorrect,
             accuracy: questions.length ? totalCorrect / questions.length : 0
         });
+        recordRunCompletion();
+        const masteryDeltas = calculateMasteryDeltas(skillStats);
+        updatePlayerProfile({
+            lessonsCompleted: 1,
+            totalStudyMinutes: Math.max(1, Math.round(questions.length * 0.4)),
+            perfectLessons: totalCorrect === questions.length ? 1 : 0,
+            masteryDeltas
+        }).catch(console.error);
         setHistoryLogged(true);
-    }, [historyLogged, questions.length, score, context, skillStats, userAnswers]);
+    }, [historyLogged, questions.length, score, context, skillStats, userAnswers, recordRunCompletion]);
 
     const skillEntries = useMemo(() => {
         return Object.entries(skillStats).map(([key, stats]) => ({
@@ -292,5 +301,36 @@ function buildLocalDebrief(
         mistake_analysis: language === 'zh'
             ? `本地估算总正确率约 ${overallPercent}% 。网络恢复后可再次请求 AI 分析。`
             : `Local estimate puts total accuracy near ${overallPercent}%. When the connection stabilizes, rerun the AI analysis for deeper insight.`
+    };
+}
+
+function calculateMasteryDeltas(skillStats: Record<string, { correct: number; total: number }>) {
+    const entries = Object.entries(skillStats).filter(([, value]) => value.total >= 2);
+    const byType = {
+        vocab: [] as number[],
+        grammar: [] as number[],
+        reading: [] as number[]
+    };
+
+    entries.forEach(([key, value]) => {
+        const accuracy = value.correct / value.total;
+        if (key.startsWith('vocab')) byType.vocab.push(accuracy);
+        else if (key.startsWith('grammar')) byType.grammar.push(accuracy);
+        else byType.reading.push(accuracy);
+    });
+
+    const toDelta = (accList: number[]) => {
+        if (accList.length === 0) return 0;
+        const avg = accList.reduce((sum, value) => sum + value, 0) / accList.length;
+        if (avg >= 0.85) return 2;
+        if (avg >= 0.7) return 1;
+        if (avg <= 0.4) return -1;
+        return 0;
+    };
+
+    return {
+        vocab: toDelta(byType.vocab),
+        grammar: toDelta(byType.grammar),
+        reading: toDelta(byType.reading)
     };
 }

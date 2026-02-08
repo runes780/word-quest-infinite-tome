@@ -56,7 +56,8 @@ export function InputSection() {
             }
 
             // Store questions and show blessing selection
-            setPendingQuestions({ monsters: data.monsters, context: input });
+            const normalizedMonsters = normalizeMonsters(data.monsters);
+            setPendingQuestions({ monsters: normalizedMonsters, context: input });
             setShowBlessingSelection(true);
             setFallbackLevel(null);
             setError('');
@@ -74,9 +75,10 @@ export function InputSection() {
 
     const handleUseSample = () => {
         if (!fallbackLevel) return;
+        const normalizedMonsters = normalizeMonsters(fallbackLevel.monsters);
         // Store sample and show blessing selection
         setPendingQuestions({
-            monsters: fallbackLevel.monsters,
+            monsters: normalizedMonsters,
             context: `${fallbackLevel.title}\n${fallbackLevel.context}`
         });
         setShowBlessingSelection(true);
@@ -128,7 +130,7 @@ export function InputSection() {
 
     const simulateOcr = async (file: File) => {
         await new Promise((resolve) => setTimeout(resolve, 1200));
-        return `${t.input.imageStubText}: ${file.name}`;
+        return `${t.input.imageStubText}: ${file.name}\n${t.input.imageDemoNotice}`;
     };
 
     const handleImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,10 +189,13 @@ export function InputSection() {
                         correct_index: card.correct_index,
                         explanation: card.explanation || '',
                         hint: card.hint,
-                        skillTag: card.skillTag
+                        skillTag: card.skillTag || `${card.type || 'vocab'}_review`,
+                        difficulty: 'medium' as const,
+                        questionMode: 'choice' as const,
+                        correctAnswer: card.options[card.correct_index] || ''
                     }));
                     if (monsters.length > 0) {
-                        startGame(monsters, 'SRS Review');
+                        startGame(monsters, 'SRS Review', 'srs');
                     }
                 }}
             />
@@ -346,6 +351,44 @@ export function InputSection() {
             </div>
         </>
     );
+}
+
+const DEFAULT_MODE_SEQUENCE: Array<'choice' | 'typing' | 'fill-blank'> = [
+    'choice', 'choice', 'choice', 'choice', 'choice',
+    'typing', 'typing', 'typing',
+    'fill-blank', 'fill-blank'
+];
+
+function normalizeMonsters(input: unknown[]): Monster[] {
+    if (!Array.isArray(input)) return [];
+    return input.map((raw, index) => {
+        const source = (raw || {}) as Partial<Monster>;
+        const options = Array.isArray(source.options) ? source.options.filter(Boolean) : [];
+        const safeOptions = options.length >= 2
+            ? options.slice(0, 4)
+            : ['A', 'B', 'C', 'D'];
+        const safeCorrectIndex = typeof source.correct_index === 'number' && source.correct_index >= 0 && source.correct_index < safeOptions.length
+            ? source.correct_index
+            : 0;
+        const questionMode = source.questionMode || DEFAULT_MODE_SEQUENCE[index % DEFAULT_MODE_SEQUENCE.length];
+        const correctAnswer = (source.correctAnswer && source.correctAnswer.trim()) || safeOptions[safeCorrectIndex] || '';
+
+        return {
+            id: source.id ?? Date.now() + index,
+            type: source.type || 'vocab',
+            question: source.question || `Question ${index + 1}`,
+            options: safeOptions,
+            correct_index: safeCorrectIndex,
+            explanation: source.explanation || '',
+            hint: source.hint,
+            skillTag: source.skillTag || `${source.type || 'vocab'}_core`,
+            difficulty: source.difficulty || 'medium',
+            questionMode,
+            correctAnswer,
+            learningObjectiveId: source.learningObjectiveId,
+            sourceContextSpan: source.sourceContextSpan
+        };
+    });
 }
 
 const safeParseMission = (payload: string) => {

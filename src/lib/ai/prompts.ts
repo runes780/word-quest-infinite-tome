@@ -25,6 +25,11 @@ Generate **6-8** questions. Each must test a skill, not a random detail. Distrib
 - **Options**: 4 options. 1 correct, 3 plausible distractors. Never output speaker names or labels (e.g., "Tom:", "Mike") as the correct option.
 - **Hint**: Subtle clue in Chinese or simple English. If a word is above A2, include a simple definition/translation.
 - **Explanation**: In Simplified Chinese. Explain the rule or meaning (not just restating the answer). Tie back to the grammar/word in the text.
+- **Question Mode Mix (mandatory)**:
+  - 50% "choice"
+  - 30% "typing"
+  - 20% "fill-blank"
+  - Never output all questions in "choice" mode.
 - **Strict JSON**: Output valid JSON only.
 
 # Output JSON Structure
@@ -34,11 +39,15 @@ Each "monster" represents a question and includes:
 - "type": "vocab" | "grammar" | "reading"
 - "skillTag": Short string naming the micro-skill (e.g., "past_tense", "weather_vocab").
 - "difficulty": "easy" | "medium" | "hard" (based on how tricky the item is).
+- "questionMode": "choice" | "typing" | "fill-blank" (must follow mode mix above).
 - "question": The question text (The Monster's attack).
 - "options": Array of 4 strings (The defensive shields).
 - "correct_index": Integer (0-3) indicating the correct option.
+- "correctAnswer": canonical text answer (required even for choice mode).
 - "hint": A short helpful hint string (e.g. "Look for the keyword 'Yesterday'").
 - "explanation": A short, encouraging explanation in Chinese (The battle log). E.g., "Great! 'Go' 变成过去式是 'Went'，不要被 'Goed' 骗了哦！"
+- "learningObjectiveId": optional short objective id string.
+- "sourceContextSpan": optional quote/span from source text.
 `;
 
 export const MENTOR_SYSTEM_PROMPT = `

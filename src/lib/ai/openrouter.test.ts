@@ -1,92 +1,75 @@
-
 import { OpenRouterClient } from './openrouter';
+import { TextDecoder, TextEncoder } from 'util';
 
-// Mock global fetch
 global.fetch = jest.fn();
+(global as unknown as { TextDecoder: typeof TextDecoder; TextEncoder: typeof TextEncoder; }).TextDecoder = TextDecoder;
+(global as unknown as { TextDecoder: typeof TextDecoder; TextEncoder: typeof TextEncoder; }).TextEncoder = TextEncoder;
 
-describe('OpenRouterClient Rate Limiting', () => {
-    let client: OpenRouterClient;
+function createStreamingResponse(content: string) {
+    const payload = `data: {"choices":[{"delta":{"content":"${content}"}}]}\n\ndata: [DONE]\n\n`;
+    const chunk = Uint8Array.from(Buffer.from(payload, 'utf-8'));
+    let emitted = false;
 
+    return {
+        ok: true,
+        status: 200,
+        body: {
+            getReader: () => ({
+                read: async () => {
+                    if (!emitted) {
+                        emitted = true;
+                        return { done: false, value: chunk };
+                    }
+                    return { done: true, value: undefined };
+                }
+            })
+        },
+        text: async () => ''
+    };
+}
+
+describe('OpenRouterClient shared scheduler', () => {
     beforeEach(() => {
-        client = new OpenRouterClient('test-key', 'test-model');
-        (global.fetch as jest.Mock).mockClear();
-        (global.fetch as jest.Mock).mockResolvedValue({
-            ok: true,
-            json: async () => ({ choices: [{ message: { content: 'test' } }] }),
-        });
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+        (global.fetch as jest.Mock).mockReset();
+        (global.fetch as jest.Mock).mockImplementation(() => Promise.resolve(createStreamingResponse('ok')));
     });
 
-    test('queues requests and respects minDelay', async () => {
-        jest.useFakeTimers();
-
-        client.generate('prompt1');
-        client.generate('prompt2');
-
-        // First request should fire immediately
-        expect(global.fetch).toHaveBeenCalledTimes(1);
-
-        // Fast forward time less than minDelay
-        jest.advanceTimersByTime(1000);
-        expect(global.fetch).toHaveBeenCalledTimes(1); // Still 1
-
-        // Fast forward past minDelay
-        jest.advanceTimersByTime(3000); // Total 4000 > 3500
-
-        // We need to wait for the promise queue processing which is async
-        // In a real unit test with fake timers and promises, this can be tricky.
-        // Let's simplify: just verify that after enough time, it is called.
-
-        // Trigger next tick
-        await Promise.resolve();
-
-        // Since processQueue uses setTimeout, advanceTimersByTime should trigger it.
-        // However, the recursive call is async.
-
-        // Let's just check if the logic seems sound by checking the queue length or internal state if accessbile, 
-        // but since they are private, we rely on fetch calls.
-
-        // Note: Testing async recursion with fake timers is complex. 
-        // For this MVP test, let's just verify the first call happens.
-        // And maybe we can't easily test the delay without more complex setup.
-        // Let's at least verify the first call parameters.
-
-        expect(global.fetch).toHaveBeenCalledWith(
-            "https://openrouter.ai/api/v1/chat/completions",
-            expect.objectContaining({
-                method: "POST",
-                headers: expect.objectContaining({
-                    "Authorization": "Bearer test-key"
-                })
-            })
-        );
-
+    afterEach(() => {
         jest.useRealTimers();
     });
 
-    test('paid models bypass rate limit delay', async () => {
-        jest.useFakeTimers();
+    test('free models are globally throttled', async () => {
+        const first = new OpenRouterClient('test-key', 'meta-llama/llama-3-8b-instruct:free');
+        const second = new OpenRouterClient('test-key', 'meta-llama/llama-3-8b-instruct:free');
 
-        // Use a paid model name (no :free suffix)
-        const paidClient = new OpenRouterClient('test-key', 'anthropic/claude-3-opus');
+        const p1 = first.generate('prompt-1');
+        const p2 = second.generate('prompt-2');
 
-        const firstPromise = paidClient.generate('prompt1');
-        paidClient.generate('prompt2');
-
-        // First request fires immediately
+        await jest.advanceTimersByTimeAsync(1);
         expect(global.fetch).toHaveBeenCalledTimes(1);
 
-        // Wait for p1 to complete to ensure queue processing continues
-        await firstPromise;
-
-        // Advance time to cover the small delay (50ms)
-        jest.advanceTimersByTime(100);
-
-        // Flush promises
-        await Promise.resolve();
-
-        // Second request should have fired
+        await jest.advanceTimersByTimeAsync(3600);
         expect(global.fetch).toHaveBeenCalledTimes(2);
 
-        jest.useRealTimers();
+        await expect(p1).resolves.toContain('ok');
+        await expect(p2).resolves.toContain('ok');
+    });
+
+    test('paid models use short scheduler delay', async () => {
+        const client = new OpenRouterClient('test-key', 'anthropic/claude-3-opus');
+
+        const p1 = client.generate('prompt-a');
+        const p2 = client.generate('prompt-b');
+
+        await jest.advanceTimersByTimeAsync(1);
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+
+        await jest.advanceTimersByTimeAsync(220);
+        expect(global.fetch).toHaveBeenCalledTimes(2);
+
+        await expect(p1).resolves.toContain('ok');
+        await expect(p2).resolves.toContain('ok');
     });
 });

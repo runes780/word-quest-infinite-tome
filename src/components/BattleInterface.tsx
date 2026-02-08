@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useGameStore, BOSS_COMBO_THRESHOLD, CRAFT_THRESHOLD } from '@/store/gameStore';
+import { useGameStore, BOSS_COMBO_THRESHOLD, CRAFT_THRESHOLD, getPendingAchievements } from '@/store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Shield, Sword, HelpCircle, Lightbulb, Coins, Zap, Flame } from 'lucide-react';
 import { MentorOverlay } from './MentorOverlay';
@@ -19,6 +19,7 @@ import { speakText, stopSpeech } from '@/lib/tts';
 import { TypingQuestion } from './TypingQuestion';
 import { FillBlankQuestion } from './FillBlankQuestion';
 import { VoiceInput } from './VoiceInput';
+import { Achievement, AchievementToast } from './AchievementSystem';
 
 export function BattleInterface() {
     const {
@@ -42,7 +43,8 @@ export function BattleInterface() {
         clarityEffect,
         inventory,
         knowledgeCards,
-        rootFragments
+        rootFragments,
+        recordHintUsed
 
     } = useGameStore();
 
@@ -70,8 +72,23 @@ export function BattleInterface() {
     const [wrongAnswerText, setWrongAnswerText] = useState('');
     const [consecutiveWrong, setConsecutiveWrong] = useState(0);
     const [showHint, setShowHint] = useState(false);
+    const [activeAchievement, setActiveAchievement] = useState<Achievement | null>(null);
+    const [queuedAchievements, setQueuedAchievements] = useState<Achievement[]>([]);
 
     const currentQuestion = questions[currentIndex];
+
+    useEffect(() => {
+        if (activeAchievement || queuedAchievements.length === 0) return;
+        setActiveAchievement(queuedAchievements[0]);
+        setQueuedAchievements((prev) => prev.slice(1));
+    }, [activeAchievement, queuedAchievements]);
+
+    const queueUnlockedAchievements = () => {
+        const unlocked = getPendingAchievements();
+        if (unlocked.length > 0) {
+            setQueuedAchievements((prev) => [...prev, ...unlocked]);
+        }
+    };
 
     // Endless Mode: Generate more questions when running low
     useEffect(() => {
@@ -186,6 +203,7 @@ export function BattleInterface() {
         const result = answerQuestion(index);
         setIsCorrect(result.correct);
         setResultMessage(result.explanation);
+        queueUnlockedAchievements();
 
         if (result.correct) {
             const types: ('slash' | 'fireball' | 'lightning')[] = ['slash', 'fireball', 'lightning'];
@@ -658,7 +676,12 @@ export function BattleInterface() {
                                 )}
                                 {currentQuestion.hint && !showResult && (
                                     <button
-                                        onClick={() => setShowHint(!showHint)}
+                                        onClick={() => {
+                                            if (!showHint) {
+                                                recordHintUsed();
+                                            }
+                                            setShowHint(!showHint);
+                                        }}
                                         className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
                                     >
                                         <Lightbulb className="w-3 h-3" />
@@ -729,8 +752,18 @@ export function BattleInterface() {
                                     setSelectedOption(correct ? currentQuestion.correct_index : -1);
                                     setIsCorrect(correct);
                                     setShowResult(true);
-                                    const result = answerQuestion(correct ? currentQuestion.correct_index : -1);
+                                    const result = answerQuestion(correct ? currentQuestion.correct_index : -1, { userResponse: input });
                                     setResultMessage(result.explanation);
+                                    queueUnlockedAchievements();
+                                    if (!correct) {
+                                        setWrongAnswerText(input);
+                                        setConsecutiveWrong(prev => prev + 1);
+                                        if (consecutiveWrong >= 2 || health <= 1) {
+                                            setTimeout(() => setShowMentor(true), 1500);
+                                        }
+                                    } else {
+                                        setConsecutiveWrong(0);
+                                    }
                                 }}
                                 disabled={showResult}
                             />
@@ -742,8 +775,18 @@ export function BattleInterface() {
                                     setSelectedOption(correct ? currentQuestion.correct_index : -1);
                                     setIsCorrect(correct);
                                     setShowResult(true);
-                                    const result = answerQuestion(correct ? currentQuestion.correct_index : -1);
+                                    const result = answerQuestion(correct ? currentQuestion.correct_index : -1, { userResponse: input });
                                     setResultMessage(result.explanation);
+                                    queueUnlockedAchievements();
+                                    if (!correct) {
+                                        setWrongAnswerText(input);
+                                        setConsecutiveWrong(prev => prev + 1);
+                                        if (consecutiveWrong >= 2 || health <= 1) {
+                                            setTimeout(() => setShowMentor(true), 1500);
+                                        }
+                                    } else {
+                                        setConsecutiveWrong(0);
+                                    }
                                 }}
                                 disabled={showResult}
                             />
@@ -772,8 +815,18 @@ export function BattleInterface() {
                                         setSelectedOption(idx);
                                         setIsCorrect(correct);
                                         setShowResult(true);
-                                        const result = answerQuestion(idx);
+                                        const result = answerQuestion(idx, { userResponse: spokenText });
                                         setResultMessage(result.explanation);
+                                        queueUnlockedAchievements();
+                                        if (!correct) {
+                                            setWrongAnswerText(spokenText);
+                                            setConsecutiveWrong(prev => prev + 1);
+                                            if (consecutiveWrong >= 2 || health <= 1) {
+                                                setTimeout(() => setShowMentor(true), 1500);
+                                            }
+                                        } else {
+                                            setConsecutiveWrong(0);
+                                        }
                                     }}
                                 />
                             </div>
@@ -901,6 +954,15 @@ export function BattleInterface() {
                     </button>
                 ))}
             </div>
+
+            <AnimatePresence>
+                {activeAchievement && (
+                    <AchievementToast
+                        achievement={activeAchievement}
+                        onClose={() => setActiveAchievement(null)}
+                    />
+                )}
+            </AnimatePresence>
         </div >
     );
 }

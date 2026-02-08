@@ -21,47 +21,62 @@ interface StreamDelta {
     }[];
 }
 
-export class OpenRouterClient {
-    private queue: (() => Promise<void>)[] = [];
+class RequestScheduler {
+    private queue: Array<() => Promise<void>> = [];
     private isProcessing = false;
-    private lastRequestTime = 0;
-    private minDelay = 3500;
-    private fetchTimeoutMs = 30000;
-    private maxRetries: number;
-    private isFreeModel: boolean;
+    private lastRequestTime: number;
 
-    constructor(private apiKey: string, private model: string) {
-        this.isFreeModel = model.endsWith(':free');
-        // Free models need more retries due to rate limits
-        this.maxRetries = this.isFreeModel ? 4 : 2;
-        if (!this.isFreeModel) {
-            this.minDelay = 100;
-            this.fetchTimeoutMs = 20000;
-        }
+    constructor(private minDelay: number) {
+        this.lastRequestTime = Date.now() - minDelay;
     }
 
-    private async processQueue() {
+    enqueue(task: () => Promise<void>) {
+        this.queue.push(task);
+        this.processQueue();
+    }
+
+    private processQueue() {
         if (this.isProcessing || this.queue.length === 0) return;
 
         const now = Date.now();
         const timeSinceLast = now - this.lastRequestTime;
-
-        if (timeSinceLast < this.minDelay) {
-            setTimeout(() => this.processQueue(), this.minDelay - timeSinceLast);
-            return;
-        }
+        const waitMs = Math.max(0, this.minDelay - timeSinceLast);
 
         this.isProcessing = true;
-        const task = this.queue.shift();
-        this.lastRequestTime = Date.now();
+        setTimeout(async () => {
+            const nextTask = this.queue.shift();
+            this.lastRequestTime = Date.now();
 
-        try {
-            if (task) await task();
-        } catch (e) {
-            console.error("Queue processing error", e);
-        } finally {
-            this.isProcessing = false;
-            this.processQueue();
+            try {
+                if (nextTask) await nextTask();
+            } catch (e) {
+                console.error('[OpenRouter] Scheduler task error', e);
+            } finally {
+                this.isProcessing = false;
+                this.processQueue();
+            }
+        }, waitMs);
+    }
+}
+
+const sharedSchedulers = {
+    free: new RequestScheduler(3500),
+    paid: new RequestScheduler(100)
+};
+
+export class OpenRouterClient {
+    private fetchTimeoutMs = 30000;
+    private maxRetries: number;
+    private isFreeModel: boolean;
+    private scheduler: RequestScheduler;
+
+    constructor(private apiKey: string, private model: string) {
+        this.isFreeModel = model.endsWith(':free');
+        this.scheduler = this.isFreeModel ? sharedSchedulers.free : sharedSchedulers.paid;
+        // Free models need more retries due to rate limits
+        this.maxRetries = this.isFreeModel ? 4 : 2;
+        if (!this.isFreeModel) {
+            this.fetchTimeoutMs = 20000;
         }
     }
 
@@ -214,8 +229,7 @@ export class OpenRouterClient {
                 reject(lastError || new Error('Unknown error occurred'));
             };
 
-            this.queue.push(task);
-            this.processQueue();
+            this.scheduler.enqueue(task);
         });
     }
 }

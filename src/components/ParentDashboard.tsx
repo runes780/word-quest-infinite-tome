@@ -9,6 +9,7 @@ import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
 import { getMistakes, MistakeRecord } from '@/lib/data/mistakes';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
+import { FSRSCard, getDueCardsWithPriority, getMemoryStatus, getSRSStats } from '@/db/db';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
@@ -20,6 +21,8 @@ export function ParentDashboard() {
     const [range, setRange] = useState<RangeOption>(14);
     const [snapshot, setSnapshot] = useState<DashboardSummary | null>(null);
     const [mistakes, setMistakes] = useState<MistakeRecord[]>([]);
+    const [dueCards, setDueCards] = useState<FSRSCard[]>([]);
+    const [srsDueCount, setSrsDueCount] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -31,12 +34,16 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const [historyData, mistakeData] = await Promise.all([
+            const [historyData, mistakeData, dueCardData, srsStats] = await Promise.all([
                 getDashboardSummary(range, range * 6),
-                getMistakes(40)
+                getMistakes(40),
+                getDueCardsWithPriority(3),
+                getSRSStats()
             ]);
             setSnapshot(historyData);
             setMistakes(mistakeData);
+            setDueCards(dueCardData);
+            setSrsDueCount(srsStats.due);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load');
@@ -61,6 +68,7 @@ export function ParentDashboard() {
     const dailyRows = snapshot?.daily ?? [];
 
     const recentMistakes = mistakes.slice(0, 5);
+    const weakestSkill = skillRows[0];
 
     const handleExportImage = async () => {
         if (!reportRef.current || !hasHistory) return;
@@ -233,6 +241,46 @@ export function ParentDashboard() {
                                         }
                                     </section>
                                 </div>
+
+                                <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
+                                    <header className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            <Sparkles className="w-4 h-4 text-primary" />
+                                            Action Plan
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">{srsDueCount} SRS due</span>
+                                    </header>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="p-3 rounded-xl bg-background/40 border border-border/40">
+                                            1. {weakestSkill
+                                                ? `Review weakest skill "${weakestSkill.skill.replace(/_/g, ' ')}" with 3-5 targeted questions.`
+                                                : 'Complete one mission to identify the weakest skill.'}
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-background/40 border border-border/40">
+                                            2. Finish {Math.min(5, Math.max(1, srsDueCount))} due FSRS cards tonight to protect retention.
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-background/40 border border-border/40">
+                                            3. Review one recent mistake and explain the rule aloud in your own words.
+                                        </div>
+                                    </div>
+                                    {dueCards.length > 0 && (
+                                        <div className="mt-4 pt-4 border-t border-border/40 space-y-2">
+                                            <div className="text-xs uppercase tracking-wide text-muted-foreground">Evidence Chain (FSRS Due)</div>
+                                            {dueCards.map((card, idx) => {
+                                                const status = getMemoryStatus(card);
+                                                return (
+                                                    <div key={card.id || idx} className="p-3 rounded-xl bg-background/30 border border-border/30 text-xs">
+                                                        <div className="flex justify-between mb-1">
+                                                            <span className="font-medium">{card.skillTag || card.type || 'skill'}</span>
+                                                            <span>{status.statusEmoji} {status.statusText.en}</span>
+                                                        </div>
+                                                        <div className="text-muted-foreground truncate">{card.question}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </section>
 
                                 <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
                                     <header className="flex items-center justify-between mb-4">

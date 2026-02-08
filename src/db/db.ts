@@ -117,12 +117,30 @@ export interface GlobalPlayerProfile {
     updatedAt: number;
 }
 
+export type LearningEventSource = 'battle' | 'srs' | 'daily';
+export type LearningEventMode = 'choice' | 'typing' | 'fill-blank';
+export type LearningEventResult = 'correct' | 'wrong';
+
+export interface LearningEvent {
+    id?: number;
+    eventType: 'answer' | 'hint' | 'session_complete';
+    questionId?: number;
+    questionHash?: string;
+    skillTag?: string;
+    mode?: LearningEventMode;
+    result?: LearningEventResult;
+    latencyMs?: number;
+    source: LearningEventSource;
+    timestamp: number;
+}
+
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
     mistakes!: Table<MistakeRecord>;
     questionCache!: Table<CachedQuestion>;
     fsrsCards!: Table<FSRSCard>;
     playerProfile!: Table<GlobalPlayerProfile>;
+    learningEvents!: Table<LearningEvent>;
 
     constructor() {
         super('WordQuestDB');
@@ -151,6 +169,14 @@ export class WordQuestDB extends Dexie {
             questionCache: '++id, contextHash, timestamp, used',
             fsrsCards: '++id, questionHash, due, state',
             playerProfile: '++id'
+        });
+        this.version(6).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag'
         });
     }
 }
@@ -195,12 +221,27 @@ export async function getPlayerProfile(): Promise<GlobalPlayerProfile> {
     return { ...profile, id };
 }
 
-export async function updatePlayerProfile(updates: Partial<GlobalPlayerProfile>): Promise<GlobalPlayerProfile> {
+interface MasteryDeltas {
+    vocab?: number;
+    grammar?: number;
+    reading?: number;
+}
+
+export type PlayerProfileUpdates = Partial<GlobalPlayerProfile> & {
+    masteryDeltas?: MasteryDeltas;
+};
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+}
+
+export async function updatePlayerProfile(updates: PlayerProfileUpdates): Promise<GlobalPlayerProfile> {
     const profile = await getPlayerProfile();
     const today = getTodayKey();
+    const nextUpdates: PlayerProfileUpdates = { ...updates };
 
     // Handle daily streak logic
-    if (updates.dailyXpEarned !== undefined) {
+    if (nextUpdates.dailyXpEarned !== undefined) {
         const lastDate = profile.lastActiveDate;
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
@@ -208,38 +249,70 @@ export async function updatePlayerProfile(updates: Partial<GlobalPlayerProfile>)
 
         if (lastDate === today) {
             // Same day, just add XP
-            updates.dailyXpEarned = profile.dailyXpEarned + (updates.dailyXpEarned || 0);
+            nextUpdates.dailyXpEarned = profile.dailyXpEarned + (nextUpdates.dailyXpEarned || 0);
         } else if (lastDate === yesterdayKey) {
             // Consecutive day, increment streak
-            updates.dailyStreak = profile.dailyStreak + 1;
-            updates.lastActiveDate = today;
+            nextUpdates.dailyStreak = profile.dailyStreak + 1;
+            nextUpdates.lastActiveDate = today;
         } else if (lastDate !== today) {
             // Streak broken or first day
-            updates.dailyStreak = 1;
-            updates.lastActiveDate = today;
+            nextUpdates.dailyStreak = 1;
+            nextUpdates.lastActiveDate = today;
         }
     }
 
     // Calculate level from XP
-    if (updates.totalXp !== undefined) {
-        const newXp = profile.totalXp + updates.totalXp;
-        updates.totalXp = newXp;
-        updates.globalLevel = calculateLevel(newXp);
+    if (nextUpdates.totalXp !== undefined) {
+        const newXp = profile.totalXp + nextUpdates.totalXp;
+        nextUpdates.totalXp = newXp;
+        nextUpdates.globalLevel = calculateLevel(newXp);
     }
 
     // Add gold (don't replace)
-    if (updates.totalGold !== undefined) {
-        updates.totalGold = profile.totalGold + updates.totalGold;
+    if (nextUpdates.totalGold !== undefined) {
+        nextUpdates.totalGold = profile.totalGold + nextUpdates.totalGold;
     }
+
+    // Atomic additive updates for core counters
+    if (nextUpdates.wordsLearned !== undefined) {
+        nextUpdates.wordsLearned = profile.wordsLearned + nextUpdates.wordsLearned;
+    }
+    if (nextUpdates.lessonsCompleted !== undefined) {
+        nextUpdates.lessonsCompleted = profile.lessonsCompleted + nextUpdates.lessonsCompleted;
+    }
+    if (nextUpdates.totalStudyMinutes !== undefined) {
+        nextUpdates.totalStudyMinutes = profile.totalStudyMinutes + nextUpdates.totalStudyMinutes;
+    }
+    if (nextUpdates.perfectLessons !== undefined) {
+        nextUpdates.perfectLessons = profile.perfectLessons + nextUpdates.perfectLessons;
+    }
+
+    if (nextUpdates.masteryDeltas) {
+        const deltas = nextUpdates.masteryDeltas;
+        nextUpdates.vocabMastery = clamp(profile.vocabMastery + (deltas.vocab || 0), 0, 100);
+        nextUpdates.grammarMastery = clamp(profile.grammarMastery + (deltas.grammar || 0), 0, 100);
+        nextUpdates.readingMastery = clamp(profile.readingMastery + (deltas.reading || 0), 0, 100);
+    }
+
+    const { masteryDeltas, ...persistableUpdates } = nextUpdates;
+    void masteryDeltas;
 
     const merged = {
         ...profile,
-        ...updates,
+        ...persistableUpdates,
         updatedAt: Date.now()
     };
 
     await db.playerProfile.update(profile.id!, merged);
     return merged;
+}
+
+export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {
+    const payload: LearningEvent = {
+        ...event,
+        timestamp: event.timestamp ?? Date.now()
+    };
+    await db.learningEvents.add(payload);
 }
 
 // XP to Level calculation (similar to Duolingo)

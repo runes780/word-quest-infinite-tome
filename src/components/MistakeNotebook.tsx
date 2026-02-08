@@ -29,7 +29,11 @@ function recordToMonster(record: MistakeRecord, fallbackExplanation: string): Mo
             question: revenge.question,
             options: revenge.options,
             correct_index: revenge.correct_index,
-            explanation: revenge.explanation || fallbackExplanation
+            explanation: revenge.explanation || fallbackExplanation,
+            skillTag: record.skillTag || `${record.type || 'vocab'}_review`,
+            difficulty: 'medium',
+            questionMode: 'choice',
+            correctAnswer: revenge.options[revenge.correct_index] || record.correctAnswer
         };
     }
 
@@ -42,7 +46,11 @@ function recordToMonster(record: MistakeRecord, fallbackExplanation: string): Mo
         question: record.questionText,
         options,
         correct_index: correctIndex >= 0 ? correctIndex : 0,
-        explanation: record.mentorAnalysis || fallbackExplanation || 'Revisit this concept.'
+        explanation: record.mentorAnalysis || fallbackExplanation || 'Revisit this concept.',
+        skillTag: record.skillTag || `${record.type || 'vocab'}_review`,
+        difficulty: 'medium',
+        questionMode: 'choice',
+        correctAnswer: record.correctAnswer
     } as Monster;
 }
 

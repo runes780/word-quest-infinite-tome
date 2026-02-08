@@ -51,7 +51,11 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                         options: cached.revengeQuestion.options,
                         correct_index: cached.revengeQuestion.correct_index,
                         type: cached.revengeQuestion.type || question.type,
-                        explanation: cached.revengeQuestion.explanation || t.mentor.revengeReady
+                        explanation: cached.revengeQuestion.explanation || t.mentor.revengeReady,
+                        skillTag: question.skillTag,
+                        difficulty: question.difficulty,
+                        questionMode: 'choice',
+                        correctAnswer: cached.revengeQuestion.options[cached.revengeQuestion.correct_index] || ''
                     });
                 }
                 setStatusMessage(t.mentor.cached);
@@ -91,7 +95,11 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                 setAnalysis(data.analysis);
                 setRevengeQuestion({
                     ...revengePayload,
-                    id: Date.now()
+                    id: Date.now(),
+                    skillTag: question.skillTag,
+                    difficulty: question.difficulty,
+                    questionMode: 'choice',
+                    correctAnswer: revengePayload.options[revengePayload.correct_index] || ''
                 });
                 setStatusMessage(t.mentor.revengeReady);
                 lastRequestRef.current = Date.now();

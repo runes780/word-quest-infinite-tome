@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Timer, Trophy, Flame, Target, Play, X, Award } from 'lucide-react';
 import { useSettingsStore } from '@/store/settingsStore';
-import { translations } from '@/lib/translations';
 import { getBalancedFallbackQuestions, FallbackQuestion } from '@/lib/data/fallbackQuestions';
 import { playSound } from '@/lib/audio';
+import { logLearningEvent, updatePlayerProfile, hashQuestion } from '@/db/db';
+import { logMissionHistory } from '@/lib/data/history';
 
 // Map event names to playSound methods
 const sound = {
@@ -19,6 +20,7 @@ const sound = {
 // Daily challenge configuration
 const DAILY_CHALLENGE_TIME = 60; // 60 seconds
 const DAILY_CHALLENGE_QUESTIONS = 10;
+const nowMs = () => Date.now();
 
 interface DailyChallengeStats {
     date: string; // YYYY-MM-DD
@@ -68,7 +70,6 @@ interface DailyChallengeProps {
 
 export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
     const { language, soundEnabled } = useSettingsStore();
-    const t = translations[language];
 
     const [phase, setPhase] = useState<'intro' | 'playing' | 'result'>('intro');
     const [questions, setQuestions] = useState<FallbackQuestion[]>([]);
@@ -80,10 +81,14 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
     const [showFeedback, setShowFeedback] = useState(false);
     const [todayStats, setTodayStats] = useState<DailyChallengeStats | null>(null);
     const [streak, setStreak] = useState(0);
+    const [answeredCount, setAnsweredCount] = useState(0);
+    const [skillStats, setSkillStats] = useState<Record<string, { correct: number; total: number }>>({});
+    const [questionStartedAt, setQuestionStartedAt] = useState<number>(() => nowMs());
 
     // Load today's stats on mount
     useEffect(() => {
-        if (isOpen) {
+        if (!isOpen) return;
+        const frame = requestAnimationFrame(() => {
             const stats = loadDailyStats();
             setTodayStats(stats);
             if (stats?.completed) {
@@ -93,8 +98,60 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
             } else {
                 setPhase('intro');
             }
-        }
+        });
+        return () => cancelAnimationFrame(frame);
     }, [isOpen]);
+
+    const startChallenge = useCallback(() => {
+        const challengeQuestions = getBalancedFallbackQuestions(DAILY_CHALLENGE_QUESTIONS);
+        setQuestions(challengeQuestions);
+        setCurrentIndex(0);
+        setScore(0);
+        setCorrect(0);
+        setStreak(0);
+        setAnsweredCount(0);
+        setTimeLeft(DAILY_CHALLENGE_TIME);
+        setSelectedOption(null);
+        setShowFeedback(false);
+        setSkillStats({});
+        setQuestionStartedAt(nowMs());
+        setPhase('playing');
+        if (soundEnabled) sound.click();
+    }, [soundEnabled]);
+
+    const endChallenge = useCallback(() => {
+        const stats: DailyChallengeStats = {
+            date: getTodayKey(),
+            score,
+            correct,
+            total: answeredCount,
+            timeUsed: DAILY_CHALLENGE_TIME - timeLeft,
+            completed: true
+        };
+        saveDailyStats(stats);
+        setTodayStats(stats);
+        setPhase('result');
+        logMissionHistory({
+            score,
+            totalQuestions: answeredCount,
+            levelTitle: 'Daily Challenge',
+            totalCorrect: correct,
+            accuracy: answeredCount > 0 ? correct / answeredCount : 0,
+            skillStats
+        }).catch(console.error);
+        updatePlayerProfile({
+            totalXp: score,
+            dailyXpEarned: score,
+            wordsLearned: correct,
+            lessonsCompleted: 1,
+            totalStudyMinutes: Math.max(1, Math.round((DAILY_CHALLENGE_TIME - timeLeft) / 60))
+        }).catch(console.error);
+        logLearningEvent({
+            eventType: 'session_complete',
+            source: 'daily'
+        }).catch(console.error);
+        if (soundEnabled) sound.victory();
+    }, [score, correct, answeredCount, timeLeft, soundEnabled, skillStats]);
 
     // Timer countdown
     useEffect(() => {
@@ -112,36 +169,7 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [phase, timeLeft]);
-
-    const startChallenge = useCallback(() => {
-        const challengeQuestions = getBalancedFallbackQuestions(DAILY_CHALLENGE_QUESTIONS);
-        setQuestions(challengeQuestions);
-        setCurrentIndex(0);
-        setScore(0);
-        setCorrect(0);
-        setStreak(0);
-        setTimeLeft(DAILY_CHALLENGE_TIME);
-        setSelectedOption(null);
-        setShowFeedback(false);
-        setPhase('playing');
-        if (soundEnabled) sound.click();
-    }, [soundEnabled]);
-
-    const endChallenge = useCallback(() => {
-        const stats: DailyChallengeStats = {
-            date: getTodayKey(),
-            score,
-            correct,
-            total: currentIndex,
-            timeUsed: DAILY_CHALLENGE_TIME - timeLeft,
-            completed: true
-        };
-        saveDailyStats(stats);
-        setTodayStats(stats);
-        setPhase('result');
-        if (soundEnabled) sound.victory();
-    }, [score, correct, currentIndex, timeLeft, soundEnabled]);
+    }, [phase, timeLeft, endChallenge]);
 
     const handleAnswer = (optionIndex: number) => {
         if (selectedOption !== null || showFeedback) return;
@@ -149,6 +177,29 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
         setSelectedOption(optionIndex);
         const currentQ = questions[currentIndex];
         const isCorrect = optionIndex === currentQ.correct_index;
+        const responseLatencyMs = Math.max(0, nowMs() - questionStartedAt);
+        setAnsweredCount((prev) => prev + 1);
+        const skillKey = currentQ.skillTag || `${currentQ.type}_daily`;
+        setSkillStats((prev) => {
+            const existing = prev[skillKey] || { correct: 0, total: 0 };
+            return {
+                ...prev,
+                [skillKey]: {
+                    correct: existing.correct + (isCorrect ? 1 : 0),
+                    total: existing.total + 1
+                }
+            };
+        });
+        logLearningEvent({
+            eventType: 'answer',
+            source: 'daily',
+            questionId: currentQ.id,
+            questionHash: hashQuestion(currentQ.question),
+            skillTag: currentQ.skillTag,
+            mode: 'choice',
+            result: isCorrect ? 'correct' : 'wrong',
+            latencyMs: responseLatencyMs
+        }).catch(console.error);
 
         if (isCorrect) {
             const newStreak = streak + 1;
@@ -171,6 +222,7 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
                 setCurrentIndex(prev => prev + 1);
                 setSelectedOption(null);
                 setShowFeedback(false);
+                setQuestionStartedAt(nowMs());
             }
         }, 800);
     };

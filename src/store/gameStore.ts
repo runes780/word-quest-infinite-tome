@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { logMistake } from '@/lib/data/mistakes';
 import { getCurrentBlessingEffect } from '@/components/InputSection';
 import { loadPlayerStats, savePlayerStats, checkAchievements, PlayerAchievementStats, Achievement } from '@/components/AchievementSystem';
-import { updatePlayerProfile, reviewCard, hashQuestion } from '@/db/db';
+import { updatePlayerProfile, reviewCard, hashQuestion, logLearningEvent, LearningEventSource } from '@/db/db';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -26,7 +26,12 @@ function updateAchievementStats(updates: Partial<PlayerAchievementStats>) {
     if (updates.totalXpEarned !== undefined) newStats.totalXpEarned = (newStats.totalXpEarned || 0) + updates.totalXpEarned;
     if (updates.bossesDefeated !== undefined) newStats.bossesDefeated = (newStats.bossesDefeated || 0) + updates.bossesDefeated;
     if (updates.perfectRuns !== undefined) newStats.perfectRuns = (newStats.perfectRuns || 0) + updates.perfectRuns;
+    if (updates.relicsOwned !== undefined) newStats.relicsOwned = Math.max(newStats.relicsOwned || 0, updates.relicsOwned);
     if (updates.potionsUsed !== undefined) newStats.potionsUsed = (newStats.potionsUsed || 0) + updates.potionsUsed;
+    if (updates.daysPlayed !== undefined) newStats.daysPlayed = (newStats.daysPlayed || 0) + updates.daysPlayed;
+    if (updates.consecutiveDays !== undefined) newStats.consecutiveDays = updates.consecutiveDays;
+    if (updates.vocabMastered !== undefined) newStats.vocabMastered = Math.max(newStats.vocabMastered || 0, updates.vocabMastered);
+    if (updates.grammarMastered !== undefined) newStats.grammarMastered = Math.max(newStats.grammarMastered || 0, updates.grammarMastered);
     if (updates.fastAnswers !== undefined) newStats.fastAnswers = (newStats.fastAnswers || 0) + updates.fastAnswers;
     if (updates.hintsUsed !== undefined) newStats.hintsUsed = (newStats.hintsUsed || 0) + updates.hintsUsed;
     if (updates.revengeCleared !== undefined) newStats.revengeCleared = (newStats.revengeCleared || 0) + updates.revengeCleared;
@@ -66,10 +71,12 @@ export interface Monster {
     maxHp?: number;
     element?: 'fire' | 'water' | 'grass'; // Elemental type
     isBoss?: boolean;
-    skillTag?: string;
-    difficulty?: MonsterDifficulty;
-    questionMode?: QuestionMode; // Productive recall mode
-    correctAnswer?: string; // For typing/fill-blank questions
+    skillTag: string;
+    difficulty: MonsterDifficulty;
+    questionMode: QuestionMode; // Productive recall mode
+    correctAnswer: string; // For typing/fill-blank questions
+    learningObjectiveId?: string;
+    sourceContextSpan?: string;
 }
 
 export interface PlayerStats {
@@ -141,7 +148,7 @@ export const RELICS: Item[] = [
     }
 ];
 
-type RevengeEntry = Pick<Monster, 'id' | 'type' | 'question' | 'options' | 'correct_index' | 'explanation' | 'hint' | 'skillTag' | 'difficulty'>;
+type RevengeEntry = Pick<Monster, 'id' | 'type' | 'question' | 'options' | 'correct_index' | 'explanation' | 'hint' | 'skillTag' | 'difficulty' | 'questionMode' | 'correctAnswer' | 'sourceContextSpan'>;
 
 const REVENGE_STORAGE_KEY = 'word-quest-revenge';
 
@@ -181,17 +188,53 @@ const sanitizeForQueue = (question: Monster): RevengeEntry => ({
     explanation: question.explanation,
     hint: question.hint,
     skillTag: question.skillTag,
-    difficulty: question.difficulty
+    difficulty: question.difficulty,
+    questionMode: question.questionMode,
+    correctAnswer: question.correctAnswer,
+    sourceContextSpan: 'revenge'
 });
 
-const applyQuestionDefaults = (question: Partial<Monster> & { id: number; type: Monster['type']; question: string; options: string[]; correct_index: number; explanation: string; }) => ({
-    ...question,
-    skillTag: question.skillTag || `${question.type}_core`,
-    difficulty: question.difficulty || 'medium',
-    hp: question.isBoss ? 3 : 1,
-    maxHp: question.isBoss ? 3 : 1,
-    element: question.type === 'grammar' ? 'water' : question.type === 'vocab' ? 'fire' : 'grass'
-}) as Monster;
+type QuestionInput = Partial<Monster> & {
+    id: number;
+    type: Monster['type'];
+    question: string;
+    options: string[];
+    correct_index: number;
+    explanation: string;
+};
+
+const defaultModeForIndex = (index: number): QuestionMode => {
+    const bucket = index % 10;
+    if (bucket < 5) return 'choice';
+    if (bucket < 8) return 'typing';
+    return 'fill-blank';
+};
+
+const applyQuestionDefaults = (
+    question: QuestionInput,
+    index = 0
+) => {
+    const safeCorrectIndex = question.correct_index >= 0 && question.correct_index < question.options.length
+        ? question.correct_index
+        : 0;
+    const mode = question.questionMode || defaultModeForIndex(index);
+    const fallbackCorrect = question.options[safeCorrectIndex] || '';
+    const providedAnswer = question.correctAnswer?.trim();
+    const correctAnswer = providedAnswer || fallbackCorrect;
+
+    return {
+        ...question,
+        correct_index: safeCorrectIndex,
+        skillTag: question.skillTag || `${question.type}_core`,
+        difficulty: question.difficulty || 'medium',
+        questionMode: mode,
+        correctAnswer,
+        hp: question.isBoss ? 3 : 1,
+        maxHp: question.isBoss ? 3 : 1,
+        element: question.type === 'grammar' ? 'water' : question.type === 'vocab' ? 'fire' : 'grass',
+        sourceContextSpan: question.sourceContextSpan || 'mission'
+    } as Monster;
+};
 
 const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
 
@@ -262,13 +305,15 @@ interface GameState {
     clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
     knowledgeCards: KnowledgeCard[];
     rootFragments: number;
+    sessionSource: LearningEventSource;
+    questionStartedAt: number;
 
     // Actions
-    startGame: (questions: Monster[], context: string) => void;
-    answerQuestion: (optionIndex: number) => { correct: boolean; explanation: string; damageDealt: number; isCritical: boolean; isSuperEffective: boolean };
+    startGame: (questions: Monster[], context: string, source?: LearningEventSource) => void;
+    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => { correct: boolean; explanation: string; damageDealt: number; isCritical: boolean; isSuperEffective: boolean };
     nextQuestion: () => void;
-    addQuestions: (newQuestions: Monster[]) => void;
-    injectQuestion: (question: Monster) => void;
+    addQuestions: (newQuestions: QuestionInput[]) => void;
+    injectQuestion: (question: QuestionInput) => void;
     heal: (amount: number) => void;
     addGold: (amount: number) => void;
     spendGold: (amount: number) => boolean;
@@ -278,6 +323,8 @@ interface GameState {
     generateRewards: (type: 'normal' | 'elite' | 'boss') => void;
     claimReward: (rewardId: string) => void;
     closeRewardScreen: () => void;
+    recordHintUsed: () => void;
+    recordRunCompletion: () => void;
 
     // Error Recovery
     hasSavedGame: () => boolean;
@@ -302,6 +349,8 @@ interface SavedGameState {
     bossShieldProgress: number;
     knowledgeCards: KnowledgeCard[];
     rootFragments: number;
+    sessionSource: LearningEventSource;
+    questionStartedAt: number;
     savedAt: number;
 }
 
@@ -323,6 +372,8 @@ function saveGameState(state: Partial<SavedGameState>) {
             bossShieldProgress: state.bossShieldProgress ?? existing?.bossShieldProgress ?? 0,
             knowledgeCards: state.knowledgeCards ?? existing?.knowledgeCards ?? [],
             rootFragments: state.rootFragments ?? existing?.rootFragments ?? 0,
+            sessionSource: state.sessionSource ?? existing?.sessionSource ?? 'battle',
+            questionStartedAt: state.questionStartedAt ?? existing?.questionStartedAt ?? Date.now(),
             savedAt: Date.now()
         };
         // Only save if there's an active game
@@ -391,11 +442,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     clarityEffect: null,
     knowledgeCards: [],
     rootFragments: 0,
+    sessionSource: 'battle',
+    questionStartedAt: Date.now(),
 
-    startGame: (questions, context) => {
+    startGame: (questions, context, source = 'battle') => {
         const revengeEntries = [...get().revengeQueue];
-        const preparedRevenge = revengeEntries.map((entry, idx) => applyQuestionDefaults({ ...entry, id: entry.id || Date.now() + idx }));
-        const preparedIncoming = questions.map((q) => applyQuestionDefaults(q));
+        const preparedRevenge = revengeEntries.map((entry, idx) =>
+            applyQuestionDefaults({ ...entry, id: entry.id || Date.now() + idx, sourceContextSpan: 'revenge' }, idx)
+        );
+        const preparedIncoming = questions.map((q, idx) => applyQuestionDefaults(q, preparedRevenge.length + idx));
         const combined = [...preparedRevenge, ...preparedIncoming];
         const firstHp = combined[0]?.hp || 1;
 
@@ -418,16 +473,22 @@ export const useGameStore = create<GameState>((set, get) => ({
             bossShieldProgress: 0,
             clarityEffect: null,
             knowledgeCards: state.knowledgeCards,
-            rootFragments: state.rootFragments
+            rootFragments: state.rootFragments,
+            sessionSource: source,
+            questionStartedAt: Date.now()
         }));
         persistRevengeQueue([]);
     },
 
-    answerQuestion: (optionIndex) => {
-        const { questions, currentIndex, health, maxHealth, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory } = get();
+    answerQuestion: (optionIndex, meta) => {
+        const { questions, currentIndex, health, maxHealth, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, questionStartedAt, sessionSource } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
         const skillKey = getSkillKey(currentQuestion);
+        const responseLatencyMs = meta?.responseLatencyMs ?? Math.max(0, Date.now() - questionStartedAt);
+        const selectedOption = optionIndex >= 0 && optionIndex < currentQuestion.options.length
+            ? currentQuestion.options[optionIndex]
+            : (meta?.userResponse || '[typed_response]');
         const prevStats = skillStats[skillKey] || { correct: 0, total: 0 };
         const updatedSkillStats = {
             ...skillStats,
@@ -452,7 +513,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const newAnswer: UserAnswer = {
             questionId: currentQuestion.id,
             questionText: currentQuestion.question,
-            userChoice: currentQuestion.options[optionIndex],
+            userChoice: selectedOption,
             correctChoice: currentQuestion.options[currentQuestion.correct_index],
             isCorrect
         };
@@ -539,6 +600,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 totalCriticals: isCritical ? 1 : 0,
                 currentStreak: newStreak,
                 bossesDefeated: (nextMonsterHp <= 0 && currentQuestion.isBoss) ? 1 : 0,
+                fastAnswers: responseLatencyMs <= 5000 ? 1 : 0,
+                revengeCleared: currentQuestion.sourceContextSpan === 'revenge' ? 1 : 0
             });
 
             // Update global persistent profile (XP, gold, streak)
@@ -547,6 +610,21 @@ export const useGameStore = create<GameState>((set, get) => ({
                 totalGold: goldGain,
                 dailyXpEarned: xpGain,
                 wordsLearned: 1
+            }).then((profile) => {
+                updateAchievementStats({
+                    consecutiveDays: profile.dailyStreak
+                });
+            }).catch(console.error);
+
+            logLearningEvent({
+                eventType: 'answer',
+                questionId: currentQuestion.id,
+                questionHash: hashQuestion(currentQuestion.question),
+                skillTag: currentQuestion.skillTag,
+                mode: currentQuestion.questionMode,
+                result: 'correct',
+                latencyMs: responseLatencyMs,
+                source: sessionSource
             }).catch(console.error);
 
             // Update FSRS card scheduling (mark as 'good' for correct answer)
@@ -598,7 +676,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             logMistake({
                 questionId: currentQuestion.id,
                 questionText: currentQuestion.question,
-                wrongAnswer: currentQuestion.options[optionIndex],
+                wrongAnswer: selectedOption,
                 correctAnswer: currentQuestion.options[currentQuestion.correct_index],
                 explanation: currentQuestion.explanation,
                 options: currentQuestion.options,
@@ -625,6 +703,17 @@ export const useGameStore = create<GameState>((set, get) => ({
                 hint: currentQuestion.hint,
                 skillTag: currentQuestion.skillTag
             }).catch(console.error);
+
+            logLearningEvent({
+                eventType: 'answer',
+                questionId: currentQuestion.id,
+                questionHash: hashQuestion(currentQuestion.question),
+                skillTag: currentQuestion.skillTag,
+                mode: currentQuestion.questionMode,
+                result: 'wrong',
+                latencyMs: responseLatencyMs,
+                source: sessionSource
+            }).catch(console.error);
         }
 
         return {
@@ -639,7 +728,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     addQuestions: (newQuestions) => {
         const { questions } = get();
         // Process new questions to add RPG stats
-        const processedQuestions = newQuestions.map(q => applyQuestionDefaults(q));
+        const processedQuestions = newQuestions.map((q, idx) => applyQuestionDefaults(q, questions.length + idx));
         set({ questions: [...questions, ...processedQuestions] });
     },
 
@@ -675,7 +764,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 currentIndex: nextIndex,
                 currentMonsterHp: nextMonster.hp || 1,
                 bossShieldProgress: 0,
-                clarityEffect: null
+                clarityEffect: null,
+                questionStartedAt: Date.now()
             });
         } else {
             // Endless Mode Trigger would go here
@@ -686,7 +776,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     injectQuestion: (question) => {
         const { questions, currentIndex } = get();
         const newQuestions = [...questions];
-        newQuestions.splice(currentIndex + 1, 0, applyQuestionDefaults(question));
+        newQuestions.splice(currentIndex + 1, 0, applyQuestionDefaults(question, currentIndex + 1));
         set({ questions: newQuestions });
     },
 
@@ -707,9 +797,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         return false;
     },
 
-    addItem: (item) => set((state) => ({
-        inventory: [...state.inventory, item]
-    })),
+    addItem: (item) => {
+        set((state) => ({
+            inventory: [...state.inventory, item]
+        }));
+        if (item.type.startsWith('relic_')) {
+            const nextInventory = [...get().inventory];
+            const uniqueRelics = new Set(nextInventory.filter((entry) => entry.type.startsWith('relic_')).map((entry) => entry.type)).size;
+            updateAchievementStats({ relicsOwned: uniqueRelics });
+        }
+    },
 
     useItem: (itemId) => {
         const { inventory, health, maxHealth, questions, currentIndex, clarityEffect } = get();
@@ -746,6 +843,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             const newInventory = [...inventory];
             newInventory.splice(itemIndex, 1);
             set({ inventory: newInventory });
+            if (item.type === 'potion_health' || item.type === 'potion_clarity') {
+                updateAchievementStats({ potionsUsed: 1 });
+            }
         }
     },
 
@@ -761,7 +861,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         bossShieldProgress: 0,
         clarityEffect: null,
         knowledgeCards: state.knowledgeCards,
-        rootFragments: state.rootFragments
+        rootFragments: state.rootFragments,
+        sessionSource: 'battle',
+        questionStartedAt: Date.now()
     })),
 
     generateRewards: (type) => {
@@ -850,6 +952,12 @@ export const useGameStore = create<GameState>((set, get) => ({
             const relic = RELICS.find(r => r.id === reward.value);
             if (relic) {
                 set({ inventory: [...inventory, { ...relic, id: `${relic.id}_${Date.now()}` }] });
+                const uniqueRelics = new Set(
+                    [...inventory, relic]
+                        .filter((entry) => entry.type.startsWith('relic_'))
+                        .map((entry) => entry.type)
+                ).size;
+                updateAchievementStats({ relicsOwned: uniqueRelics });
             }
         } else if (reward.type === 'potion') {
             // Simplified potion adding
@@ -887,6 +995,12 @@ export const useGameStore = create<GameState>((set, get) => ({
                     const crafted = craftRelic(newInventory);
                     if (crafted) {
                         newInventory = [...newInventory, crafted];
+                        const uniqueRelics = new Set(
+                            newInventory
+                                .filter((entry) => entry.type.startsWith('relic_'))
+                                .map((entry) => entry.type)
+                        ).size;
+                        updateAchievementStats({ relicsOwned: uniqueRelics });
                         extraRewards.push({
                             id: `crafted_${crafted.id}`,
                             type: 'relic',
@@ -922,6 +1036,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     closeRewardScreen: () => set({ showRewardScreen: false, pendingRewards: [] }),
+    recordHintUsed: () => {
+        updateAchievementStats({ hintsUsed: 1 });
+        const state = get();
+        const currentQuestion = state.questions[state.currentIndex];
+        if (!currentQuestion) return;
+        logLearningEvent({
+            eventType: 'hint',
+            questionId: currentQuestion.id,
+            questionHash: hashQuestion(currentQuestion.question),
+            skillTag: currentQuestion.skillTag,
+            mode: currentQuestion.questionMode,
+            source: state.sessionSource
+        }).catch(console.error);
+    },
+    recordRunCompletion: () => {
+        const state = get();
+        const totalAnswers = state.userAnswers.length;
+        const totalCorrect = state.userAnswers.filter((answer) => answer.isCorrect).length;
+        const isPerfect = totalAnswers > 0 && totalCorrect === totalAnswers;
+        const masteredSkills = Object.entries(state.skillStats)
+            .filter(([, value]) => value.total >= 3 && value.correct / value.total >= 0.8)
+            .map(([key]) => key);
+        const vocabMastered = masteredSkills.filter((skill) => skill.startsWith('vocab')).length;
+        const grammarMastered = masteredSkills.filter((skill) => skill.startsWith('grammar')).length;
+        updateAchievementStats({
+            levelsCompleted: 1,
+            perfectRuns: isPerfect ? 1 : 0,
+            vocabMastered,
+            grammarMastered
+        });
+        logLearningEvent({
+            eventType: 'session_complete',
+            source: state.sessionSource
+        }).catch(console.error);
+    },
     addToRevengeQueue: (question) => {
         set((state) => {
             const entry = sanitizeForQueue(question);
@@ -942,12 +1091,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     resumeGame: () => {
         const saved = loadSavedGameState();
         if (!saved || saved.questions.length === 0) return false;
+        const restoredQuestions = saved.questions.map((q, idx) => applyQuestionDefaults(q, idx));
 
         set({
             health: saved.health,
             maxHealth: saved.maxHealth,
             score: saved.score,
-            questions: saved.questions,
+            questions: restoredQuestions,
             currentIndex: saved.currentIndex,
             isGameOver: false,
             isVictory: false,
@@ -962,7 +1112,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             userAnswers: [],
             pendingRewards: [],
             showRewardScreen: false,
-            clarityEffect: null
+            clarityEffect: null,
+            sessionSource: saved.sessionSource,
+            questionStartedAt: saved.questionStartedAt
         });
         console.log('[Recovery] Game resumed from saved state');
         return true;
@@ -1004,7 +1156,9 @@ if (typeof window !== 'undefined') {
                     skillStats: state.skillStats,
                     bossShieldProgress: state.bossShieldProgress,
                     knowledgeCards: state.knowledgeCards,
-                    rootFragments: state.rootFragments
+                    rootFragments: state.rootFragments,
+                    sessionSource: state.sessionSource,
+                    questionStartedAt: state.questionStartedAt
                 });
             }, 1000);
         }
