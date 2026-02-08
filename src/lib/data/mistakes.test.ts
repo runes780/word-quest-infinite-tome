@@ -1,5 +1,6 @@
 import type { MistakeRecord } from '@/db/db';
 import {
+    buildRepeatedCauseActionSuggestion,
     computeRepeatedCauseSnapshot,
     computeRepeatedCauseTrends,
     evaluateRepeatedCauseGoal,
@@ -179,5 +180,59 @@ describe('evaluateRepeatedCauseGoalAgainstBaseline', () => {
         const summary = evaluateRepeatedCauseGoalAgainstBaseline(records, [7], 0.2, 5, 8, now);
         expect(summary.rows[0].status).toBe('insufficient');
         expect(summary.overallStatus).toBe('insufficient');
+    });
+});
+
+describe('buildRepeatedCauseActionSuggestion', () => {
+    test('returns reduce action when goal not met', () => {
+        const summary = {
+            targetReduction: 0.2,
+            overallStatus: 'not_met' as const,
+            rows: [{
+                windowDays: 14,
+                targetReduction: 0.2,
+                status: 'not_met' as const,
+                currentRate: 0.6,
+                baselineRate: 0.7,
+                reductionFromBaseline: 0.14,
+                currentTagged: 12,
+                baselineTagged: 12,
+                baselineWindowOffset: 2
+            }]
+        };
+        const snapshot = {
+            windowDays: 14,
+            taggedMistakes: 12,
+            repeatedMistakes: 7,
+            repeatRate: 0.58,
+            topCauses: [{ causeTag: 'tense_confusion', count: 4 }]
+        };
+
+        const action = buildRepeatedCauseActionSuggestion(summary, snapshot);
+        expect(action.reason).toBe('reduce');
+        expect(action.recommendedQuestions).toBe(5);
+        expect(action.focusCauseTag).toBe('tense_confusion');
+    });
+
+    test('returns collect action when insufficient data', () => {
+        const summary = {
+            targetReduction: 0.2,
+            overallStatus: 'insufficient' as const,
+            rows: [{
+                windowDays: 7,
+                targetReduction: 0.2,
+                status: 'insufficient' as const,
+                currentRate: 0,
+                baselineRate: 0,
+                reductionFromBaseline: 0,
+                currentTagged: 2,
+                baselineTagged: 0,
+                baselineWindowOffset: -1
+            }]
+        };
+
+        const action = buildRepeatedCauseActionSuggestion(summary);
+        expect(action.reason).toBe('collect');
+        expect(action.recommendedQuestions).toBe(3);
     });
 });

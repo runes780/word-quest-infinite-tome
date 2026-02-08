@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
 import {
+    buildRepeatedCauseActionSuggestion,
     evaluateRepeatedCauseGoalAgainstBaseline,
     getMistakes,
     getRepeatedCauseGoalAgainstBaseline,
@@ -87,6 +88,7 @@ export function ParentDashboard() {
 
     const averageAccuracy = snapshot ? Math.round((snapshot.totals.accuracy || 0) * 100) : 0;
     const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
+    const repeatedAction = buildRepeatedCauseActionSuggestion(repeatedGoal, repeatedCauseSnapshot || undefined);
 
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
     const dailyRows = snapshot?.daily ?? [];
@@ -212,6 +214,32 @@ export function ParentDashboard() {
                                         helper={t.dashboard.targetsHelper}
                                     />
                                 </div>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? '学习目标摘要' : 'Learning Goal Summary'}
+                                        </div>
+                                        <span className={
+                                            repeatedGoal.overallStatus === 'passed'
+                                                ? 'text-green-500 text-xs font-semibold'
+                                                : repeatedGoal.overallStatus === 'not_met'
+                                                    ? 'text-destructive text-xs font-semibold'
+                                                    : 'text-muted-foreground text-xs font-semibold'
+                                        }>
+                                            {repeatedGoal.overallStatus === 'passed'
+                                                ? (isZh ? '重复错因目标达标' : 'Repeated-cause goal passed')
+                                                : repeatedGoal.overallStatus === 'not_met'
+                                                    ? (isZh ? '重复错因目标未达标' : 'Repeated-cause goal not met')
+                                                    : (isZh ? '重复错因样本不足' : 'Repeated-cause sample insufficient')}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {isZh
+                                            ? `建议今晚聚焦${repeatedAction.priorityWindowDays || range}天窗口，围绕 ${repeatedAction.focusCauseTag || '核心错因'} 完成 ${repeatedAction.recommendedQuestions} 题定向练习。`
+                                            : `Tonight focus on the ${repeatedAction.priorityWindowDays || range}d window and run ${repeatedAction.recommendedQuestions} targeted questions on ${repeatedAction.focusCauseTag || 'the top cause tag'}.`}
+                                    </div>
+                                </section>
 
                                 <div className="grid lg:grid-cols-2 gap-6">
                                     <section className="p-5 rounded-2xl bg-secondary/30 border border-border">

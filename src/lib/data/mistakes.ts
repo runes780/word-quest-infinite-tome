@@ -108,6 +108,14 @@ export interface RepeatedCauseBaselineSummary {
     overallStatus: RepeatedCauseGoalStatus;
 }
 
+export interface RepeatedCauseActionSuggestion {
+    status: RepeatedCauseGoalStatus;
+    focusCauseTag?: string;
+    priorityWindowDays?: number;
+    recommendedQuestions: number;
+    reason: 'maintain' | 'reduce' | 'collect';
+}
+
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
     if (!isBrowser) return;
     try {
@@ -383,6 +391,43 @@ export async function getRepeatedCauseGoalAgainstBaseline(
         minTagged,
         lookbackWindows
     );
+}
+
+export function buildRepeatedCauseActionSuggestion(
+    summary: RepeatedCauseBaselineSummary,
+    snapshot?: RepeatedCauseSnapshot
+): RepeatedCauseActionSuggestion {
+    const focusCauseTag = snapshot?.topCauses[0]?.causeTag;
+    const notMetRows = summary.rows.filter((row) => row.status === 'not_met');
+    const priority = notMetRows.sort((a, b) => b.currentRate - a.currentRate)[0] || summary.rows[0];
+
+    if (summary.overallStatus === 'passed') {
+        return {
+            status: 'passed',
+            focusCauseTag,
+            priorityWindowDays: priority?.windowDays,
+            recommendedQuestions: 3,
+            reason: 'maintain'
+        };
+    }
+
+    if (summary.overallStatus === 'not_met') {
+        return {
+            status: 'not_met',
+            focusCauseTag,
+            priorityWindowDays: priority?.windowDays,
+            recommendedQuestions: 5,
+            reason: 'reduce'
+        };
+    }
+
+    return {
+        status: 'insufficient',
+        focusCauseTag,
+        priorityWindowDays: priority?.windowDays,
+        recommendedQuestions: 3,
+        reason: 'collect'
+    };
 }
 
 export async function deleteMistake(id: number) {
