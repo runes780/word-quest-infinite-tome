@@ -41,6 +41,9 @@ export interface DashboardSummary {
         avgAccuracy: number;
         avgScore: number;
         successRuns: number;
+        recentAccuracies: number[];
+        consecutiveLowAccuracyRuns: number;
+        lowAccuracyThreshold: number;
         lastFocusTag?: string;
         lastRunAt?: number;
     };
@@ -152,6 +155,7 @@ function parseTargetedFocusTag(levelTitle: string): string | undefined {
 }
 
 export function getTargetedReviewSummary(records: HistoryRecord[]) {
+    const LOW_ACCURACY_THRESHOLD = 0.65;
     const targeted = records
         .filter((record) => parseTargetedFocusTag(record.levelTitle || '') !== undefined)
         .sort((a, b) => b.timestamp - a.timestamp);
@@ -162,9 +166,26 @@ export function getTargetedReviewSummary(records: HistoryRecord[]) {
             avgAccuracy: 0,
             avgScore: 0,
             successRuns: 0,
+            recentAccuracies: [],
+            consecutiveLowAccuracyRuns: 0,
+            lowAccuracyThreshold: LOW_ACCURACY_THRESHOLD,
             lastFocusTag: undefined,
             lastRunAt: undefined
         };
+    }
+
+    const targetedAccuracies = targeted.map((record) => {
+        const counts = deriveCounts(record);
+        return counts.total > 0 ? counts.correct / counts.total : 0;
+    });
+    const recentAccuracies = targetedAccuracies.slice(0, 5);
+    let consecutiveLowAccuracyRuns = 0;
+    for (const accuracy of recentAccuracies) {
+        if (accuracy < LOW_ACCURACY_THRESHOLD) {
+            consecutiveLowAccuracyRuns += 1;
+            continue;
+        }
+        break;
     }
 
     const aggregate = targeted.reduce((acc, record) => {
@@ -187,6 +208,9 @@ export function getTargetedReviewSummary(records: HistoryRecord[]) {
         avgAccuracy: aggregate.totalQuestions > 0 ? aggregate.totalCorrect / aggregate.totalQuestions : 0,
         avgScore: aggregate.totalScore / targeted.length,
         successRuns: aggregate.successRuns,
+        recentAccuracies,
+        consecutiveLowAccuracyRuns,
+        lowAccuracyThreshold: LOW_ACCURACY_THRESHOLD,
         lastFocusTag: parseTargetedFocusTag(targeted[0].levelTitle || ''),
         lastRunAt: targeted[0].timestamp
     };

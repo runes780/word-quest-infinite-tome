@@ -1,6 +1,7 @@
 import type { MistakeRecord } from '@/db/db';
 import {
     buildRepeatedCauseActionSuggestion,
+    buildRepeatedCauseIntensityAlert,
     computeRepeatedCauseSnapshot,
     computeRepeatedCauseTrends,
     evaluateRepeatedCauseGoal,
@@ -263,5 +264,78 @@ describe('buildRepeatedCauseActionSuggestion', () => {
         expect(action.reason).toBe('reduce');
         expect(action.intensity).toBe('intensive');
         expect(action.recommendedQuestions).toBe(7);
+    });
+
+    test('escalates to intensive when not met and consecutive low runs keep happening', () => {
+        const summary = {
+            targetReduction: 0.2,
+            overallStatus: 'not_met' as const,
+            rows: [{
+                windowDays: 14,
+                targetReduction: 0.2,
+                status: 'not_met' as const,
+                currentRate: 0.6,
+                baselineRate: 0.7,
+                reductionFromBaseline: 0.14,
+                currentTagged: 12,
+                baselineTagged: 12,
+                baselineWindowOffset: 2
+            }]
+        };
+
+        const action = buildRepeatedCauseActionSuggestion(summary, undefined, {
+            targetedSessions: 5,
+            targetedAvgAccuracy: 0.72,
+            targetedSuccessRuns: 1,
+            targetedConsecutiveLowRuns: 2
+        });
+        expect(action.reason).toBe('reduce');
+        expect(action.intensity).toBe('intensive');
+        expect(action.recommendedQuestions).toBe(7);
+    });
+});
+
+describe('buildRepeatedCauseIntensityAlert', () => {
+    test('returns warning when intensive streak reaches threshold', () => {
+        const alert = buildRepeatedCauseIntensityAlert(
+            {
+                status: 'not_met',
+                recommendedQuestions: 7,
+                reason: 'reduce',
+                intensity: 'intensive',
+                rationale: 'r'
+            },
+            { targetedConsecutiveLowRuns: 2 }
+        );
+        expect(alert?.level).toBe('warning');
+        expect(alert?.active).toBe(true);
+    });
+
+    test('returns critical when intensive streak is long', () => {
+        const alert = buildRepeatedCauseIntensityAlert(
+            {
+                status: 'not_met',
+                recommendedQuestions: 7,
+                reason: 'reduce',
+                intensity: 'intensive',
+                rationale: 'r'
+            },
+            { targetedConsecutiveLowRuns: 4 }
+        );
+        expect(alert?.level).toBe('critical');
+    });
+
+    test('returns null when action is not intensive', () => {
+        const alert = buildRepeatedCauseIntensityAlert(
+            {
+                status: 'passed',
+                recommendedQuestions: 3,
+                reason: 'maintain',
+                intensity: 'light',
+                rationale: 'r'
+            },
+            { targetedConsecutiveLowRuns: 5 }
+        );
+        expect(alert).toBeNull();
     });
 });

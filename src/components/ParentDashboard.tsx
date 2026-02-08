@@ -10,6 +10,7 @@ import { translations } from '@/lib/translations';
 import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
 import {
     buildRepeatedCauseActionSuggestion,
+    buildRepeatedCauseIntensityAlert,
     evaluateRepeatedCauseGoalAgainstBaseline,
     getMistakes,
     getRepeatedCauseGoalAgainstBaseline,
@@ -95,7 +96,11 @@ export function ParentDashboard() {
     const repeatedAction = buildRepeatedCauseActionSuggestion(repeatedGoal, repeatedCauseSnapshot || undefined, {
         targetedSessions: targetedSummary?.sessions || 0,
         targetedAvgAccuracy: targetedSummary?.avgAccuracy || 0,
-        targetedSuccessRuns: targetedSummary?.successRuns || 0
+        targetedSuccessRuns: targetedSummary?.successRuns || 0,
+        targetedConsecutiveLowRuns: targetedSummary?.consecutiveLowAccuracyRuns || 0
+    });
+    const repeatedAlert = buildRepeatedCauseIntensityAlert(repeatedAction, {
+        targetedConsecutiveLowRuns: targetedSummary?.consecutiveLowAccuracyRuns || 0
     });
 
     const skillRows = snapshot?.skills.slice(0, 6) ?? [];
@@ -264,6 +269,17 @@ export function ParentDashboard() {
                                             ? `建议强度：${repeatedAction.intensity} · ${repeatedAction.rationale}`
                                             : `Intensity: ${repeatedAction.intensity} · ${repeatedAction.rationale}`}
                                     </div>
+                                    {repeatedAlert && (
+                                        <div className={`mt-2 text-[11px] rounded-lg border px-2 py-1 ${
+                                            repeatedAlert.level === 'critical'
+                                                ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                                                : 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                                        }`}>
+                                            {isZh
+                                                ? `连续高强度预警（${repeatedAlert.consecutiveLowRuns}轮）：建议拆分为短时复习并加强导师陪练。`
+                                                : `Sustained high-intensity alert (${repeatedAlert.consecutiveLowRuns} runs): split into shorter sessions with active mentor support.`}
+                                        </div>
+                                    )}
                                     <div className="mt-3 flex justify-end">
                                         <button
                                             onClick={handleStartTargetedReview}
@@ -284,7 +300,7 @@ export function ParentDashboard() {
                                         </span>
                                     </div>
                                     {(targetedSummary?.sessions || 0) > 0 ? (
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                                             <div className="p-2 rounded-lg bg-background/40 border border-border/40">
                                                 <div className="text-muted-foreground">{isZh ? '平均正确率' : 'Avg Accuracy'}</div>
                                                 <div className="font-semibold">{Math.round((targetedSummary?.avgAccuracy || 0) * 100)}%</div>
@@ -300,6 +316,10 @@ export function ParentDashboard() {
                                             <div className="p-2 rounded-lg bg-background/40 border border-border/40">
                                                 <div className="text-muted-foreground">{isZh ? '最近焦点' : 'Last Focus'}</div>
                                                 <div className="font-semibold truncate">{targetedSummary?.lastFocusTag || '-'}</div>
+                                            </div>
+                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
+                                                <div className="text-muted-foreground">{isZh ? '连续低正确率' : 'Consecutive Low Runs'}</div>
+                                                <div className="font-semibold">{targetedSummary?.consecutiveLowAccuracyRuns || 0}</div>
                                             </div>
                                         </div>
                                     ) : (

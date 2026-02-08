@@ -122,6 +122,15 @@ export interface RepeatedCauseActionContext {
     targetedSessions?: number;
     targetedAvgAccuracy?: number;
     targetedSuccessRuns?: number;
+    targetedConsecutiveLowRuns?: number;
+}
+
+export interface RepeatedCauseIntensityAlert {
+    active: boolean;
+    level: 'warning' | 'critical';
+    consecutiveLowRuns: number;
+    minRuns: number;
+    message: string;
 }
 
 export async function cacheMentorAnalysis(args: CacheMentorArgs) {
@@ -412,6 +421,7 @@ export function buildRepeatedCauseActionSuggestion(
     const sessions = context.targetedSessions || 0;
     const avgAccuracy = context.targetedAvgAccuracy || 0;
     const successRuns = context.targetedSuccessRuns || 0;
+    const consecutiveLowRuns = context.targetedConsecutiveLowRuns || 0;
 
     if (summary.overallStatus === 'passed') {
         return {
@@ -426,7 +436,7 @@ export function buildRepeatedCauseActionSuggestion(
     }
 
     if (summary.overallStatus === 'not_met') {
-        const intensive = sessions >= 2 && avgAccuracy < 0.65;
+        const intensive = consecutiveLowRuns >= 2 || (sessions >= 2 && avgAccuracy < 0.65);
         const recommendedQuestions = intensive ? 7 : 5;
         return {
             status: 'not_met',
@@ -436,7 +446,9 @@ export function buildRepeatedCauseActionSuggestion(
             reason: 'reduce',
             intensity: intensive ? 'intensive' : 'standard',
             rationale: intensive
-                ? 'Goal is not met and recent targeted accuracy is low; increase volume for focused correction.'
+                ? consecutiveLowRuns >= 2
+                    ? `Goal is not met and low accuracy has continued for ${consecutiveLowRuns} targeted runs; raise intervention intensity.`
+                    : 'Goal is not met and recent targeted accuracy is low; increase volume for focused correction.'
                 : successRuns >= 2
                     ? 'Goal is not met but execution quality exists; keep a standard focused pack.'
                     : 'Goal is not met; run a standard focused pack on the top repeated cause.'
@@ -451,6 +463,35 @@ export function buildRepeatedCauseActionSuggestion(
         reason: 'collect',
         intensity: 'standard',
         rationale: 'Data is insufficient; run a short pack to collect stable evidence for goal evaluation.'
+    };
+}
+
+export function buildRepeatedCauseIntensityAlert(
+    action: RepeatedCauseActionSuggestion,
+    context: RepeatedCauseActionContext = {},
+    minRuns = 2
+): RepeatedCauseIntensityAlert | null {
+    if (action.intensity !== 'intensive') return null;
+
+    const consecutiveLowRuns = context.targetedConsecutiveLowRuns || 0;
+    if (consecutiveLowRuns < minRuns) return null;
+
+    if (consecutiveLowRuns >= 4) {
+        return {
+            active: true,
+            level: 'critical',
+            consecutiveLowRuns,
+            minRuns,
+            message: `High-intensity intervention has lasted for ${consecutiveLowRuns} targeted runs. Consider reducing load and splitting review into shorter sessions.`
+        };
+    }
+
+    return {
+        active: true,
+        level: 'warning',
+        consecutiveLowRuns,
+        minRuns,
+        message: `High-intensity intervention has lasted for ${consecutiveLowRuns} targeted runs. Monitor fatigue and keep coaching support active.`
     };
 }
 
