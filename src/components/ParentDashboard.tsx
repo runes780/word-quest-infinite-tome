@@ -26,21 +26,26 @@ import {
     EngagementMetricRow,
     EngagementSnapshot,
     FSRSCard,
+    GuardianAcceptanceSnapshot,
     StudyActionExecution,
+    StudyActionExecutionGoalSnapshot,
     StudyActionExecutionSummary,
     StudyActionPriority,
     StudyActionStatus,
     computeStudyActionExecutionSummaryFromRows,
+    getGuardianAcceptanceSnapshot,
     getEngagementSnapshot,
     getDueCardsWithPriority,
     getMasteryAggregateSnapshot,
     getMemoryStatus,
     getSRSStats,
+    getStudyActionExecutionGoalSnapshot,
     getStudyActionExecutions,
     getStudyActionExecutionSummary,
     getWeeklyLearningTasks,
     LearningTask,
     MasteryAggregateSnapshot,
+    logGuardianDashboardEvent,
     upsertStudyActionExecution
 } from '@/db/db';
 import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
@@ -79,7 +84,9 @@ export function ParentDashboard() {
     const [learningTasks, setLearningTasks] = useState<LearningTask[]>([]);
     const [studyActionExecutions, setStudyActionExecutions] = useState<StudyActionExecution[]>([]);
     const [studyActionSummary, setStudyActionSummary] = useState<StudyActionExecutionSummary | null>(null);
+    const [studyActionGoal, setStudyActionGoal] = useState<StudyActionExecutionGoalSnapshot | null>(null);
     const [engagementSnapshot, setEngagementSnapshot] = useState<EngagementSnapshot | null>(null);
+    const [guardianAcceptance, setGuardianAcceptance] = useState<GuardianAcceptanceSnapshot | null>(null);
     const [engagementByWindow, setEngagementByWindow] = useState<Record<number, EngagementSnapshot>>({});
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
@@ -104,7 +111,9 @@ export function ParentDashboard() {
                 weeklyTasks,
                 actionRows,
                 actionSummary,
+                actionGoal,
                 engagementData,
+                guardianAcceptanceData,
                 engagement7,
                 engagement14,
                 engagement30,
@@ -120,7 +129,9 @@ export function ParentDashboard() {
                 getWeeklyLearningTasks(),
                 getStudyActionExecutions(),
                 getStudyActionExecutionSummary(14),
+                getStudyActionExecutionGoalSnapshot(14),
                 getEngagementSnapshot(range),
+                getGuardianAcceptanceSnapshot(7),
                 getEngagementSnapshot(7),
                 getEngagementSnapshot(14),
                 getEngagementSnapshot(30),
@@ -136,7 +147,9 @@ export function ParentDashboard() {
             setLearningTasks(weeklyTasks);
             setStudyActionExecutions(actionRows);
             setStudyActionSummary(actionSummary);
+            setStudyActionGoal(actionGoal);
             setEngagementSnapshot(engagementData);
+            setGuardianAcceptance(guardianAcceptanceData);
             setEngagementByWindow({
                 7: engagement7,
                 14: engagement14,
@@ -157,6 +170,13 @@ export function ParentDashboard() {
         if (!isOpen) return;
         loadData();
     }, [isOpen, loadData]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        logGuardianDashboardEvent('panel_open').catch((err) => {
+            console.error(err);
+        });
+    }, [isOpen]);
 
     const lastActiveLabel = useMemo(() => {
         if (!snapshot?.totals.lastActive) return t.dashboard.noHistoryShort || '—';
@@ -204,6 +224,7 @@ export function ParentDashboard() {
             desiredCount: repeatedAction.recommendedQuestions
         });
         if (pack.monsters.length === 0) return;
+        void logGuardianDashboardEvent('session_launch');
         startGame(pack.monsters, `Targeted Review: ${repeatedAction.focusCauseTag || 'core_skills'}`, 'battle');
         setIsOpen(false);
     }, [mistakes, repeatedAction.focusCauseTag, repeatedAction.recommendedQuestions, startGame, weakestSkill?.skill]);
@@ -231,6 +252,7 @@ export function ParentDashboard() {
                 correctAnswer: options[safeIndex]
             };
         });
+        void logGuardianDashboardEvent('session_launch');
         startGame(monsters, `SRS Focus: ${reviewCards.length} cards`, 'srs');
         setIsOpen(false);
     }, [dueCards, startGame]);
@@ -248,12 +270,15 @@ export function ParentDashboard() {
                 priority,
                 estimatedMinutes
             });
-            const [rows, summary] = await Promise.all([
+            await logGuardianDashboardEvent('action_marked');
+            const [rows, summary, goal] = await Promise.all([
                 getStudyActionExecutions(),
-                getStudyActionExecutionSummary(14)
+                getStudyActionExecutionSummary(14),
+                getStudyActionExecutionGoalSnapshot(14)
             ]);
             setStudyActionExecutions(rows);
             setStudyActionSummary(summary);
+            setStudyActionGoal(goal);
         } catch (e) {
             console.error(e);
         }
@@ -351,6 +376,7 @@ export function ParentDashboard() {
         setExporting('image');
         try {
             await downloadNodeAsImage(reportRef.current, `word-quest-report-${range}d.png`);
+            await logGuardianDashboardEvent('report_export');
         } catch (err) {
             console.error(err);
         } finally {
@@ -363,6 +389,7 @@ export function ParentDashboard() {
         setExporting('pdf');
         try {
             openNodePrintView(reportRef.current, 'Word Quest Progress Report');
+            await logGuardianDashboardEvent('report_export');
         } finally {
             setExporting(null);
         }
@@ -700,6 +727,47 @@ export function ParentDashboard() {
                                             {isZh ? '暂无指标数据，继续完成学习活动后将自动更新。' : 'No metrics yet. Continue learning activities to populate the acceptance panel.'}
                                         </div>
                                     )}
+                                </section>
+
+                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                            {isZh ? 'Phase 3 验收指标' : 'Phase 3 Acceptance Metrics'}
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">
+                                            {isZh ? '执行与周活' : 'Execution & WAU'}
+                                        </span>
+                                    </div>
+                                    <div className="grid md:grid-cols-2 gap-3">
+                                        {studyActionGoal ? (
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="建议执行率"
+                                                labelEn="Suggestion Execution Rate"
+                                                metric={studyActionGoal.executionRate}
+                                                targetTextZh="目标：执行率 >= 40%"
+                                                targetTextEn="Target: execution rate >= 40%"
+                                            />
+                                        ) : (
+                                            <div className="text-xs text-muted-foreground p-3 rounded-xl bg-background/40 border border-border/40">
+                                                {isZh ? '暂无执行率样本。先标记一次计划动作。' : 'No execution sample yet. Mark one action to initialize.'}
+                                            </div>
+                                        )}
+                                        {guardianAcceptance ? (
+                                            <MetricTile
+                                                isZh={isZh}
+                                                labelZh="家长面板周活"
+                                                labelEn="Guardian Panel WAU"
+                                                metric={guardianAcceptance.weeklyActiveRate}
+                                                targetTextZh="目标：较上一窗口提升 20%"
+                                                targetTextEn="Target: +20% vs previous window"
+                                            />
+                                        ) : (
+                                            <div className="text-xs text-muted-foreground p-3 rounded-xl bg-background/40 border border-border/40">
+                                                {isZh ? '暂无周活样本。继续使用面板后会自动判定。' : 'No WAU sample yet. Keep using the panel to evaluate lift.'}
+                                            </div>
+                                        )}
+                                    </div>
                                 </section>
 
                                 <section className="p-4 rounded-2xl bg-secondary/35 border border-border">

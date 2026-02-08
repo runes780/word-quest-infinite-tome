@@ -1,5 +1,6 @@
 import {
     StudyActionExecution,
+    computeStudyActionExecutionGoalFromRows,
     computeStudyActionExecutionSummaryFromRows,
     dateKeyFromTimestamp
 } from './db';
@@ -69,5 +70,36 @@ describe('computeStudyActionExecutionSummaryFromRows', () => {
         const summary = computeStudyActionExecutionSummaryFromRows(rows, 14, now);
         expect(summary.totalTracked).toBe(0);
         expect(summary.executionRate).toBe(0);
+    });
+});
+
+describe('computeStudyActionExecutionGoalFromRows', () => {
+    test('marks met when current execution rate reaches target', () => {
+        const now = Date.UTC(2026, 1, 8, 12, 0, 0);
+        const day = 24 * 60 * 60 * 1000;
+        const rows: StudyActionExecution[] = [
+            row({ actionId: 'targeted_pack', dateKey: '2026-02-07', status: 'completed', updatedAt: now - day }),
+            row({ actionId: 'srs_focus', dateKey: '2026-02-07', status: 'completed', updatedAt: now - day + 1000 }),
+            row({ actionId: 'questline_push', dateKey: '2026-02-07', status: 'skipped', updatedAt: now - day + 2000 }),
+            row({ actionId: 'targeted_pack', dateKey: '2026-01-25', status: 'completed', updatedAt: now - (15 * day) }),
+            row({ actionId: 'srs_focus', dateKey: '2026-01-25', status: 'pending', updatedAt: now - (15 * day) + 1000 }),
+            row({ actionId: 'questline_push', dateKey: '2026-01-25', status: 'pending', updatedAt: now - (15 * day) + 2000 })
+        ];
+
+        const snapshot = computeStudyActionExecutionGoalFromRows(rows, 14, now, 0.4);
+        expect(snapshot.executionRate.currentRate).toBeCloseTo(2 / 3, 5);
+        expect(snapshot.executionRate.status).toBe('met');
+    });
+
+    test('marks insufficient when tracked sample is too low', () => {
+        const now = Date.UTC(2026, 1, 8, 12, 0, 0);
+        const rows: StudyActionExecution[] = [
+            row({ actionId: 'targeted_pack', dateKey: '2026-02-07', status: 'completed', updatedAt: now - 1000 }),
+            row({ actionId: 'targeted_pack', dateKey: '2026-01-20', status: 'pending', updatedAt: now - (20 * 24 * 60 * 60 * 1000) })
+        ];
+
+        const snapshot = computeStudyActionExecutionGoalFromRows(rows, 14, now, 0.4);
+        expect(snapshot.executionRate.denominator).toBe(1);
+        expect(snapshot.executionRate.status).toBe('insufficient');
     });
 });

@@ -191,6 +191,15 @@ export interface EngagementSnapshot {
     nextDayRetention: EngagementMetricRow;
 }
 
+export type GuardianDashboardEventType = 'panel_open' | 'action_marked' | 'report_export' | 'session_launch';
+
+export interface GuardianDashboardEvent {
+    id?: number;
+    eventType: GuardianDashboardEventType;
+    dateKey: string; // YYYY-MM-DD
+    timestamp: number;
+}
+
 export type StudyActionPriority = 'urgent' | 'important' | 'optional';
 export type StudyActionStatus = 'pending' | 'completed' | 'skipped';
 
@@ -213,6 +222,18 @@ export interface StudyActionExecutionSummary {
     pending: number;
     totalTracked: number;
     executionRate: number;
+}
+
+export interface StudyActionExecutionGoalSnapshot {
+    windowDays: number;
+    generatedAt: number;
+    executionRate: EngagementMetricRow;
+}
+
+export interface GuardianAcceptanceSnapshot {
+    windowDays: number;
+    generatedAt: number;
+    weeklyActiveRate: EngagementMetricRow;
 }
 
 export type MasteryState = 'new' | 'learning' | 'consolidated' | 'mastered';
@@ -254,6 +275,7 @@ export class WordQuestDB extends Dexie {
     learningEvents!: Table<LearningEvent>;
     learningTasks!: Table<LearningTask>;
     studyActionExecutions!: Table<StudyActionExecution>;
+    guardianDashboardEvents!: Table<GuardianDashboardEvent>;
     skillMastery!: Table<SkillMasteryRecord>;
 
     constructor() {
@@ -322,6 +344,18 @@ export class WordQuestDB extends Dexie {
             studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
+        this.version(10).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
     }
 }
 
@@ -387,7 +421,7 @@ function getWindowRange(now: number, windowDays: number, offsetWindows = 0): Win
     return { start, end };
 }
 
-function filterEventsInRange(events: LearningEvent[], range: WindowRange): LearningEvent[] {
+function filterEventsInRange<T extends { timestamp: number }>(events: T[], range: WindowRange): T[] {
     return events.filter((event) => event.timestamp > range.start && event.timestamp <= range.end);
 }
 
@@ -910,6 +944,29 @@ export function computeStudyActionExecutionSummaryFromRows(
     };
 }
 
+export function computeStudyActionExecutionGoalFromRows(
+    rows: StudyActionExecution[],
+    windowDays = 14,
+    now = Date.now(),
+    targetRate = 0.4
+): StudyActionExecutionGoalSnapshot {
+    const current = computeStudyActionExecutionSummaryFromRows(rows, windowDays, now);
+    const previous = computeStudyActionExecutionSummaryFromRows(rows, windowDays, now - (windowDays * DAY_MS));
+
+    return {
+        windowDays,
+        generatedAt: now,
+        executionRate: createMetricRow({
+            numerator: current.completed,
+            denominator: current.totalTracked,
+            previousNumerator: previous.completed,
+            previousDenominator: previous.totalTracked,
+            target: targetRate,
+            targetType: 'absolute_rate'
+        })
+    };
+}
+
 export async function getStudyActionExecutionSummary(windowDays = 14, now = Date.now()): Promise<StudyActionExecutionSummary> {
     const start = now - (windowDays * DAY_MS);
     const rows = await db.studyActionExecutions
@@ -917,6 +974,71 @@ export async function getStudyActionExecutionSummary(windowDays = 14, now = Date
         .aboveOrEqual(start)
         .toArray();
     return computeStudyActionExecutionSummaryFromRows(rows, windowDays, now);
+}
+
+export async function getStudyActionExecutionGoalSnapshot(
+    windowDays = 14,
+    lookbackDays = 84,
+    now = Date.now(),
+    targetRate = 0.4
+): Promise<StudyActionExecutionGoalSnapshot> {
+    const start = now - (lookbackDays * DAY_MS);
+    const rows = await db.studyActionExecutions
+        .where('updatedAt')
+        .aboveOrEqual(start)
+        .toArray();
+    return computeStudyActionExecutionGoalFromRows(rows, windowDays, now, targetRate);
+}
+
+export function computeGuardianAcceptanceSnapshotFromEvents(
+    events: GuardianDashboardEvent[],
+    now = Date.now(),
+    windowDays = 7,
+    targetLift = 0.2
+): GuardianAcceptanceSnapshot {
+    const current = filterEventsInRange(events, getWindowRange(now, windowDays, 0));
+    const previous = filterEventsInRange(events, getWindowRange(now, windowDays, 1));
+    const currentActiveDays = new Set(current.map((event) => event.dateKey)).size;
+    const previousActiveDays = new Set(previous.map((event) => event.dateKey)).size;
+
+    return {
+        windowDays,
+        generatedAt: now,
+        weeklyActiveRate: createMetricRow({
+            numerator: currentActiveDays,
+            denominator: windowDays,
+            previousNumerator: previousActiveDays,
+            previousDenominator: windowDays,
+            target: targetLift,
+            targetType: 'relative_lift',
+            minDenominator: 1
+        })
+    };
+}
+
+export async function getGuardianAcceptanceSnapshot(
+    windowDays = 7,
+    lookbackDays = 60,
+    now = Date.now(),
+    targetLift = 0.2
+): Promise<GuardianAcceptanceSnapshot> {
+    const start = now - (lookbackDays * DAY_MS);
+    const rows = await db.guardianDashboardEvents
+        .where('timestamp')
+        .aboveOrEqual(start)
+        .toArray();
+    return computeGuardianAcceptanceSnapshotFromEvents(rows, now, windowDays, targetLift);
+}
+
+export async function logGuardianDashboardEvent(
+    eventType: GuardianDashboardEventType,
+    timestamp = Date.now()
+): Promise<void> {
+    await db.guardianDashboardEvents.add({
+        eventType,
+        dateKey: dateKeyFromTimestamp(timestamp),
+        timestamp
+    });
 }
 
 export async function logLearningEvent(event: Omit<LearningEvent, 'id' | 'timestamp'> & { timestamp?: number }): Promise<void> {
