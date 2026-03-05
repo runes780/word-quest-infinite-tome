@@ -96,6 +96,7 @@
 - [x] `gameStore` 第一阶段拆分：抽离 `questionFlow` 与 `revengeQueue` 模块
 - [x] `BattleInterface` 第一阶段拆分：抽离 `BattleScene` 与 `BattleQuestionPanel`
 - [x] `BattleInterface` 第二阶段拆分：抽离 `useEndlessWave`（无尽波次生成/缓存/回退）
+- [x] `BattleInterface` 第三阶段拆分：抽离 `BattleHud`（血量/XP/金币/遗物/知识卡状态）
 - [x] `gameStore` 第二阶段拆分：抽离 `economyRewards`（relic/奖励/成长计算）
 - [x] `gameStore` 第三阶段拆分：抽离 `sessionRecovery`（存档保存/恢复/清理）
 - [ ] `gameStore` 按领域拆分（learning/combat/economy）

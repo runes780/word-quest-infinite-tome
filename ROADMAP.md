@@ -195,6 +195,7 @@
 - 已启动架构拆分第一阶段：`gameStore` 抽离 `questionFlow`（题目调度/掌握度优先级）与 `revengeQueue`（错题队列持久化）模块，主 store 聚焦状态编排。
 - 已启动界面拆分第一阶段：`BattleInterface` 抽离 `BattleScene` 与 `BattleQuestionPanel`，保留原交互行为并降低组件复杂度。
 - 已启动界面拆分第二阶段：`BattleInterface` 抽离无尽波次生成与缓存编排为 `useEndlessWave` hook，组件聚焦交互呈现。
+- 已启动界面拆分第三阶段：`BattleInterface` 抽离顶部 HUD 为 `BattleHud` 组件，进一步降低渲染层耦合。
 - 已启动架构拆分第二阶段：`gameStore` 抽离 `economyRewards`（relic 配置、掉落保底、XP/Gold 增益、成长结算）模块。
 - 已启动架构拆分第三阶段：`gameStore` 抽离会话恢复存取到 `sessionRecovery` 模块，主 store 不再内联 localStorage 细节。
 
