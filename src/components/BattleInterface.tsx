@@ -10,16 +10,14 @@ import { ShopModal } from './ShopModal';
 import { MissionReport } from './MissionReport';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/store/settingsStore';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
-import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { translations } from '@/lib/translations';
 import { RewardScreen } from './RewardScreen';
 import { playSound } from '@/lib/audio';
 import { speakText, stopSpeech } from '@/lib/tts';
 import { Achievement, AchievementToast } from './AchievementSystem';
-import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import { BattleScene } from './battle/BattleScene';
 import { BattleQuestionPanel } from './battle/BattleQuestionPanel';
+import { useEndlessWave } from './battle/useEndlessWave';
 
 export function BattleInterface() {
     const {
@@ -57,7 +55,6 @@ export function BattleInterface() {
 
     const { apiKey, model, language, soundEnabled, ttsEnabled } = useSettingsStore();
     const t = translations[language];
-    const [isGeneratingMore, setIsGeneratingMore] = useState(false);
     const speechLang = language === 'zh' ? 'zh-CN' : 'en-US';
     const fragmentsRemainder = rootFragments % CRAFT_THRESHOLD;
     const fragmentsUntilCraft = fragmentsRemainder === 0 ? CRAFT_THRESHOLD : CRAFT_THRESHOLD - fragmentsRemainder;
@@ -82,6 +79,15 @@ export function BattleInterface() {
     const activeMasteryCelebration = masteryCelebrations[0] || null;
 
     const currentQuestion = questions[currentIndex];
+    const { isGeneratingMore } = useEndlessWave({
+        apiKey,
+        model,
+        context,
+        currentIndex,
+        questionsLength: questions.length,
+        playerLevel: playerStats.level,
+        addQuestions
+    });
 
     useEffect(() => {
         if (activeAchievement || queuedAchievements.length === 0) return;
@@ -145,115 +151,6 @@ export function BattleInterface() {
             return next;
         });
     };
-
-    // Endless Mode: Generate more questions when running low
-    useEffect(() => {
-        const generateMoreQuestions = async () => {
-            if (!apiKey || !context || isGeneratingMore) return;
-
-            setIsGeneratingMore(true);
-
-            // Import cache and fallback functions dynamically to avoid SSR issues
-            const { cacheQuestions, getCachedQuestions, hashContext } = await import('@/db/db');
-            const { getRandomFallbackQuestions } = await import('@/lib/data/fallbackQuestions');
-            const contextHash = hashContext(context);
-
-            try {
-                const client = new OpenRouterClient(apiKey, model);
-                const prompt = generateLevelPrompt(context + `\n\n(Player is Level ${playerStats.level}. Generate a new wave of challengers!)`);
-                const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
-
-                // Robust JSON extraction
-                let cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
-                const firstBrace = cleanJson.indexOf('{');
-                if (firstBrace === -1) throw new Error('No JSON object found');
-
-                let braceCount = 0;
-                let lastBrace = -1;
-                for (let i = firstBrace; i < cleanJson.length; i++) {
-                    if (cleanJson[i] === '{') braceCount++;
-                    if (cleanJson[i] === '}') braceCount--;
-                    if (braceCount === 0) { lastBrace = i; break; }
-                }
-                if (lastBrace === -1) throw new Error('Malformed JSON');
-
-                cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
-                const data = JSON.parse(cleanJson);
-
-                if (data.monsters && Array.isArray(data.monsters)) {
-                    const normalizedWave = normalizeMissionMonsters(data.monsters);
-                    if (normalizedWave.length === 0) {
-                        throw new Error('Generated mission has no valid questions');
-                    }
-
-                    // Cache questions for future use
-                    try {
-                        const questionsToCache = normalizedWave.map((m) => ({
-                            question: m.question,
-                            options: m.options,
-                            correct_index: m.correct_index,
-                            type: m.type,
-                            explanation: m.explanation,
-                            hint: m.hint,
-                            skillTag: m.skillTag,
-                            contextHash,
-                            timestamp: Date.now(),
-                            used: false
-                        }));
-                        await cacheQuestions(questionsToCache);
-                        console.log(`[Cache] Saved ${questionsToCache.length} questions`);
-                    } catch (cacheError) {
-                        console.warn('[Cache] Failed to cache questions:', cacheError);
-                    }
-
-                    setTimeout(() => addQuestions(normalizedWave), 500);
-                }
-            } catch (e) {
-                console.error("API failed, trying cache/fallback", e);
-
-                // Try cached questions first
-                const cached = await getCachedQuestions(contextHash, 5);
-                if (cached.length > 0) {
-                    console.log(`[Cache] Using ${cached.length} cached questions`);
-                    const questions = cached.map(c => ({
-                        id: c.id || Date.now(),
-                        type: c.type || 'vocab',
-                        question: c.question,
-                        options: c.options,
-                        correct_index: c.correct_index,
-                        explanation: c.explanation,
-                        hint: c.hint,
-                        skillTag: c.skillTag
-                    }));
-                    const normalizedCached = normalizeMissionMonsters(questions);
-                    setTimeout(() => addQuestions(normalizedCached), 500);
-                } else {
-                    // Use local fallback questions
-                    console.log('[Fallback] Using local question bank');
-                    const fallback = getRandomFallbackQuestions(5, 'easy');
-                    const questions = fallback.map(f => ({
-                        id: f.id,
-                        type: f.type,
-                        question: f.question,
-                        options: f.options,
-                        correct_index: f.correct_index,
-                        explanation: f.explanation,
-                        hint: f.hint,
-                        skillTag: f.skillTag
-                    }));
-                    const normalizedFallback = normalizeMissionMonsters(questions);
-                    setTimeout(() => addQuestions(normalizedFallback), 500);
-                }
-            } finally {
-                setIsGeneratingMore(false);
-            }
-        };
-
-        // Trigger when we have 2 or fewer questions left
-        if (questions.length > 0 && currentIndex >= questions.length - 2 && !isGeneratingMore && context) {
-            generateMoreQuestions();
-        }
-    }, [currentIndex, questions.length, isGeneratingMore, context, apiKey, model, addQuestions, playerStats.level]);
 
     useEffect(() => () => {
         stopSpeech();
