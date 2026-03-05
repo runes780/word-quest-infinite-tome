@@ -99,6 +99,7 @@
 - [x] `BattleInterface` 第三阶段拆分：抽离 `BattleHud`（血量/XP/金币/遗物/知识卡状态）
 - [x] `gameStore` 第二阶段拆分：抽离 `economyRewards`（relic/奖励/成长计算）
 - [x] `gameStore` 第三阶段拆分：抽离 `sessionRecovery`（存档保存/恢复/清理）
+- [x] `gameStore` 第四阶段拆分：抽离 `combatResolution`（答题战斗结算纯逻辑）
 - [ ] `gameStore` 按领域拆分（learning/combat/economy）
 - [ ] `BattleInterface` 拆分子模块
 - [x] 建立学习主流程 E2E（mission -> battle -> srs -> report）

@@ -198,6 +198,7 @@
 - 已启动界面拆分第三阶段：`BattleInterface` 抽离顶部 HUD 为 `BattleHud` 组件，进一步降低渲染层耦合。
 - 已启动架构拆分第二阶段：`gameStore` 抽离 `economyRewards`（relic 配置、掉落保底、XP/Gold 增益、成长结算）模块。
 - 已启动架构拆分第三阶段：`gameStore` 抽离会话恢复存取到 `sessionRecovery` 模块，主 store 不再内联 localStorage 细节。
+- 已启动架构拆分第四阶段：`gameStore` 抽离答题战斗结算纯逻辑到 `combatResolution` 模块，并补齐模块级单测。
 
 ### 目标
 - 为后续账号体系、班级协作、多端同步打好基础。

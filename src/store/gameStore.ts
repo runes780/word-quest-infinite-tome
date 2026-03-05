@@ -44,6 +44,13 @@ import {
     craftRelic
 } from '@/store/modules/economyRewards';
 import {
+    buildUpdatedSkillStats,
+    normalizeBlessingModifiers,
+    resolveCorrectCombat,
+    resolveSelectedOption,
+    resolveWrongCombat
+} from '@/store/modules/combatResolution';
+import {
     clearSavedGameStateSnapshot,
     loadSavedGameStateSnapshot,
     saveGameStateSnapshot
@@ -354,28 +361,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         const isCorrect = optionIndex === currentQuestion.correct_index;
         const skillKey = getSkillKey(currentQuestion);
         const responseLatencyMs = meta?.responseLatencyMs ?? Math.max(0, Date.now() - questionStartedAt);
-        const selectedOption = optionIndex >= 0 && optionIndex < currentQuestion.options.length
-            ? currentQuestion.options[optionIndex]
-            : (meta?.userResponse || '[typed_response]');
-        const prevStats = skillStats[skillKey] || { correct: 0, total: 0 };
-        const updatedSkillStats = {
-            ...skillStats,
-            [skillKey]: {
-                total: prevStats.total + 1,
-                correct: prevStats.correct + (isCorrect ? 1 : 0)
-            }
-        };
+        const selectedOption = resolveSelectedOption(optionIndex, currentQuestion.options, meta?.userResponse);
+        const updatedSkillStats = buildUpdatedSkillStats(skillStats, skillKey, isCorrect);
 
         // Get active blessing effect
-        const blessingEffect = getCurrentBlessingEffect();
-        const xpMultiplier = blessingEffect?.xpMultiplier ?? 1;
-        const goldMultiplier = blessingEffect?.goldMultiplier ?? 1;
-        const damageMultiplier = blessingEffect?.damageMultiplier ?? 1;
-        const damageTakenMultiplier = blessingEffect?.damageTaken ?? 1;
-        const wrongAnswerXp = blessingEffect?.wrongAnswerXp ?? 0;
-        const healOnCorrectThreshold = blessingEffect?.shieldOnStreak ?? 0;
-        const healAmount = blessingEffect?.healOnCorrect ?? 0;
-        const goldPenalty = blessingEffect?.goldPenalty ?? 0;
+        const blessing = normalizeBlessingModifiers(getCurrentBlessingEffect());
 
         // Record Answer
         const newAnswer: UserAnswer = {
@@ -403,35 +393,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         );
 
         if (isCorrect) {
-            // RPG Logic
-            isCritical = playerStats.streak >= 2;
-            // 20% chance for Super Effective (Weakness Exploit) if not critical, or bonus if critical
-            isSuperEffective = Math.random() > 0.8;
-
-            let baseDamage = 1;
-            if (isCritical) baseDamage += 1;
-            if (isSuperEffective) baseDamage += 1;
-
-            if (currentQuestion.isBoss) {
-                nextBossShieldProgress = bossShieldProgress + 1;
-                damageDealt = 0;
-                if (nextBossShieldProgress >= BOSS_COMBO_THRESHOLD) {
-                    damageDealt = 1;
-                    nextBossShieldProgress = 0;
-                    nextMonsterHp = Math.max(0, currentMonsterHp - damageDealt);
-                } else {
-                    nextMonsterHp = currentMonsterHp;
-                }
-            } else {
-                // Apply blessing damage multiplier
-                damageDealt = Math.floor(baseDamage * damageMultiplier);
-                nextMonsterHp = Math.max(0, currentMonsterHp - damageDealt);
-                nextBossShieldProgress = 0;
-            }
+            const combatOutcome = resolveCorrectCombat({
+                playerStats,
+                currentMonsterHp,
+                bossShieldProgress,
+                isBoss: Boolean(currentQuestion.isBoss),
+                damageMultiplier: blessing.damageMultiplier,
+                bossComboThreshold: BOSS_COMBO_THRESHOLD
+            });
+            damageDealt = combatOutcome.damageDealt;
+            isCritical = combatOutcome.isCritical;
+            isSuperEffective = combatOutcome.isSuperEffective;
+            nextBossShieldProgress = combatOutcome.nextBossShieldProgress;
+            nextMonsterHp = combatOutcome.nextMonsterHp;
 
             // XP Calculation with blessing multiplier
             const xpBase = 20 + (isCritical ? 10 : 0);
-            const xpGain = Math.floor(applyXpBonus(xpBase, inventory) * xpMultiplier);
+            const xpGain = Math.floor(applyXpBonus(xpBase, inventory) * blessing.xpMultiplier);
             let newXp = playerStats.xp + xpGain;
             let newLevel = playerStats.level;
             let newMaxXp = playerStats.maxXp;
@@ -447,11 +425,11 @@ export const useGameStore = create<GameState>((set, get) => ({
 
             // Gold calculation with blessing multiplier
             const goldBase = 15 + (isCritical ? 10 : 0);
-            const goldGain = Math.floor(applyGoldBonus(goldBase, inventory) * goldMultiplier);
+            const goldGain = Math.floor(applyGoldBonus(goldBase, inventory) * blessing.goldMultiplier);
             const newStreak = playerStats.streak + 1;
 
             set({
-                score: score + 10 + (isCritical ? 5 : 0) + (isSuperEffective ? 5 : 0),
+                score: score + combatOutcome.scoreGain,
                 currentMonsterHp: nextMonsterHp,
                 playerStats: {
                     ...playerStats,
@@ -562,8 +540,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 .catch(console.error);
 
             // Blessing: Heal on streak threshold (e.g., Vampiric Wisdom)
-            if (healOnCorrectThreshold > 0 && healAmount > 0 && newStreak % healOnCorrectThreshold === 0) {
-                get().heal(healAmount);
+            if (blessing.healOnCorrectThreshold > 0 && blessing.healAmount > 0 && newStreak % blessing.healOnCorrectThreshold === 0) {
+                get().heal(blessing.healAmount);
             }
 
             // Trigger Vampire Fangs relic
@@ -571,28 +549,29 @@ export const useGameStore = create<GameState>((set, get) => ({
                 get().heal(1);
             }
         } else {
-            // Apply blessing damage taken multiplier (e.g., Perfectionist's Burden takes double damage)
-            const damageToTake = Math.floor(1 * damageTakenMultiplier);
-            const newHealth = Math.max(0, health - damageToTake);
-
-            // Apply gold penalty if blessing has it (e.g., Fortune Seeker)
-            const goldAfterPenalty = Math.max(0, playerStats.gold - goldPenalty);
-
-            // Apply XP on wrong answer if blessing allows (e.g., Quick Learner)
-            const newXp = wrongAnswerXp > 0 ? playerStats.xp + wrongAnswerXp : playerStats.xp;
+            const wrongOutcome = resolveWrongCombat({
+                health,
+                playerGold: playerStats.gold,
+                playerXp: playerStats.xp,
+                damageTakenMultiplier: blessing.damageTakenMultiplier,
+                goldPenalty: blessing.goldPenalty,
+                wrongAnswerXp: blessing.wrongAnswerXp,
+                isBoss: Boolean(currentQuestion.isBoss),
+                bossShieldProgress
+            });
 
             set({
-                health: newHealth,
-                isGameOver: newHealth <= 0,
+                health: wrongOutcome.newHealth,
+                isGameOver: wrongOutcome.isGameOver,
                 playerStats: {
                     ...playerStats,
                     streak: 0,
-                    gold: goldAfterPenalty,
-                    xp: newXp
+                    gold: wrongOutcome.nextGold,
+                    xp: wrongOutcome.nextXp
                 },
                 skillStats: updatedSkillStats,
                 questions: reorderedQuestions,
-                bossShieldProgress: currentQuestion.isBoss ? 0 : bossShieldProgress,
+                bossShieldProgress: wrongOutcome.nextBossShieldProgress,
                 recentMistakeBySkill: {
                     ...recentMistakeBySkill,
                     [skillKey]: (recentMistakeBySkill[skillKey] || 0) + 1
