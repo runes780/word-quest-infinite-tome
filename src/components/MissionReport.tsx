@@ -15,8 +15,9 @@ import { translations } from '@/lib/translations';
 
 export function MissionReport() {
     const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue, recordRunCompletion, runObjectiveBonuses } = useGameStore();
-    const { apiKey, model, language } = useSettingsStore();
+    const { apiKey, model, language, setSettingsOpen } = useSettingsStore();
     const t = translations[language];
+    const hasApiKey = Boolean(apiKey?.trim());
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
     const [analysisSource, setAnalysisSource] = useState<'ai' | 'local' | null>(null);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -76,7 +77,8 @@ export function MissionReport() {
     };
 
     const handleAnalyze = async () => {
-        if (!apiKey) {
+        if (!hasApiKey) {
+            setAnalysisSource(null);
             setAnalysisError(t.mentor.noKey);
             return;
         }
@@ -229,18 +231,36 @@ export function MissionReport() {
 
                         </motion.div>
                     ) : (
-                        <button
-                            onClick={handleAnalyze}
-                            disabled={isLoading}
-                            className="w-full mb-4 py-3 bg-secondary/50 hover:bg-secondary text-secondary-foreground rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
-                        >
-                            {isLoading ? (
-                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                                <Sparkles className="w-4 h-4" />
+                        <>
+                            <button
+                                onClick={handleAnalyze}
+                                disabled={isLoading || !hasApiKey}
+                                className="w-full mb-4 py-3 bg-secondary/50 hover:bg-secondary text-secondary-foreground rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
+                            >
+                                {isLoading ? (
+                                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <Sparkles className="w-4 h-4" />
+                                )}
+                                {t.report.generateAnalysis}
+                            </button>
+                            {(analysisError || !hasApiKey) && (
+                                <div className="mb-6 flex items-center justify-between gap-3 text-left">
+                                    <p className={cn('text-xs', !hasApiKey ? 'text-destructive' : 'text-yellow-400')}>
+                                        {analysisError || t.mentor.noKey}
+                                    </p>
+                                    {!hasApiKey && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSettingsOpen(true)}
+                                            className="text-xs px-3 py-1 rounded-md border border-primary/50 text-primary hover:bg-primary/10 transition-colors shrink-0"
+                                        >
+                                            {t.input.configureKey}
+                                        </button>
+                                    )}
+                                </div>
                             )}
-                            {t.report.generateAnalysis}
-                        </button>
+                        </>
                     )}
 
                     <div className="mt-6 bg-secondary/30 border border-border/60 rounded-2xl p-6">

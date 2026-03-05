@@ -166,8 +166,8 @@ export function computeDataConsistencyAudit(input: {
 
     const correctAnswers = events.filter((event) => event.eventType === 'answer' && event.result === 'correct').length;
     const sessionCompleted = events.filter((event) => event.eventType === 'session_complete').length;
-    const nonDailyAnswers = overlapEvents.filter((event) => event.eventType === 'answer' && event.source !== 'daily').length;
-    const nonDailySessions = overlapEvents.filter((event) => event.eventType === 'session_complete' && event.source !== 'daily').length;
+    const allAnswers = overlapEvents.filter((event) => event.eventType === 'answer').length;
+    const allSessions = overlapEvents.filter((event) => event.eventType === 'session_complete').length;
     const historyTotals = overlapHistory.reduce(
         (acc, row) => {
             const counts = deriveHistoryCounts(row);
@@ -198,16 +198,16 @@ export function computeDataConsistencyAudit(input: {
         }),
         buildExactCheck({
             id: 'history_questions_vs_non_daily_answers',
-            label: 'History totalQuestions ~= non-daily answer events',
-            expected: nonDailyAnswers,
+            label: 'History totalQuestions ~= answer events',
+            expected: allAnswers,
             actual: historyTotals.totalQuestions,
             tolerance: 2,
             minSample: 6
         }),
         buildExactCheck({
             id: 'history_missions_vs_non_daily_sessions',
-            label: 'History missions ~= non-daily session_complete events',
-            expected: nonDailySessions,
+            label: 'History missions ~= session_complete events',
+            expected: allSessions,
             actual: overlapHistory.length,
             tolerance: 1,
             minSample: 3

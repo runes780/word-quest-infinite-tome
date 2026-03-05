@@ -120,4 +120,36 @@ describe('computeDataConsistencyAudit', () => {
         expect(snapshot.checks.find((check) => check.id === 'profile_words_vs_correct_answers')?.status).toBe('warning');
         expect(snapshot.checks.find((check) => check.id === 'profile_lessons_vs_sessions')?.status).toBe('warning');
     });
+
+    test('does not warn when history is aligned with daily-source sessions', () => {
+        const now = Date.UTC(2026, 1, 9, 12, 0, 0);
+        const events: LearningEvent[] = [
+            event({ timestamp: now - 3000, source: 'daily', result: 'correct' }),
+            event({ timestamp: now - 2000, source: 'daily', result: 'wrong' }),
+            event({ timestamp: now - 1000, source: 'daily', eventType: 'session_complete', result: undefined })
+        ];
+        const rows: HistoryRecord[] = [
+            history({
+                timestamp: now - 900,
+                totalQuestions: 2,
+                totalCorrect: 1,
+                levelTitle: 'Daily Review'
+            })
+        ];
+
+        const snapshot = computeDataConsistencyAudit({
+            profile: profile({
+                wordsLearned: 1,
+                lessonsCompleted: 1
+            }),
+            events,
+            history: rows,
+            generatedAt: now
+        });
+
+        const questionsCheck = snapshot.checks.find((check) => check.id === 'history_questions_vs_non_daily_answers');
+        const missionsCheck = snapshot.checks.find((check) => check.id === 'history_missions_vs_non_daily_sessions');
+        expect(questionsCheck?.status).not.toBe('warning');
+        expect(missionsCheck?.status).not.toBe('warning');
+    });
 });
