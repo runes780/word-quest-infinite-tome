@@ -196,6 +196,7 @@
 - 已启动界面拆分第一阶段：`BattleInterface` 抽离 `BattleScene` 与 `BattleQuestionPanel`，保留原交互行为并降低组件复杂度。
 - 已启动界面拆分第二阶段：`BattleInterface` 抽离无尽波次生成与缓存编排为 `useEndlessWave` hook，组件聚焦交互呈现。
 - 已启动架构拆分第二阶段：`gameStore` 抽离 `economyRewards`（relic 配置、掉落保底、XP/Gold 增益、成长结算）模块。
+- 已启动架构拆分第三阶段：`gameStore` 抽离会话恢复存取到 `sessionRecovery` 模块，主 store 不再内联 localStorage 细节。
 
 ### 目标
 - 为后续账号体系、班级协作、多端同步打好基础。

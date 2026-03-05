@@ -43,6 +43,11 @@ import {
     buildBossRewardBundle,
     craftRelic
 } from '@/store/modules/economyRewards';
+import {
+    clearSavedGameStateSnapshot,
+    loadSavedGameStateSnapshot,
+    saveGameStateSnapshot
+} from '@/store/modules/sessionRecovery';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -253,88 +258,6 @@ interface GameState {
     resumeGame: () => boolean;
     clearSavedGame: () => void;
     dismissMasteryCelebration: (id: string) => void;
-}
-
-// Game state persistence for error recovery
-const GAME_STATE_KEY = 'word-quest-game-state';
-
-interface SavedGameState {
-    health: number;
-    maxHealth: number;
-    score: number;
-    questions: Monster[];
-    currentIndex: number;
-    playerStats: PlayerStats;
-    currentMonsterHp: number;
-    context: string;
-    inventory: Item[];
-    skillStats: Record<string, { correct: number; total: number }>;
-    bossShieldProgress: number;
-    knowledgeCards: KnowledgeCard[];
-    rootFragments: number;
-    sessionSource: LearningEventSource;
-    questionStartedAt: number;
-    savedAt: number;
-}
-
-function saveGameState(state: Partial<SavedGameState>) {
-    if (typeof window === 'undefined') return;
-    try {
-        const existing = loadSavedGameState();
-        const toSave: SavedGameState = {
-            health: state.health ?? existing?.health ?? 3,
-            maxHealth: state.maxHealth ?? existing?.maxHealth ?? 3,
-            score: state.score ?? existing?.score ?? 0,
-            questions: state.questions ?? existing?.questions ?? [],
-            currentIndex: state.currentIndex ?? existing?.currentIndex ?? 0,
-            playerStats: state.playerStats ?? existing?.playerStats ?? { level: 1, xp: 0, maxXp: 100, streak: 0, gold: 0 },
-            currentMonsterHp: state.currentMonsterHp ?? existing?.currentMonsterHp ?? 1,
-            context: state.context ?? existing?.context ?? '',
-            inventory: state.inventory ?? existing?.inventory ?? [],
-            skillStats: state.skillStats ?? existing?.skillStats ?? {},
-            bossShieldProgress: state.bossShieldProgress ?? existing?.bossShieldProgress ?? 0,
-            knowledgeCards: state.knowledgeCards ?? existing?.knowledgeCards ?? [],
-            rootFragments: state.rootFragments ?? existing?.rootFragments ?? 0,
-            sessionSource: state.sessionSource ?? existing?.sessionSource ?? 'battle',
-            questionStartedAt: state.questionStartedAt ?? existing?.questionStartedAt ?? Date.now(),
-            savedAt: Date.now()
-        };
-        // Only save if there's an active game
-        if (toSave.questions.length > 0 && toSave.currentIndex < toSave.questions.length) {
-            window.localStorage.setItem(GAME_STATE_KEY, JSON.stringify(toSave));
-            console.log('[Recovery] Game state saved');
-        }
-    } catch (error) {
-        console.error('[Recovery] Failed to save game state:', error);
-    }
-}
-
-function loadSavedGameState(): SavedGameState | null {
-    if (typeof window === 'undefined') return null;
-    try {
-        const raw = window.localStorage.getItem(GAME_STATE_KEY);
-        if (!raw) return null;
-        const saved = JSON.parse(raw) as SavedGameState;
-        // Check if save is less than 24 hours old
-        if (Date.now() - saved.savedAt > 24 * 60 * 60 * 1000) {
-            window.localStorage.removeItem(GAME_STATE_KEY);
-            return null;
-        }
-        return saved;
-    } catch (error) {
-        console.error('[Recovery] Failed to load game state:', error);
-        return null;
-    }
-}
-
-function clearGameState() {
-    if (typeof window === 'undefined') return;
-    try {
-        window.localStorage.removeItem(GAME_STATE_KEY);
-        console.log('[Recovery] Game state cleared');
-    } catch (error) {
-        console.error('[Recovery] Failed to clear game state:', error);
-    }
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -1123,12 +1046,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Error Recovery Methods
     hasSavedGame: () => {
-        const saved = loadSavedGameState();
+        const saved = loadSavedGameStateSnapshot<Monster, PlayerStats, Item, KnowledgeCard, LearningEventSource>();
         return saved !== null && saved.questions.length > 0 && saved.currentIndex < saved.questions.length;
     },
 
     resumeGame: () => {
-        const saved = loadSavedGameState();
+        const saved = loadSavedGameStateSnapshot<Monster, PlayerStats, Item, KnowledgeCard, LearningEventSource>();
         const savedAgeMs = saved ? Math.max(0, Date.now() - saved.savedAt) : undefined;
         void logSessionRecoveryEvent('attempt', {
             hasSave: Boolean(saved),
@@ -1193,7 +1116,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     },
 
     clearSavedGame: () => {
-        clearGameState();
+        clearSavedGameStateSnapshot();
     },
 
     dismissMasteryCelebration: (id) => set((state) => ({
@@ -1219,7 +1142,7 @@ if (typeof window !== 'undefined') {
             // Debounce saves to avoid too frequent writes
             if (saveTimeout) clearTimeout(saveTimeout);
             saveTimeout = setTimeout(() => {
-                saveGameState({
+                saveGameStateSnapshot({
                     health: state.health,
                     maxHealth: state.maxHealth,
                     score: state.score,
@@ -1241,7 +1164,7 @@ if (typeof window !== 'undefined') {
 
         // Clear saved game when game ends
         if ((state.isGameOver || state.isVictory) && !prevState.isGameOver && !prevState.isVictory) {
-            clearGameState();
+            clearSavedGameStateSnapshot();
         }
     });
 }
