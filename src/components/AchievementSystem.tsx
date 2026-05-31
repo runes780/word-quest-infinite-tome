@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Trophy, Star, Zap, Heart, Coins, Target, BookOpen, Clock, Flame, Shield, Sparkles, X } from 'lucide-react';
 import { playSound } from '@/lib/audio';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -505,10 +505,12 @@ export function AchievementGallery({ isOpen, onClose }: AchievementGalleryProps)
     const [stats, setStats] = useState<PlayerAchievementStats>(getDefaultStats());
 
     useEffect(() => {
-        if (isOpen) {
+        if (!isOpen) return;
+        const frame = requestAnimationFrame(() => {
             setUnlockedIds(loadUnlockedAchievements());
             setStats(loadPlayerStats());
-        }
+        });
+        return () => cancelAnimationFrame(frame);
     }, [isOpen]);
 
     if (!isOpen) return null;

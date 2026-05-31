@@ -2,10 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, Lightbulb, FileText } from 'lucide-react';
+import { Check, X, FileText } from 'lucide-react';
 import { Monster } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { translations } from '@/lib/translations';
 import { playSound } from '@/lib/audio';
 
 interface FillBlankQuestionProps {

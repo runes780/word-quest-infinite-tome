@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X, Lightbulb, Keyboard, PenTool } from 'lucide-react';
 import { Monster } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { translations } from '@/lib/translations';
 import { playSound } from '@/lib/audio';
 
 interface TypingQuestionProps {
@@ -16,7 +15,6 @@ interface TypingQuestionProps {
 
 export function TypingQuestion({ question, onAnswer, disabled }: TypingQuestionProps) {
     const { language, soundEnabled } = useSettingsStore();
-    const t = translations[language];
     const isZh = language === 'zh';
 
     const [userInput, setUserInput] = useState('');

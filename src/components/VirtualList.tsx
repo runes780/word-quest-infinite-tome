@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useRef, useState, useMemo, useCallback, ReactNode } from 'react';
 
 interface VirtualListProps<T> {
     items: T[];
@@ -48,13 +48,6 @@ export function VirtualList<T>({
         setScrollTop(e.currentTarget.scrollTop);
     }, []);
 
-    // Scroll to item by index
-    const scrollToIndex = useCallback((index: number) => {
-        if (containerRef.current) {
-            containerRef.current.scrollTop = index * itemHeight;
-        }
-    }, [itemHeight]);
-
     return (
         <div
             ref={containerRef}
@@ -96,33 +89,32 @@ export function useVirtualScroll<T>({
     overscan?: number;
 }) {
     const [scrollTop, setScrollTop] = useState(0);
-    const itemHeights = useRef<Map<number, number>>(new Map());
+    const [itemHeights, setItemHeights] = useState<Record<number, number>>({});
 
-    // Calculate positions based on measured heights
-    const getItemOffset = (index: number): number => {
-        let offset = 0;
-        for (let i = 0; i < index; i++) {
-            offset += itemHeights.current.get(i) ?? estimatedItemHeight;
-        }
-        return offset;
-    };
+    const layout = useMemo(() => {
+        const heightAt = (index: number) => itemHeights[index] ?? estimatedItemHeight;
+        const getItemOffset = (index: number): number => {
+            let offset = 0;
+            for (let i = 0; i < index; i++) {
+                offset += heightAt(i);
+            }
+            return offset;
+        };
 
-    const getTotalHeight = (): number => {
-        let total = 0;
-        for (let i = 0; i < items.length; i++) {
-            total += itemHeights.current.get(i) ?? estimatedItemHeight;
-        }
-        return total;
-    };
+        const getTotalHeight = (): number => {
+            let total = 0;
+            for (let i = 0; i < items.length; i++) {
+                total += heightAt(i);
+            }
+            return total;
+        };
 
-    // Find visible range
-    const findVisibleRange = (): { start: number; end: number } => {
         let start = 0;
         let accumulated = 0;
 
         // Find start
         for (let i = 0; i < items.length; i++) {
-            const height = itemHeights.current.get(i) ?? estimatedItemHeight;
+            const height = heightAt(i);
             if (accumulated + height > scrollTop) {
                 start = Math.max(0, i - overscan);
                 break;
@@ -134,7 +126,7 @@ export function useVirtualScroll<T>({
         let end = start;
         accumulated = getItemOffset(start);
         for (let i = start; i < items.length; i++) {
-            const height = itemHeights.current.get(i) ?? estimatedItemHeight;
+            const height = heightAt(i);
             if (accumulated > scrollTop + containerHeight) {
                 end = Math.min(items.length, i + overscan);
                 break;
@@ -143,23 +135,27 @@ export function useVirtualScroll<T>({
             end = i + 1;
         }
 
-        return { start, end: Math.min(items.length, end + overscan) };
-    };
+        return {
+            start,
+            end: Math.min(items.length, end + overscan),
+            totalHeight: getTotalHeight(),
+            offsetY: getItemOffset(start)
+        };
+    }, [containerHeight, estimatedItemHeight, itemHeights, items.length, overscan, scrollTop]);
 
-    const { start, end } = findVisibleRange();
-
-    const measureItem = (index: number, height: number) => {
-        if (itemHeights.current.get(index) !== height) {
-            itemHeights.current.set(index, height);
-        }
-    };
+    const measureItem = useCallback((index: number, height: number) => {
+        setItemHeights((current) => {
+            if (current[index] === height) return current;
+            return { ...current, [index]: height };
+        });
+    }, []);
 
     return {
-        visibleItems: items.slice(start, end),
-        startIndex: start,
-        endIndex: end,
-        totalHeight: getTotalHeight(),
-        offsetY: getItemOffset(start),
+        visibleItems: items.slice(layout.start, layout.end),
+        startIndex: layout.start,
+        endIndex: layout.end,
+        totalHeight: layout.totalHeight,
+        offsetY: layout.offsetY,
         setScrollTop,
         measureItem
     };

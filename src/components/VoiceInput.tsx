@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, MicOff, Volume2, Check, X, AlertCircle } from 'lucide-react';
 import { useSpeechRecognition } from '@/lib/speechRecognition';
 import { useSettingsStore } from '@/store/settingsStore';
-import { translations } from '@/lib/translations';
 import { playSound } from '@/lib/audio';
 
 interface VoiceInputProps {
@@ -18,7 +17,8 @@ interface VoiceInputProps {
 export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: VoiceInputProps) {
     const { language, soundEnabled } = useSettingsStore();
     const isZh = language === 'zh';
-    const t = translations[language];
+    const submitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const processedTranscriptRef = useRef<string | null>(null);
 
     const {
         isSupported,
@@ -37,6 +37,14 @@ export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: Voice
 
     const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
     const [matchedOption, setMatchedOption] = useState<string | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (submitTimerRef.current) {
+                clearTimeout(submitTimerRef.current);
+            }
+        };
+    }, []);
 
     // Normalize text for comparison
     const normalizeText = (text: string): string => {
@@ -96,8 +104,11 @@ export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: Voice
 
     // Handle completed speech
     useEffect(() => {
-        if (!isListening && transcript && !feedback) {
-            const result = checkMatch(transcript);
+        if (isListening || !transcript || feedback || processedTranscriptRef.current === transcript) return;
+
+        processedTranscriptRef.current = transcript;
+        const result = checkMatch(transcript);
+        const feedbackTimer = setTimeout(() => {
             setMatchedOption(result.matched);
             setFeedback(result.isCorrect ? 'correct' : 'incorrect');
 
@@ -109,14 +120,17 @@ export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: Voice
                 }
             }
 
-            // Delay before submitting
-            setTimeout(() => {
+            submitTimerRef.current = setTimeout(() => {
                 onAnswer(result.isCorrect, transcript);
                 resetTranscript();
                 setFeedback(null);
                 setMatchedOption(null);
+                processedTranscriptRef.current = null;
+                submitTimerRef.current = null;
             }, 1500);
-        }
+        }, 0);
+
+        return () => clearTimeout(feedbackTimer);
     }, [isListening, transcript, feedback, checkMatch, onAnswer, resetTranscript, soundEnabled]);
 
     const handleMicClick = () => {

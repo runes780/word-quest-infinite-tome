@@ -2,6 +2,24 @@
   "name": "word-quest",
   "version": "0.1.0",
   "private": true,
+  "description": "An AI-assisted, game-based vocabulary learning system with SRS, mastery analytics, and guardian-facing learning evidence.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/runes780/word-quest-infinite-tome.git"
+  },
+  "bugs": {
+    "url": "https://github.com/runes780/word-quest-infinite-tome/issues"
+  },
+  "homepage": "https://github.com/runes780/word-quest-infinite-tome#readme",
+  "keywords": [
+    "ai-education",
+    "vocabulary-learning",
+    "spaced-repetition",
+    "fsrs",
+    "nextjs",
+    "open-source"
+  ],
   "scripts": {
     "dev": "node ./node_modules/next/dist/bin/next dev",
     "build": "node ./node_modules/next/dist/bin/next build",

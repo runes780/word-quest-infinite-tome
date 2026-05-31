@@ -29,6 +29,9 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -127,6 +130,9 @@
   --gold: 40 95% 50%;
   --gold-foreground: 40 95% 15%;
 
+  --font-geist-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
   /* Battle arena - subtle gradient feel without gradients */
   --arena-bg: 208 72% 97%;
   --arena-border: 213 58% 84%;
@@ -179,6 +185,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: var(--font-geist-sans);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 

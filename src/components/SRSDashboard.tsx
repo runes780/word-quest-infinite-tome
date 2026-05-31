@@ -4,10 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     BookOpen, Clock, Flame, Target, ChevronRight, X,
-    Brain, TrendingUp, Calendar, Zap, Star, Award
+    Brain, TrendingUp, Zap, Star, Award
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/settingsStore';
-import { translations } from '@/lib/translations';
 import {
     getSRSStats, getDueCardsWithPriority, FSRSCard,
     getPlayerProfile, GlobalPlayerProfile, xpProgressInLevel
@@ -21,7 +20,6 @@ interface SRSDashboardProps {
 
 export function SRSDashboard({ isOpen, onClose, onStartReview }: SRSDashboardProps) {
     const { language } = useSettingsStore();
-    const t = translations[language];
     const isZh = language === 'zh';
 
     const [stats, setStats] = useState<{ total: number; due: number; new: number; learning: number; review: number } | null>(null);
