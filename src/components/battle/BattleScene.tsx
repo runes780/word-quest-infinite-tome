@@ -56,11 +56,19 @@ export function BattleScene({
     const heroAsset = getHeroAsset();
     const monsterAsset = getMonsterAsset(currentQuestion.type);
     const attackEffectAsset = getAttackEffectAsset(attackType);
+    const bossStageLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
+        ? `Stage ${currentQuestion.bossStage} / ${currentQuestion.bossTotalStages}`
+        : null;
 
     return (
         <div className="relative battle-arena rounded-3xl border-2 border-primary/15 overflow-hidden flex flex-col items-center justify-center p-8 shadow-soft">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.24),transparent_46%),radial-gradient(circle_at_84%_78%,rgba(99,102,241,0.20),transparent_44%),radial-gradient(circle_at_52%_96%,rgba(251,191,36,0.16),transparent_42%)] dark:bg-[radial-gradient(circle_at_25%_20%,rgba(168,85,247,0.24),transparent_46%),radial-gradient(circle_at_80%_82%,rgba(14,165,233,0.22),transparent_44%)]" />
             <div className="absolute inset-0 bg-gradient-to-b from-white/55 via-sky-50/30 to-blue-100/45 dark:from-slate-900/35 dark:via-slate-900/15 dark:to-slate-950/35" />
+            {bossStageLabel && (
+                <div className="absolute right-4 top-4 z-20 rounded-full border border-yellow-400/50 bg-black/55 px-3 py-1 text-xs font-black uppercase tracking-wide text-yellow-200 shadow-lg backdrop-blur">
+                    {bossStageLabel}
+                </div>
+            )}
 
             <div className="relative z-10 w-full flex justify-between items-center gap-4">
                 <div className="flex flex-col items-center">

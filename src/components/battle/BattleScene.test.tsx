@@ -63,4 +63,30 @@ describe('BattleScene art assets', () => {
 
         expectImageSrc(screen.getByAltText(/fireball/i), '/assets/battle/effect-fireball.png');
     });
+
+    test('renders boss stage progress for multi-stage boss gates', () => {
+        render(
+            <BattleScene
+                currentQuestion={{
+                    ...question,
+                    isBoss: true,
+                    bossStage: 3,
+                    bossTotalStages: 3
+                }}
+                showResult={false}
+                isCorrect={false}
+                attackType="slash"
+                particles={[]}
+                damageText={[]}
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                playerStreak={0}
+                comboScale={1}
+                bossComboThreshold={2}
+                t={translations.en}
+            />
+        );
+
+        expect(screen.getByText('Stage 3 / 3')).toBeInTheDocument();
+    });
 });
