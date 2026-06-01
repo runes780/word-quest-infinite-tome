@@ -48,6 +48,20 @@ function asDifficulty(value: unknown): Monster['difficulty'] | null {
     return null;
 }
 
+function asSupportLevel(value: unknown): Monster['supportLevel'] | undefined {
+    if (value === 0 || value === 1 || value === 2 || value === 3) {
+        return value;
+    }
+    return undefined;
+}
+
+function asAttemptKind(value: unknown): Monster['attemptKind'] | undefined {
+    if (value === 'diagnostic' || value === 'practice' || value === 'review' || value === 'transfer') {
+        return value;
+    }
+    return undefined;
+}
+
 function cleanText(value: unknown): string {
     if (typeof value !== 'string') return '';
     return value.trim().replace(/\s+/g, ' ');
@@ -108,6 +122,9 @@ function pickFallback(index: number, preferredType: Monster['type'] | null): Mon
         questionMode: DEFAULT_MODE_SEQUENCE[index % DEFAULT_MODE_SEQUENCE.length],
         correctAnswer: source.options[source.correct_index] || '',
         learningObjectiveId: undefined,
+        supportLevel: undefined,
+        attemptKind: undefined,
+        causeTag: undefined,
         sourceContextSpan: 'sanitized_fallback'
     };
 }
@@ -161,6 +178,9 @@ export function normalizeMissionMonsters(input: unknown[]): Monster[] {
             questionMode: asMode(source.questionMode) || fallback.questionMode,
             correctAnswer: options[safeCorrectIndex] || '',
             learningObjectiveId: cleanText(source.learningObjectiveId) || undefined,
+            supportLevel: asSupportLevel(source.supportLevel),
+            attemptKind: asAttemptKind(source.attemptKind),
+            causeTag: cleanText(source.causeTag) || undefined,
             sourceContextSpan: cleanText(source.sourceContextSpan) || undefined
         };
     });

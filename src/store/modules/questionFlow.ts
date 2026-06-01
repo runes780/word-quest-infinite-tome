@@ -1,5 +1,13 @@
 import type { Monster, QuestionMode, UserAnswer, RunObjectiveBonus } from '@/store/gameStore';
 import type { LearningEventSource, SkillMasteryRecord } from '@/db/db';
+import {
+    mapSkillTagToObjectiveId,
+    modeForSupportLevel,
+    objectiveTitle,
+    selectSupportLevelForMastery,
+    type AttemptKind,
+    type SupportLevel
+} from '@/lib/data/learningObjectives';
 
 export type QuestionInput = Partial<Monster> & {
     id: number;
@@ -33,7 +41,13 @@ export const applyQuestionDefaults = (
     const safeCorrectIndex = question.correct_index >= 0 && question.correct_index < question.options.length
         ? question.correct_index
         : 0;
-    const mode = question.questionMode || defaultModeForIndex(index);
+    const objectiveId = question.learningObjectiveId || mapSkillTagToObjectiveId({
+        skillTag: question.skillTag,
+        type: question.type,
+        question: question.question
+    });
+    const supportLevel = question.supportLevel ?? 3;
+    const mode = question.questionMode || modeForSupportLevel(supportLevel) || defaultModeForIndex(index);
     const fallbackCorrect = question.options[safeCorrectIndex] || '';
     const providedAnswer = question.correctAnswer?.trim();
     const correctAnswer = providedAnswer || fallbackCorrect;
@@ -45,12 +59,100 @@ export const applyQuestionDefaults = (
         difficulty: question.difficulty || 'medium',
         questionMode: mode,
         correctAnswer,
+        learningObjectiveId: objectiveId,
+        supportLevel,
+        attemptKind: question.attemptKind,
+        causeTag: question.causeTag,
         hp: question.isBoss ? 3 : 1,
         maxHp: question.isBoss ? 3 : 1,
         element: question.type === 'grammar' ? 'water' : question.type === 'vocab' ? 'fire' : 'grass',
         sourceContextSpan: question.sourceContextSpan || 'mission'
     } as Monster;
 };
+
+export const attemptKindForQuestion = (
+    source: LearningEventSource,
+    question: Monster,
+    supportLevel: SupportLevel
+): AttemptKind => {
+    if (question.attemptKind) return question.attemptKind;
+    if (source === 'srs') return 'review';
+    if (question.sourceContextSpan === 'diagnostic') return 'diagnostic';
+    if (supportLevel === 0 || question.isBoss) return 'transfer';
+    return 'practice';
+};
+
+export const applyLearningMetadataForSource = (
+    question: Monster,
+    source: LearningEventSource,
+    mastery?: SkillMasteryRecord
+): Monster => {
+    const baseSupport = question.supportLevel ?? selectSupportLevelForMastery(mastery);
+    const supportLevel = question.sourceContextSpan === 'revenge'
+        ? Math.min(3, baseSupport + 1) as SupportLevel
+        : baseSupport;
+    const learningObjectiveId = question.learningObjectiveId || mapSkillTagToObjectiveId({
+        skillTag: question.skillTag,
+        type: question.type,
+        question: question.question
+    });
+    const attemptKind = attemptKindForQuestion(source, question, supportLevel);
+    return {
+        ...question,
+        learningObjectiveId,
+        supportLevel,
+        attemptKind,
+        questionMode: modeForSupportLevel(supportLevel),
+        correctAnswer: question.correctAnswer || question.options[question.correct_index] || ''
+    };
+};
+
+export function expandBossGateQuestions(questions: Monster[]): Monster[] {
+    return questions.flatMap((question) => {
+        if (!question.isBoss || question.bossTotalStages) return [question];
+        const baseId = question.id * 10;
+        return [
+            {
+                ...question,
+                id: baseId + 1,
+                bossStage: 1,
+                bossTotalStages: 3,
+                supportLevel: 3 as SupportLevel,
+                attemptKind: 'practice' as AttemptKind,
+                questionMode: 'choice' as QuestionMode,
+                hp: 1,
+                maxHp: 1,
+                sourceContextSpan: question.sourceContextSpan || 'boss_gate_recognition'
+            },
+            {
+                ...question,
+                id: baseId + 2,
+                bossStage: 2,
+                bossTotalStages: 3,
+                supportLevel: 2 as SupportLevel,
+                attemptKind: 'practice' as AttemptKind,
+                questionMode: 'fill-blank' as QuestionMode,
+                hp: 1,
+                maxHp: 1,
+                hint: question.hint || 'Use the rule in a short sentence.',
+                sourceContextSpan: question.sourceContextSpan || 'boss_gate_application'
+            },
+            {
+                ...question,
+                id: baseId + 3,
+                bossStage: 3,
+                bossTotalStages: 3,
+                supportLevel: 0 as SupportLevel,
+                attemptKind: 'transfer' as AttemptKind,
+                questionMode: 'typing' as QuestionMode,
+                difficulty: 'hard',
+                hp: 1,
+                maxHp: 1,
+                sourceContextSpan: question.sourceContextSpan || 'boss_gate_transfer'
+            }
+        ];
+    });
+}
 
 export const getSkillKey = (question: Monster) => question.skillTag || `${question.type}_${question.difficulty || 'medium'}`;
 
@@ -163,6 +265,21 @@ export const buildRunObjectiveBonuses = (
             xp: 24,
             gold: 18,
             skillTag: breakthrough.skillTag
+        });
+    }
+
+    const transferAnswers = answers.filter((answer) =>
+        answer.isCorrect && (answer.attemptKind === 'transfer' || answer.supportLevel === 0)
+    );
+    const transferObjective = transferAnswers.find((answer) => answer.learningObjectiveId)?.learningObjectiveId;
+    if (transferAnswers.length > 0) {
+        bonuses.push({
+            id: `bonus_transfer_${transferObjective || 'objective'}_${Date.now()}`,
+            title: 'Transfer Checkpoint',
+            description: `${objectiveTitle(transferObjective)} held up in independent recall.`,
+            xp: 22,
+            gold: 14,
+            skillTag: transferObjective
         });
     }
 

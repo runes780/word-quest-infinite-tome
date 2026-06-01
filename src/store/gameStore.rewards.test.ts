@@ -100,7 +100,8 @@ describe('reward planning and objective rewards', () => {
             { questionId: 3, questionText: 'q3', userChoice: 'a', correctChoice: 'a', isCorrect: true },
             { questionId: 4, questionText: 'q4', userChoice: 'a', correctChoice: 'a', isCorrect: true },
             { questionId: 5, questionText: 'q5', userChoice: 'b', correctChoice: 'a', isCorrect: false },
-            { questionId: 6, questionText: 'q6', userChoice: 'a', correctChoice: 'a', isCorrect: true }
+            { questionId: 6, questionText: 'q6', userChoice: 'a', correctChoice: 'a', isCorrect: true },
+            { questionId: 7, questionText: 'q7', userChoice: 'a', correctChoice: 'a', isCorrect: true, attemptKind: 'transfer', supportLevel: 0, learningObjectiveId: 'reading_inference' }
         ];
 
         useGameStore.setState({
@@ -115,13 +116,14 @@ describe('reward planning and objective rewards', () => {
         await Promise.resolve();
 
         const state = useGameStore.getState();
-        expect(state.runObjectiveBonuses).toHaveLength(2);
-        expect(state.playerStats.xp).toBe(54);
-        expect(state.playerStats.gold).toBe(38);
+        expect(state.runObjectiveBonuses).toHaveLength(3);
+        expect(state.runObjectiveBonuses.some((bonus) => bonus.id.startsWith('bonus_transfer_'))).toBe(true);
+        expect(state.playerStats.xp).toBe(76);
+        expect(state.playerStats.gold).toBe(52);
         expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
-            totalXp: 54,
-            totalGold: 38,
-            dailyXpEarned: 54
+            totalXp: 76,
+            totalGold: 52,
+            dailyXpEarned: 76
         }));
         expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
             eventType: 'session_complete',

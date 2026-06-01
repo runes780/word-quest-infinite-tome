@@ -7,9 +7,11 @@ import { Bot, Zap, ArrowRight } from 'lucide-react';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { MENTOR_SYSTEM_PROMPT, generateMentorPrompt } from '@/lib/ai/prompts';
 import { useSettingsStore } from '@/store/settingsStore';
-import { Monster } from '@/store/gameStore';
+import { Monster, useGameStore } from '@/store/gameStore';
 import { translations } from '@/lib/translations';
 import { cacheMentorAnalysis, loadMentorCache } from '@/lib/data/mistakes';
+import { hashQuestion, logLearningEvent } from '@/db/db';
+import { normalizeCauseTag } from '@/lib/data/learningObjectives';
 
 interface MentorOverlayProps {
     isOpen: boolean;
@@ -59,12 +61,31 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                         type: cached.revengeQuestion.type || question.type,
                         explanation: cached.revengeQuestion.explanation || t.mentor.revengeReady,
                         skillTag: question.skillTag,
+                        learningObjectiveId: question.learningObjectiveId,
+                        supportLevel: Math.min(3, (question.supportLevel ?? 2) + 1) as Monster['supportLevel'],
+                        attemptKind: 'practice',
+                        causeTag: normalizeCauseTag(cached.mentorCauseTag),
+                        sourceContextSpan: 'revenge',
                         difficulty: question.difficulty,
                         questionMode: 'choice',
                         correctAnswer: cached.revengeQuestion.options[cached.revengeQuestion.correct_index] || ''
                     });
                 }
                 setStatusMessage(t.mentor.cached);
+                if (cached.mentorCauseTag) {
+                    logLearningEvent({
+                        eventType: 'hint',
+                        questionId: question.id,
+                        questionHash: hashQuestion(question.question),
+                        skillTag: question.skillTag,
+                        learningObjectiveId: question.learningObjectiveId,
+                        attemptKind: question.attemptKind,
+                        supportLevel: question.supportLevel,
+                        causeTag: normalizeCauseTag(cached.mentorCauseTag),
+                        mode: question.questionMode,
+                        source: useGameStore.getState().sessionSource
+                    }).catch(console.error);
+                }
                 setIsLoading(false);
                 return;
             }
@@ -106,12 +127,18 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                 };
 
                 setAnalysis(data.analysis);
-                setCauseTag(data.cause_tag || '');
+                const normalizedCause = normalizeCauseTag(data.cause_tag);
+                setCauseTag(normalizedCause || data.cause_tag || '');
                 setNextAction(data.next_action || '');
                 setRevengeQuestion({
                     ...revengePayload,
                     id: Date.now(),
                     skillTag: question.skillTag,
+                    learningObjectiveId: question.learningObjectiveId,
+                    supportLevel: Math.min(3, (question.supportLevel ?? 2) + 1) as Monster['supportLevel'],
+                    attemptKind: 'practice',
+                    causeTag: normalizedCause,
+                    sourceContextSpan: 'revenge',
                     difficulty: question.difficulty,
                     questionMode: 'choice',
                     correctAnswer: revengePayload.options[revengePayload.correct_index] || ''
@@ -126,7 +153,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                     correctAnswer: question.options[question.correct_index],
                     explanation: question.explanation,
                     analysis: data.analysis,
-                    causeTag: data.cause_tag,
+                    causeTag: normalizedCause || data.cause_tag,
                     nextAction: data.next_action,
                     mentorExplanation: question.explanation,
                     options: question.options,
@@ -134,6 +161,19 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                     type: question.type,
                     skillTag: question.skillTag,
                     revengeQuestion: revengePayload
+                });
+
+                await logLearningEvent({
+                    eventType: 'hint',
+                    questionId: question.id,
+                    questionHash: hashQuestion(question.question),
+                    skillTag: question.skillTag,
+                    learningObjectiveId: question.learningObjectiveId,
+                    attemptKind: question.attemptKind,
+                    supportLevel: question.supportLevel,
+                    causeTag: normalizedCause,
+                    mode: question.questionMode,
+                    source: useGameStore.getState().sessionSource
                 });
             } catch (e) {
                 console.error(e);

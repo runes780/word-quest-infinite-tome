@@ -126,6 +126,8 @@ export interface GlobalPlayerProfile {
 export type LearningEventSource = 'battle' | 'srs' | 'daily';
 export type LearningEventMode = 'choice' | 'typing' | 'fill-blank';
 export type LearningEventResult = 'correct' | 'wrong';
+export type LearningEventAttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
+export type LearningEventSupportLevel = 0 | 1 | 2 | 3;
 
 export interface LearningEvent {
     id?: number;
@@ -133,6 +135,10 @@ export interface LearningEvent {
     questionId?: number;
     questionHash?: string;
     skillTag?: string;
+    learningObjectiveId?: string;
+    attemptKind?: LearningEventAttemptKind;
+    supportLevel?: LearningEventSupportLevel;
+    causeTag?: string;
     mode?: LearningEventMode;
     result?: LearningEventResult;
     latencyMs?: number;
@@ -149,6 +155,10 @@ export interface LearningTaskEvidence {
     eventType: LearningEvent['eventType'];
     questionHash?: string;
     skillTag?: string;
+    learningObjectiveId?: string;
+    attemptKind?: LearningEventAttemptKind;
+    supportLevel?: LearningEventSupportLevel;
+    causeTag?: string;
     result?: LearningEventResult;
 }
 
@@ -430,6 +440,20 @@ export class WordQuestDB extends Dexie {
             fsrsCards: '++id, questionHash, due, state',
             playerProfile: '++id',
             learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
+            sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
+            skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
+        this.version(13).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag, learningObjectiveId, causeTag',
             learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
             studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
             guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
@@ -794,6 +818,10 @@ function toTaskEvidence(event: LearningEvent): LearningTaskEvidence {
         eventType: event.eventType,
         questionHash: event.questionHash,
         skillTag: event.skillTag,
+        learningObjectiveId: event.learningObjectiveId,
+        attemptKind: event.attemptKind,
+        supportLevel: event.supportLevel,
+        causeTag: event.causeTag,
         result: event.result
     };
 }

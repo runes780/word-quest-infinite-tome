@@ -299,10 +299,15 @@ export function BattleInterface() {
 
         // Check for Boss Reward
         if (currentQuestion.isBoss) {
-            if (currentMonsterHp <= 0) {
-                generateRewards('boss');
+            const isFinalBossStage = !currentQuestion.bossTotalStages ||
+                currentQuestion.bossStage === currentQuestion.bossTotalStages;
+            if (currentMonsterHp > 0) {
+                return;
             }
-            return;
+            if (isFinalBossStage) {
+                generateRewards('boss');
+                return;
+            }
         }
 
         nextQuestion();

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
 import { updatePlayerProfile } from '@/db/db';
+import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
 
 import { translations } from '@/lib/translations';
 
@@ -55,6 +56,10 @@ export function MissionReport() {
             attempts: stats.total
         })).sort((a, b) => a.accuracy - b.accuracy);
     }, [skillStats]);
+
+    const learningClosure = useMemo(() => {
+        return buildLearningClosure(userAnswers, language);
+    }, [userAnswers, language]);
 
     const wrongDetails = useMemo(() => {
         const map = new Map(questions.map((q) => [q.id, q]));
@@ -196,6 +201,24 @@ export function MissionReport() {
                         </div>
                     )}
 
+                    <div className="mb-8 grid gap-3 text-left md:grid-cols-3">
+                        <ClosureTile
+                            title={language === 'zh' ? '已掌握目标' : 'Secured Objective'}
+                            value={learningClosure.mastered}
+                            detail={learningClosure.masteredDetail}
+                        />
+                        <ClosureTile
+                            title={language === 'zh' ? '当前瓶颈' : 'Current Bottleneck'}
+                            value={learningClosure.bottleneck}
+                            detail={learningClosure.bottleneckDetail}
+                        />
+                        <ClosureTile
+                            title={language === 'zh' ? '下一次练习' : 'Next Practice'}
+                            value={learningClosure.nextAction}
+                            detail={learningClosure.nextActionDetail}
+                        />
+                    </div>
+
                     {/* AI Analysis Section */}
                     {analysis ? (
                         <motion.div
@@ -305,6 +328,81 @@ export function MissionReport() {
             </div>
         </motion.div >
     );
+}
+
+function ClosureTile({ title, value, detail }: { title: string; value: string; detail: string }) {
+    return (
+        <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{title}</p>
+            <p className="mt-2 text-sm font-black text-foreground">{value}</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{detail}</p>
+        </div>
+    );
+}
+
+function buildLearningClosure(
+    answers: ReturnType<typeof useGameStore.getState>['userAnswers'],
+    language: 'en' | 'zh'
+) {
+    const byObjective = new Map<string, { total: number; correct: number; transfer: number; supportLevels: number[] }>();
+    const causeCounts = new Map<string, number>();
+
+    answers.forEach((answer) => {
+        const objectiveId = answer.learningObjectiveId || 'core';
+        const row = byObjective.get(objectiveId) || { total: 0, correct: 0, transfer: 0, supportLevels: [] };
+        row.total += 1;
+        row.correct += answer.isCorrect ? 1 : 0;
+        row.transfer += answer.isCorrect && answer.attemptKind === 'transfer' ? 1 : 0;
+        if (typeof answer.supportLevel === 'number') row.supportLevels.push(answer.supportLevel);
+        byObjective.set(objectiveId, row);
+
+        if (!answer.isCorrect && answer.causeTag) {
+            causeCounts.set(answer.causeTag, (causeCounts.get(answer.causeTag) || 0) + 1);
+        }
+    });
+
+    const mastered = Array.from(byObjective.entries())
+        .map(([objectiveId, row]) => ({
+            objectiveId,
+            accuracy: row.total > 0 ? row.correct / row.total : 0,
+            row
+        }))
+        .filter((entry) => entry.row.total >= 1 && (entry.accuracy >= 0.8 || entry.row.transfer > 0))
+        .sort((a, b) => b.accuracy - a.accuracy)[0];
+
+    const bottleneck = Array.from(causeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+    const weakest = Array.from(byObjective.entries())
+        .map(([objectiveId, row]) => ({ objectiveId, accuracy: row.total > 0 ? row.correct / row.total : 0, row }))
+        .sort((a, b) => a.accuracy - b.accuracy)[0];
+
+    const masteredLabel = mastered
+        ? objectiveTitle(mastered.objectiveId)
+        : (language === 'zh' ? '还在收集证据' : 'Collecting evidence');
+    const masteredDetail = mastered
+        ? `${Math.round(mastered.accuracy * 100)}% accuracy${mastered.row.transfer > 0 ? ` · ${supportLevelLabel(0)}` : ''}`
+        : (language === 'zh' ? '完成更多题后会显示稳定掌握目标。' : 'Complete more answers to identify a stable objective.');
+
+    const bottleneckLabel = bottleneck?.[0] || (weakest ? objectiveTitle(weakest.objectiveId) : (language === 'zh' ? '暂无明显瓶颈' : 'No clear bottleneck'));
+    const bottleneckDetail = bottleneck
+        ? `${bottleneck[1]} mistake signal${bottleneck[1] === 1 ? '' : 's'} in this run`
+        : (weakest
+            ? `${Math.round(weakest.accuracy * 100)}% accuracy on ${objectiveTitle(weakest.objectiveId)}`
+            : (language === 'zh' ? '本局没有错因信号。' : 'No mistake cause signal in this run.'));
+
+    const nextObjective = weakest?.objectiveId || mastered?.objectiveId || 'vocab_context_meaning';
+    const nextAction = objectiveTitle(nextObjective);
+    const nextActionDetail = language === 'zh'
+        ? '下次从有提示练习开始，再切到填空或输入迁移。'
+        : 'Start with guided practice, then move to fill-blank or typing transfer.';
+
+    return {
+        mastered: masteredLabel,
+        masteredDetail,
+        bottleneck: bottleneckLabel,
+        bottleneckDetail,
+        nextAction,
+        nextActionDetail
+    };
 }
 
 function buildLocalDebrief(
