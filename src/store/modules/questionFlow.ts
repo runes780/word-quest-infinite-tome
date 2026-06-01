@@ -8,6 +8,7 @@ import {
     type AttemptKind,
     type SupportLevel
 } from '@/lib/data/learningObjectives';
+import { buildBossGateVariants } from './bossGateVariants';
 
 export type QuestionInput = Partial<Monster> & {
     id: number;
@@ -110,47 +111,7 @@ export const applyLearningMetadataForSource = (
 export function expandBossGateQuestions(questions: Monster[]): Monster[] {
     return questions.flatMap((question) => {
         if (!question.isBoss || question.bossTotalStages) return [question];
-        const baseId = question.id * 10;
-        return [
-            {
-                ...question,
-                id: baseId + 1,
-                bossStage: 1,
-                bossTotalStages: 3,
-                supportLevel: 3 as SupportLevel,
-                attemptKind: 'practice' as AttemptKind,
-                questionMode: 'choice' as QuestionMode,
-                hp: 1,
-                maxHp: 1,
-                sourceContextSpan: question.sourceContextSpan || 'boss_gate_recognition'
-            },
-            {
-                ...question,
-                id: baseId + 2,
-                bossStage: 2,
-                bossTotalStages: 3,
-                supportLevel: 2 as SupportLevel,
-                attemptKind: 'practice' as AttemptKind,
-                questionMode: 'fill-blank' as QuestionMode,
-                hp: 1,
-                maxHp: 1,
-                hint: question.hint || 'Use the rule in a short sentence.',
-                sourceContextSpan: question.sourceContextSpan || 'boss_gate_application'
-            },
-            {
-                ...question,
-                id: baseId + 3,
-                bossStage: 3,
-                bossTotalStages: 3,
-                supportLevel: 0 as SupportLevel,
-                attemptKind: 'transfer' as AttemptKind,
-                questionMode: 'typing' as QuestionMode,
-                difficulty: 'hard',
-                hp: 1,
-                maxHp: 1,
-                sourceContextSpan: question.sourceContextSpan || 'boss_gate_transfer'
-            }
-        ];
+        return buildBossGateVariants(question);
     });
 }
 
