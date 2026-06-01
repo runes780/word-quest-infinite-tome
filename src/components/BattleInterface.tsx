@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useGameStore, BOSS_COMBO_THRESHOLD, CRAFT_THRESHOLD, getPendingAchievements } from '@/store/gameStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Coins } from 'lucide-react';
@@ -18,6 +19,7 @@ import { BattleScene } from './battle/BattleScene';
 import { BattleQuestionPanel } from './battle/BattleQuestionPanel';
 import { useEndlessWave } from './battle/useEndlessWave';
 import { BattleHud } from './battle/BattleHud';
+import { getItemAsset } from '@/lib/battleAssets';
 
 export function BattleInterface() {
     const {
@@ -442,19 +444,30 @@ export function BattleInterface() {
                 {inventory.length === 0 && (
                     <div className="px-4 py-2 text-xs text-muted-foreground italic">{t.battle.inventoryEmpty}</div>
                 )}
-                {inventory.map((item) => (
-                    <button
-                        key={item.id}
-                        onClick={() => consumeItem(item.id)}
-                        className="w-10 h-10 bg-slate-800 rounded-lg border border-white/20 flex items-center justify-center text-xl hover:scale-110 hover:bg-slate-700 transition-all relative group"
-                        title={item.name}
-                    >
-                        {item.icon}
-                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black px-2 py-1 rounded text-[10px] text-white opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                            {item.name}
-                        </span>
-                    </button>
-                ))}
+                {inventory.map((item) => {
+                    const itemAsset = getItemAsset(item.type);
+                    return (
+                        <button
+                            key={item.id}
+                            onClick={() => consumeItem(item.id)}
+                            className="w-10 h-10 bg-slate-800 rounded-lg border border-white/20 flex items-center justify-center p-1 hover:scale-110 hover:bg-slate-700 transition-all relative group"
+                            title={item.name}
+                        >
+                            <Image
+                                src={itemAsset.src}
+                                alt={itemAsset.alt}
+                                width={40}
+                                height={40}
+                                sizes="40px"
+                                className="h-full w-full object-contain drop-shadow"
+                                draggable={false}
+                            />
+                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black px-2 py-1 rounded text-[10px] text-white opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
+                                {item.name}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             <AnimatePresence>

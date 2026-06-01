@@ -1,10 +1,12 @@
 import { useRef } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Coins } from 'lucide-react';
 import { useGameStore, Item } from '@/store/gameStore';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
+import { getItemAsset } from '@/lib/battleAssets';
 
 export const SHOP_ITEMS: Item[] = [
     {
@@ -19,7 +21,7 @@ export const SHOP_ITEMS: Item[] = [
         id: 'potion_clarity',
         type: 'potion_clarity',
         name: 'Clarity Potion',
-        description: 'Restores 1 Heart (Placeholder)', // Simplified for MVP
+        description: 'Reveals the best answer hint for one question',
         cost: 75,
         icon: '🧪'
     },
@@ -96,14 +98,23 @@ export function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         <div className="p-6 grid gap-4">
                             {SHOP_ITEMS.map((item) => {
                                 const canAfford = playerStats.gold >= item.cost;
+                                const itemAsset = getItemAsset(item.type);
                                 return (
                                     <div
                                         key={item.id}
                                         className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 hover:border-yellow-500/30 transition-colors group"
                                     >
                                         <div className="flex items-center gap-4">
-                                            <div className="text-3xl bg-slate-950 p-3 rounded-lg border border-white/10 group-hover:scale-110 transition-transform">
-                                                {item.icon}
+                                            <div className="grid h-14 w-14 place-items-center rounded-lg border border-white/10 bg-slate-950 p-1.5 group-hover:scale-110 transition-transform">
+                                                <Image
+                                                    src={itemAsset.src}
+                                                    alt={itemAsset.alt}
+                                                    width={56}
+                                                    height={56}
+                                                    sizes="56px"
+                                                    className="h-full w-full object-contain"
+                                                    draggable={false}
+                                                />
                                             </div>
                                             <div>
                                                 <h3 className="font-bold text-white">{item.name}</h3>
