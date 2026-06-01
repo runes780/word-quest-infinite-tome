@@ -1,5 +1,7 @@
 import { useGameStore } from './gameStore';
 import { logLearningEvent, reviewCard, updatePlayerProfile, updateSkillMastery } from '@/db/db';
+import { createPracticePlanRun, currentPracticePlanStep } from '@/lib/data/practicePlanRunner';
+import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
 
 jest.mock('@/components/InputSection', () => ({
     getCurrentBlessingEffect: jest.fn(() => null)
@@ -67,6 +69,43 @@ const baseQuestion = {
     difficulty: 'medium' as const,
     questionMode: 'choice' as const,
     correctAnswer: 'apple'
+};
+
+const practicePlan: PracticePlan = {
+    planId: 'daily_test',
+    title: 'Today\'s Learning Path',
+    estimatedMinutes: 8,
+    generatedAt: 100,
+    rationale: 'test plan',
+    evidence: [],
+    steps: [
+        {
+            id: 'daily_review_vocab',
+            type: 'review',
+            title: 'Review vocabulary',
+            objectiveId: 'vocab_context_meaning',
+            skillTag: 'vocab_core',
+            estimatedMinutes: 4,
+            questionCount: 3,
+            supportLevel: 3,
+            attemptKind: 'review',
+            rationale: 'review first',
+            evidence: []
+        },
+        {
+            id: 'daily_transfer_vocab',
+            type: 'transfer',
+            title: 'Transfer vocabulary',
+            objectiveId: 'vocab_context_meaning',
+            skillTag: 'vocab_core',
+            estimatedMinutes: 4,
+            questionCount: 2,
+            supportLevel: 0,
+            attemptKind: 'transfer',
+            rationale: 'transfer second',
+            evidence: []
+        }
+    ]
 };
 
 const flush = async () => {
@@ -147,5 +186,19 @@ describe('learning pipeline regression (battle/srs)', () => {
             'again',
             expect.objectContaining({ skillTag: 'vocab_core' })
         );
+    });
+
+    test('run completion advances the active daily practice plan one step', async () => {
+        const run = createPracticePlanRun(practicePlan, 1000);
+
+        useGameStore.getState().startGame([baseQuestion], 'daily path context', 'battle', run);
+        useGameStore.getState().answerQuestion(0, { responseLatencyMs: 700 });
+        useGameStore.getState().recordRunCompletion();
+        await flush();
+
+        const activeRun = useGameStore.getState().activePracticePlanRun;
+        expect(activeRun?.completedStepIds).toEqual(['daily_review_vocab']);
+        expect(activeRun?.currentStepIndex).toBe(1);
+        expect(currentPracticePlanStep(activeRun)?.id).toBe('daily_transfer_vocab');
     });
 });

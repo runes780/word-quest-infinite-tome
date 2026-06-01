@@ -5,17 +5,36 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { REPORT_SYSTEM_PROMPT, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
-import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle } from 'lucide-react';
+import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
 import { updatePlayerProfile } from '@/db/db';
 import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
+import {
+    currentPracticePlanStep,
+    isPracticePlanComplete,
+    loadPracticePlanStepLaunch,
+    practicePlanProgressText
+} from '@/lib/data/practicePlanRunner';
 
 import { translations } from '@/lib/translations';
 
 export function MissionReport() {
-    const { score, questions, resetGame, isVictory, userAnswers, context, skillStats, addToRevengeQueue, recordRunCompletion, runObjectiveBonuses } = useGameStore();
+    const {
+        score,
+        questions,
+        resetGame,
+        isVictory,
+        userAnswers,
+        context,
+        skillStats,
+        addToRevengeQueue,
+        recordRunCompletion,
+        runObjectiveBonuses,
+        activePracticePlanRun,
+        startGame
+    } = useGameStore();
     const { apiKey, model, language, setSettingsOpen } = useSettingsStore();
     const t = translations[language];
     const hasApiKey = Boolean(apiKey?.trim());
@@ -23,8 +42,12 @@ export function MissionReport() {
     const [analysisSource, setAnalysisSource] = useState<'ai' | 'local' | null>(null);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isContinuingPlan, setIsContinuingPlan] = useState(false);
+    const [continuePlanError, setContinuePlanError] = useState<string | null>(null);
     const [queuedIds, setQueuedIds] = useState<Set<number>>(new Set());
     const [historyLogged, setHistoryLogged] = useState(false);
+    const nextPlanStep = currentPracticePlanStep(activePracticePlanRun);
+    const planComplete = isPracticePlanComplete(activePracticePlanRun);
 
     useEffect(() => {
         if (historyLogged || questions.length === 0 || userAnswers.length === 0) return;
@@ -104,6 +127,21 @@ export function MissionReport() {
             setAnalysisError(t.report.offlineAnalysis);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleContinuePracticePlan = async () => {
+        if (!activePracticePlanRun || !nextPlanStep) return;
+        setIsContinuingPlan(true);
+        setContinuePlanError(null);
+        try {
+            const launch = await loadPracticePlanStepLaunch(nextPlanStep);
+            startGame(launch.monsters, launch.context, launch.source, activePracticePlanRun);
+        } catch (error) {
+            console.error(error);
+            setContinuePlanError(language === 'zh' ? '无法继续今日学习路径。' : 'Could not continue today\'s path.');
+        } finally {
+            setIsContinuingPlan(false);
         }
     };
 
@@ -316,6 +354,59 @@ export function MissionReport() {
                             </div>
                         )}
                     </div>
+
+                    {activePracticePlanRun && (
+                        <div className="mt-6 rounded-2xl border border-primary/25 bg-primary/10 p-5 text-left">
+                            <div className="mb-3 flex items-center gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+                                    <Route className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-black text-foreground">
+                                        {language === 'zh' ? '今日学习路径' : 'Today\'s Learning Path'}
+                                    </p>
+                                    <p className="text-xs font-semibold text-muted-foreground">
+                                        {practicePlanProgressText(activePracticePlanRun)} {language === 'zh' ? '已完成' : 'complete'}
+                                    </p>
+                                </div>
+                            </div>
+                            {planComplete ? (
+                                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-500">
+                                    {language === 'zh'
+                                        ? '今天的路径已经完成。下一次系统会根据这次表现重新安排复习和迁移题。'
+                                        : 'Today\'s path is complete. The next plan will use this evidence to rebalance review and transfer.'}
+                                </div>
+                            ) : nextPlanStep ? (
+                                <div className="space-y-3">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                                            {language === 'zh' ? '下一步' : 'Next Step'}
+                                        </p>
+                                        <p className="mt-1 text-sm font-black text-foreground">{nextPlanStep.title}</p>
+                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{nextPlanStep.rationale}</p>
+                                    </div>
+                                    {continuePlanError && (
+                                        <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+                                            {continuePlanError}
+                                        </p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={handleContinuePracticePlan}
+                                        disabled={isContinuingPlan}
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                                    >
+                                        {isContinuingPlan ? (
+                                            <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                        ) : (
+                                            <PlayCircle className="h-4 w-4" />
+                                        )}
+                                        {language === 'zh' ? '继续路径' : 'Continue Path'}
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
+                    )}
 
                     <button
                         onClick={resetGame}

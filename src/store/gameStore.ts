@@ -32,6 +32,11 @@ import {
     reorderQuestionsBySkill
 } from '@/store/modules/questionFlow';
 import {
+    completeCurrentPracticePlanStep,
+    currentPracticePlanStep,
+    type PracticePlanRun
+} from '@/lib/data/practicePlanRunner';
+import {
     loadInitialRevengeQueue,
     persistRevengeQueue,
     sanitizeForQueue,
@@ -254,9 +259,11 @@ interface GameState {
     recentMistakeBySkill: Record<string, number>;
     masteryCelebrations: MasteryCelebration[];
     runObjectiveBonuses: RunObjectiveBonus[];
+    activePracticePlanRun: PracticePlanRun | null;
+    activePracticePlanStepId: string | null;
 
     // Actions
-    startGame: (questions: Monster[], context: string, source?: LearningEventSource) => void;
+    startGame: (questions: Monster[], context: string, source?: LearningEventSource, practicePlanRun?: PracticePlanRun | null) => void;
     answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => { correct: boolean; explanation: string; damageDealt: number; isCritical: boolean; isSuperEffective: boolean };
     nextQuestion: () => void;
     addQuestions: (newQuestions: QuestionInput[]) => void;
@@ -315,8 +322,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     recentMistakeBySkill: {},
     masteryCelebrations: [],
     runObjectiveBonuses: [],
+    activePracticePlanRun: null,
+    activePracticePlanStepId: null,
 
-    startGame: (questions, context, source = 'battle') => {
+    startGame: (questions, context, source = 'battle', practicePlanRun = null) => {
         const revengeEntries = [...get().revengeQueue];
         const preparedRevenge = revengeEntries.map((entry, idx) =>
             applyLearningMetadataForSource(
@@ -329,6 +338,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         );
         const combined = expandBossGateQuestions([...preparedRevenge, ...preparedIncoming]);
         const firstHp = combined[0]?.hp || 1;
+        const activePracticePlanStepId = currentPracticePlanStep(practicePlanRun)?.id || null;
 
         set((state) => ({
             questions: combined,
@@ -356,7 +366,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             reviewRiskBySkill: state.reviewRiskBySkill,
             recentMistakeBySkill: state.recentMistakeBySkill,
             masteryCelebrations: [],
-            runObjectiveBonuses: []
+            runObjectiveBonuses: [],
+            activePracticePlanRun: practicePlanRun,
+            activePracticePlanStepId
         }));
         persistRevengeQueue([]);
 
@@ -828,7 +840,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             sessionSource: 'battle',
             questionStartedAt: Date.now(),
             masteryCelebrations: [],
-            runObjectiveBonuses: []
+            runObjectiveBonuses: [],
+            activePracticePlanRun: null,
+            activePracticePlanStepId: null
         })),
 
     generateRewards: (type) => {
@@ -1057,6 +1071,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             }).catch(console.error);
         } else {
             set({ runObjectiveBonuses: [] });
+        }
+        const activeStep = currentPracticePlanStep(state.activePracticePlanRun);
+        if (state.activePracticePlanRun && activeStep?.id === state.activePracticePlanStepId) {
+            set({
+                activePracticePlanRun: completeCurrentPracticePlanStep(state.activePracticePlanRun),
+                activePracticePlanStepId: null
+            });
         }
         logLearningEvent({
             eventType: 'session_complete',

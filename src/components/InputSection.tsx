@@ -14,11 +14,15 @@ import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
-import { db, FSRSCard, getDueCardsWithPriority } from '@/db/db';
+import { FSRSCard } from '@/db/db';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
-import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import { getDailyPracticePlan, PracticePlan, PracticePlanStep } from '@/lib/data/dailyPracticePlan';
 import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
+import {
+    createPracticePlanRun,
+    currentPracticePlanStep,
+    loadPracticePlanStepLaunch
+} from '@/lib/data/practicePlanRunner';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -100,50 +104,16 @@ export function InputSection() {
         try {
             const freshPlan = await getDailyPracticePlan();
             setPracticePlan(freshPlan);
-            const primary = freshPlan.steps[0];
+            const run = createPracticePlanRun(freshPlan);
+            const primary = currentPracticePlanStep(run);
             if (!primary) {
                 startStarterPlan();
                 return;
             }
 
-            if (primary.type === 'review') {
-                const cards = await getDueCardsWithPriority(primary.questionCount);
-                if (cards.length > 0) {
-                    currentBlessingEffect = null;
-                    startGame(
-                        normalizeMissionMonsters(cardsToMonsters(cards, primary)),
-                        `Daily Learning Path: ${primary.title}`,
-                        'srs'
-                    );
-                    return;
-                }
-            }
-
-            const mistakes = await db.mistakes.orderBy('timestamp').reverse().limit(20).toArray();
-            if (mistakes.length > 0) {
-                const pack = buildTargetedReviewPack({
-                    mistakes,
-                    weakestSkillTag: primary.skillTag,
-                    desiredCount: primary.questionCount
-                });
-                if (pack.monsters.length > 0) {
-                    currentBlessingEffect = null;
-                    startGame(
-                        pack.monsters.map((monster) => ({
-                            ...monster,
-                            learningObjectiveId: primary.objectiveId,
-                            supportLevel: primary.supportLevel,
-                            attemptKind: primary.attemptKind,
-                            sourceContextSpan: 'daily_plan'
-                        })),
-                        `Daily Learning Path: ${primary.title}`,
-                        'battle'
-                    );
-                    return;
-                }
-            }
-
-            startStarterPlan(primary);
+            const launch = await loadPracticePlanStepLaunch(primary);
+            currentBlessingEffect = null;
+            startGame(launch.monsters, launch.context, launch.source, run);
         } catch (err) {
             console.error(err);
             setPlanError(language === 'zh' ? '启动今日计划失败。' : 'Could not launch today\'s plan.');

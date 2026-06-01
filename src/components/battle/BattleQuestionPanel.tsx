@@ -8,6 +8,7 @@ import { FillBlankQuestion } from '@/components/FillBlankQuestion';
 import { VoiceInput } from '@/components/VoiceInput';
 import type { Monster } from '@/store/gameStore';
 import type { translations } from '@/lib/translations';
+import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
 
 interface BattleQuestionPanelProps {
     currentQuestion: Monster;
@@ -58,6 +59,14 @@ export function BattleQuestionPanel({
     onOpenMentor,
     onNext
 }: BattleQuestionPanelProps) {
+    const bossGateLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
+        ? `Boss Gate ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`
+        : null;
+    const objectiveLabel = objectiveTitle(currentQuestion.learningObjectiveId);
+    const supportLabel = typeof currentQuestion.supportLevel === 'number'
+        ? supportLevelLabel(currentQuestion.supportLevel)
+        : null;
+
     return (
         <div className="flex flex-col justify-center space-y-6">
             <motion.div
@@ -89,6 +98,22 @@ export function BattleQuestionPanel({
                             </button>
                         )}
                     </div>
+                </div>
+
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                    {bossGateLabel && (
+                        <span className="rounded-full border border-yellow-500/40 bg-yellow-500/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-yellow-600 dark:text-yellow-300">
+                            {bossGateLabel}
+                        </span>
+                    )}
+                    <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                        {objectiveLabel}
+                    </span>
+                    {supportLabel && (
+                        <span className="rounded-full border border-border bg-secondary/70 px-3 py-1 text-xs font-bold text-muted-foreground">
+                            {supportLabel}
+                        </span>
+                    )}
                 </div>
 
                 <h3 className="text-2xl md:text-3xl font-bold text-foreground mb-4 leading-tight">
