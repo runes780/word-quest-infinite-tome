@@ -48,8 +48,8 @@ export function BattleHud({
 }: BattleHudProps) {
     return (
         <>
-            <div className="flex justify-between items-center mb-4 bg-secondary/30 p-4 rounded-2xl backdrop-blur-sm border border-border">
-                <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-4 bg-secondary/30 p-4 rounded-2xl backdrop-blur-sm border border-border">
+                <div className="flex min-w-0 flex-1 basis-full items-center gap-4 sm:basis-auto">
                     <div className="flex gap-1">
                         {[...Array(maxHealth)].map((_, i) => (
                             <motion.div
@@ -71,7 +71,7 @@ export function BattleHud({
                         ))}
                     </div>
 
-                    <div className="flex flex-col gap-1 min-w-[120px]">
+                    <div className="flex min-w-[120px] flex-1 flex-col gap-1 sm:flex-none">
                         <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
                             <span>{t.battle.level} {playerStats.level}</span>
                             <span>{t.battle.xp} {playerStats.xp}/{playerStats.maxXp}</span>
@@ -87,11 +87,11 @@ export function BattleHud({
                     </div>
                 </div>
 
-                <div className="font-mono text-xl font-bold text-primary">
+                <div className="min-w-0 flex-1 basis-[8rem] text-center font-mono text-lg font-bold text-primary sm:flex-none sm:text-xl">
                     {t.battle.score}: {score.toString().padStart(6, '0')}
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex flex-1 basis-[9rem] items-center justify-end gap-3 sm:flex-none sm:gap-4">
                     <motion.button
                         animate={{ scale: goldScale }}
                         onClick={onOpenShop}
@@ -100,7 +100,7 @@ export function BattleHud({
                         <Coins className="w-4 h-4" />
                         <span className="font-mono font-bold">{playerStats.gold}</span>
                     </motion.button>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex items-center gap-2 whitespace-nowrap text-muted-foreground">
                         <Shield className="w-5 h-5" />
                         <span>{t.battle.level} {currentIndex + 1}/{totalQuestions}</span>
                     </div>

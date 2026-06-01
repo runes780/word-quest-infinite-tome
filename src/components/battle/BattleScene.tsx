@@ -1,10 +1,11 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sword, Zap, Flame } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import type { Monster } from '@/store/gameStore';
 import type { translations } from '@/lib/translations';
+import { getAttackEffectAsset, getHeroAsset, getMonsterAsset } from '@/lib/battleAssets';
 
 interface Particle {
     id: number;
@@ -52,6 +53,10 @@ export function BattleScene({
     bossComboThreshold,
     t
 }: BattleSceneProps) {
+    const heroAsset = getHeroAsset();
+    const monsterAsset = getMonsterAsset(currentQuestion.type);
+    const attackEffectAsset = getAttackEffectAsset(attackType);
+
     return (
         <div className="relative battle-arena rounded-3xl border-2 border-primary/15 overflow-hidden flex flex-col items-center justify-center p-8 shadow-soft">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.24),transparent_46%),radial-gradient(circle_at_84%_78%,rgba(99,102,241,0.20),transparent_44%),radial-gradient(circle_at_52%_96%,rgba(251,191,36,0.16),transparent_42%)] dark:bg-[radial-gradient(circle_at_25%_20%,rgba(168,85,247,0.24),transparent_46%),radial-gradient(circle_at_80%_82%,rgba(14,165,233,0.22),transparent_44%)]" />
@@ -72,12 +77,16 @@ export function BattleScene({
                     >
                         <div className="absolute inset-0 bg-blue-500/30 blur-xl rounded-full group-hover:bg-blue-500/50 transition-all duration-500" />
 
-                        <div className="relative w-32 h-32 md:w-40 md:h-40 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl border-4 border-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.6)] flex items-center justify-center transform rotate-3">
-                            <Sword className="w-16 h-16 text-white drop-shadow-lg" />
-                            <div className="absolute top-8 flex gap-4">
-                                <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-                                <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-                            </div>
+                        <div className="relative w-32 h-32 md:w-40 md:h-40 bg-gradient-to-br from-blue-500/30 to-indigo-700/30 rounded-2xl border-4 border-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.6)] flex items-center justify-center transform rotate-3 overflow-visible">
+                            <Image
+                                src={heroAsset.src}
+                                alt={heroAsset.alt}
+                                width={220}
+                                height={220}
+                                sizes="160px"
+                                className="h-[118%] w-[118%] object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.35)]"
+                                draggable={false}
+                            />
 
                             <AnimatePresence>
                                 {showResult && isCorrect && (
@@ -88,20 +97,26 @@ export function BattleScene({
                                             exit={{ opacity: 0 }}
                                             className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
                                         >
-                                            {attackType === 'slash' && (
-                                                <motion.div
-                                                    initial={{ pathLength: 0, opacity: 0 }}
-                                                    animate={{ pathLength: 1, opacity: 1 }}
-                                                    transition={{ duration: 0.2 }}
-                                                    className="w-32 h-32 absolute"
-                                                >
-                                                    <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]">
-                                                        <path d="M0,100 L100,0" stroke="white" strokeWidth="8" strokeLinecap="round" />
-                                                    </svg>
-                                                </motion.div>
-                                            )}
-                                            {attackType === 'fireball' && <Flame className="w-24 h-24 text-orange-500 fill-orange-500 animate-pulse drop-shadow-[0_0_15px_rgba(249,115,22,0.8)]" />}
-                                            {attackType === 'lightning' && <Zap className="w-24 h-24 text-yellow-400 fill-yellow-400 animate-bounce drop-shadow-[0_0_15px_rgba(250,204,21,0.8)]" />}
+                                            <motion.div
+                                                initial={{ scale: 0.7, opacity: 0, rotate: attackType === 'slash' ? -8 : 0 }}
+                                                animate={{ scale: 1.15, opacity: 1, rotate: attackType === 'slash' ? 4 : 0 }}
+                                                transition={{ duration: 0.22 }}
+                                                className={cn(
+                                                    'absolute h-32 w-32 object-contain drop-shadow-[0_0_16px_rgba(255,255,255,0.75)]',
+                                                    attackType === 'fireball' && 'animate-pulse',
+                                                    attackType === 'lightning' && 'animate-bounce'
+                                                )}
+                                            >
+                                                <Image
+                                                    src={attackEffectAsset.src}
+                                                    alt={attackEffectAsset.alt}
+                                                    width={128}
+                                                    height={128}
+                                                    sizes="128px"
+                                                    className="h-full w-full object-contain"
+                                                    draggable={false}
+                                                />
+                                            </motion.div>
                                         </motion.div>
 
                                         {particles.map((p) => (
@@ -169,17 +184,20 @@ export function BattleScene({
                         )} />
 
                         <div className={cn(
-                            "relative w-32 h-32 md:w-40 md:h-40 rounded-full border-4 shadow-2xl flex items-center justify-center transition-colors overflow-hidden",
+                            "relative w-32 h-32 md:w-40 md:h-40 rounded-full border-4 shadow-2xl flex items-center justify-center transition-colors overflow-visible",
                             currentQuestion.type === 'grammar' ? "bg-gradient-to-br from-purple-600 to-fuchsia-800 border-purple-400" :
                                 currentQuestion.type === 'vocab' ? "bg-gradient-to-br from-orange-600 to-red-800 border-orange-400" :
                                     "bg-gradient-to-br from-emerald-600 to-teal-800 border-emerald-400"
                         )}>
-                            <div className="text-7xl drop-shadow-2xl transform hover:scale-110 transition-transform duration-300">
-                                {currentQuestion.type === 'grammar' ? '🧙‍♂️' :
-                                    currentQuestion.type === 'vocab' ? '🧛' :
-                                        '🧟'}
-                            </div>
-
+                            <Image
+                                src={monsterAsset.src}
+                                alt={monsterAsset.alt}
+                                width={220}
+                                height={220}
+                                sizes="160px"
+                                className="relative z-10 h-[118%] w-[118%] object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.4)] transform hover:scale-110 transition-transform duration-300"
+                                draggable={false}
+                            />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                         </div>
 
