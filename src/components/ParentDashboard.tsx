@@ -69,6 +69,7 @@ import type {
 import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import type { Monster } from '@/store/gameStore';
+import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
@@ -127,6 +128,7 @@ export function ParentDashboard() {
     const [consistencyAudit, setConsistencyAudit] = useState<DataConsistencyAuditSnapshot | null>(null);
     const [aiMonitor, setAiMonitor] = useState<AIRequestMonitorSnapshot | null>(null);
     const [sessionRecovery, setSessionRecovery] = useState<SessionRecoverySnapshot | null>(null);
+    const [dailyPracticePlan, setDailyPracticePlan] = useState<PracticePlan | null>(null);
     const [activityFeed, setActivityFeed] = useState<GuardianActivityFeedItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -157,6 +159,7 @@ export function ParentDashboard() {
             setConsistencyAudit(dashboard.consistencyAudit);
             setAiMonitor(dashboard.aiMonitor);
             setSessionRecovery(dashboard.sessionRecovery);
+            setDailyPracticePlan(dashboard.dailyPracticePlan);
             setActivityFeed(dashboard.activityFeed);
         } catch (err) {
             console.error(err);
@@ -626,6 +629,28 @@ export function ParentDashboard() {
                                         </Panel>
 
                                         <Panel title="Guardian Recommendations" subtitle={isZh ? '基于证据的今晚行动' : 'Personalized tips to help learners grow'} icon={Sparkles}>
+                                            {dailyPracticePlan && (
+                                                <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">
+                                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                                        <p className="text-sm font-black text-blue-950">
+                                                            {isZh ? '今日推荐依据' : 'Why This Plan'}
+                                                        </p>
+                                                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-blue-700">
+                                                            {dailyPracticePlan.estimatedMinutes}m
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs leading-relaxed text-blue-800">
+                                                        {dailyPracticePlan.rationale}
+                                                    </p>
+                                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                                        {dailyPracticePlan.evidence.slice(0, 3).map((row, index) => (
+                                                            <span key={`${row.label}-${index}`} className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                                                {row.label}: {row.value}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="space-y-3">
                                                 {tonightActions.map((action) => (
                                                     <RecommendationRow

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useGameStore, Monster } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -9,17 +9,40 @@ import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy, Brain } from 'lucide-react';
+import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy, Brain, PlayCircle, Route, Clock, Target } from 'lucide-react';
 import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
-import { FSRSCard } from '@/db/db';
+import { db, FSRSCard, getDueCardsWithPriority } from '@/db/db';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
+import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
+import { getDailyPracticePlan, PracticePlan, PracticePlanStep } from '@/lib/data/dailyPracticePlan';
+import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
 export function getCurrentBlessingEffect() { return currentBlessingEffect; }
+
+function cardsToMonsters(cards: FSRSCard[], step?: PracticePlanStep): Monster[] {
+    return cards.map((card, idx) => ({
+        id: card.id || Date.now() + idx,
+        type: card.type || 'vocab' as const,
+        question: card.question,
+        options: card.options,
+        correct_index: card.correct_index,
+        explanation: card.explanation || '',
+        hint: card.hint,
+        skillTag: card.skillTag || `${card.type || 'vocab'}_review`,
+        difficulty: 'medium' as const,
+        questionMode: 'choice' as const,
+        correctAnswer: card.options[card.correct_index] || '',
+        learningObjectiveId: step?.objectiveId,
+        supportLevel: step?.supportLevel,
+        attemptKind: step?.attemptKind,
+        sourceContextSpan: 'daily_plan'
+    }));
+}
 
 export function InputSection() {
     const [input, setInput] = useState('');
@@ -33,11 +56,101 @@ export function InputSection() {
     const [pendingQuestions, setPendingQuestions] = useState<{ monsters: Monster[]; context: string } | null>(null);
     const [showDailyChallenge, setShowDailyChallenge] = useState(false);
     const [showSRSDashboard, setShowSRSDashboard] = useState(false);
+    const [practicePlan, setPracticePlan] = useState<PracticePlan | null>(null);
+    const [isPlanLoading, setIsPlanLoading] = useState(false);
+    const [planError, setPlanError] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { startGame } = useGameStore();
     const { apiKey, model, setSettingsOpen, language } = useSettingsStore();
     const t = translations[language];
 
+    const refreshPracticePlan = useCallback(async () => {
+        setIsPlanLoading(true);
+        setPlanError('');
+        try {
+            setPracticePlan(await getDailyPracticePlan());
+        } catch (err) {
+            console.error(err);
+            setPlanError(language === 'zh' ? '今日计划暂时无法读取。' : 'Practice plan is unavailable right now.');
+        } finally {
+            setIsPlanLoading(false);
+        }
+    }, [language]);
+
+    useEffect(() => {
+        refreshPracticePlan();
+    }, [refreshPracticePlan]);
+
+    const startStarterPlan = useCallback((step?: PracticePlanStep) => {
+        const sample = SAMPLE_LEVELS[0];
+        const monsters = normalizeMissionMonsters(sample.monsters).map((monster) => ({
+            ...monster,
+            learningObjectiveId: step?.objectiveId || monster.learningObjectiveId,
+            supportLevel: step?.supportLevel ?? monster.supportLevel,
+            attemptKind: step?.attemptKind || 'diagnostic',
+            sourceContextSpan: 'daily_plan'
+        }));
+        currentBlessingEffect = null;
+        startGame(monsters, `Daily Learning Path\n${sample.title}`, 'battle');
+    }, [startGame]);
+
+    const handleStartPracticePlan = useCallback(async () => {
+        setIsPlanLoading(true);
+        setPlanError('');
+        try {
+            const freshPlan = await getDailyPracticePlan();
+            setPracticePlan(freshPlan);
+            const primary = freshPlan.steps[0];
+            if (!primary) {
+                startStarterPlan();
+                return;
+            }
+
+            if (primary.type === 'review') {
+                const cards = await getDueCardsWithPriority(primary.questionCount);
+                if (cards.length > 0) {
+                    currentBlessingEffect = null;
+                    startGame(
+                        normalizeMissionMonsters(cardsToMonsters(cards, primary)),
+                        `Daily Learning Path: ${primary.title}`,
+                        'srs'
+                    );
+                    return;
+                }
+            }
+
+            const mistakes = await db.mistakes.orderBy('timestamp').reverse().limit(20).toArray();
+            if (mistakes.length > 0) {
+                const pack = buildTargetedReviewPack({
+                    mistakes,
+                    weakestSkillTag: primary.skillTag,
+                    desiredCount: primary.questionCount
+                });
+                if (pack.monsters.length > 0) {
+                    currentBlessingEffect = null;
+                    startGame(
+                        pack.monsters.map((monster) => ({
+                            ...monster,
+                            learningObjectiveId: primary.objectiveId,
+                            supportLevel: primary.supportLevel,
+                            attemptKind: primary.attemptKind,
+                            sourceContextSpan: 'daily_plan'
+                        })),
+                        `Daily Learning Path: ${primary.title}`,
+                        'battle'
+                    );
+                    return;
+                }
+            }
+
+            startStarterPlan(primary);
+        } catch (err) {
+            console.error(err);
+            setPlanError(language === 'zh' ? '启动今日计划失败。' : 'Could not launch today\'s plan.');
+        } finally {
+            setIsPlanLoading(false);
+        }
+    }, [language, startGame, startStarterPlan]);
 
     const handleGenerate = async () => {
         if (!input.trim()) return;
@@ -181,20 +294,7 @@ export function InputSection() {
                 isOpen={showSRSDashboard}
                 onClose={() => setShowSRSDashboard(false)}
                 onStartReview={(cards: FSRSCard[]) => {
-                    // Convert FSRS cards to Monster format for game
-                    const monsters = cards.map((card, idx) => ({
-                        id: card.id || Date.now() + idx,
-                        type: card.type || 'vocab' as const,
-                        question: card.question,
-                        options: card.options,
-                        correct_index: card.correct_index,
-                        explanation: card.explanation || '',
-                        hint: card.hint,
-                        skillTag: card.skillTag || `${card.type || 'vocab'}_review`,
-                        difficulty: 'medium' as const,
-                        questionMode: 'choice' as const,
-                        correctAnswer: card.options[card.correct_index] || ''
-                    }));
+                    const monsters = cardsToMonsters(cards);
                     const normalized = normalizeMissionMonsters(monsters);
                     if (normalized.length > 0) {
                         startGame(normalized, 'SRS Review', 'srs');
@@ -203,6 +303,17 @@ export function InputSection() {
             />
 
             <div className="w-full max-w-2xl mx-auto p-6">
+                <PracticePlanPanel
+                    plan={practicePlan}
+                    isLoading={isPlanLoading}
+                    error={planError}
+                    language={language}
+                    onStart={handleStartPracticePlan}
+                    onRefresh={refreshPracticePlan}
+                    onOpenSrs={() => setShowSRSDashboard(true)}
+                    onOpenDaily={() => setShowDailyChallenge(true)}
+                />
+
                 <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
@@ -352,6 +463,134 @@ export function InputSection() {
                 </motion.div>
             </div>
         </>
+    );
+}
+
+function PracticePlanPanel({
+    plan,
+    isLoading,
+    error,
+    language,
+    onStart,
+    onRefresh,
+    onOpenSrs,
+    onOpenDaily
+}: {
+    plan: PracticePlan | null;
+    isLoading: boolean;
+    error: string;
+    language: 'en' | 'zh';
+    onStart: () => void;
+    onRefresh: () => void;
+    onOpenSrs: () => void;
+    onOpenDaily: () => void;
+}) {
+    const primary = plan?.steps[0];
+    const isZh = language === 'zh';
+
+    return (
+        <motion.section
+            initial={{ y: 12, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="mb-5 rounded-3xl border border-primary/20 bg-card/70 p-5 shadow-xl backdrop-blur-sm"
+        >
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-3">
+                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/15 text-primary">
+                        <Route className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-black text-foreground">
+                            {isZh ? '今日学习路径' : 'Today\'s Learning Path'}
+                        </h2>
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs font-semibold text-muted-foreground">
+                            <span className="inline-flex items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" />
+                                {plan ? `${plan.estimatedMinutes} min` : '-- min'}
+                            </span>
+                            {primary && (
+                                <span className="inline-flex items-center gap-1">
+                                    <Target className="h-3.5 w-3.5" />
+                                    {objectiveTitle(primary.objectiveId)}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        onClick={onRefresh}
+                        disabled={isLoading}
+                        className="grid h-10 w-10 place-items-center rounded-xl border border-border text-muted-foreground hover:bg-secondary disabled:opacity-50"
+                        aria-label={isZh ? '刷新今日计划' : 'Refresh practice plan'}
+                    >
+                        <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onStart}
+                        disabled={isLoading}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                        <PlayCircle className="h-4 w-4" />
+                        {isZh ? '开始' : 'Start'}
+                    </button>
+                </div>
+            </div>
+
+            {error && (
+                <div className="mb-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+                    {error}
+                </div>
+            )}
+
+            <div className="space-y-2">
+                {(plan?.steps || []).slice(0, 3).map((step, index) => (
+                    <div key={step.id} className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/40 p-3">
+                        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-black text-primary">
+                            {index + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-bold text-foreground">{step.title}</p>
+                                <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                                    {supportLevelLabel(step.supportLevel)}
+                                </span>
+                            </div>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{step.rationale}</p>
+                        </div>
+                    </div>
+                ))}
+                {!plan && (
+                    <div className="rounded-2xl border border-border/60 bg-background/40 p-3 text-sm text-muted-foreground">
+                        {isLoading
+                            ? (isZh ? '正在读取本地学习证据...' : 'Reading local learning evidence...')
+                            : (isZh ? '暂无今日计划。' : 'No practice plan loaded.')}
+                    </div>
+                )}
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <button
+                    type="button"
+                    onClick={onOpenSrs}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-sm font-bold text-purple-400 hover:bg-purple-500/20"
+                >
+                    <Brain className="h-4 w-4" />
+                    {isZh ? '复习卡片' : 'SRS Review'}
+                </button>
+                <button
+                    type="button"
+                    onClick={onOpenDaily}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-bold text-accent hover:bg-accent/20"
+                >
+                    <Trophy className="h-4 w-4" />
+                    {isZh ? '每日挑战' : 'Daily Challenge'}
+                </button>
+            </div>
+        </motion.section>
     );
 }
 

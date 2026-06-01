@@ -100,7 +100,10 @@ describe('learning pipeline regression (battle/srs)', () => {
             eventType: 'answer',
             source: 'battle',
             result: 'correct',
-            skillTag: 'vocab_core'
+            skillTag: 'vocab_core',
+            learningObjectiveId: 'vocab_context_meaning',
+            attemptKind: 'practice',
+            supportLevel: 3
         }));
         expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
             totalXp: expect.any(Number),
@@ -134,7 +137,10 @@ describe('learning pipeline regression (battle/srs)', () => {
             eventType: 'answer',
             source: 'srs',
             result: 'wrong',
-            skillTag: 'vocab_core'
+            skillTag: 'vocab_core',
+            learningObjectiveId: 'vocab_context_meaning',
+            attemptKind: 'review',
+            supportLevel: 3
         }));
         expect(reviewCard).toHaveBeenCalledWith(
             'hash_apple',

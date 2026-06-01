@@ -42,6 +42,8 @@ import {
     RepeatedCauseTrend
 } from '@/lib/data/mistakes';
 import type { HistoryRecord } from '@/db/db';
+import { buildDailyPracticePlan, PracticePlan } from '@/lib/data/dailyPracticePlan';
+import { objectiveTitle } from '@/lib/data/learningObjectives';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -78,6 +80,7 @@ export interface GuardianDashboardViewModel {
     consistencyAudit: DataConsistencyAuditSnapshot;
     aiMonitor: AIRequestMonitorSnapshot;
     sessionRecovery: SessionRecoverySnapshot;
+    dailyPracticePlan: PracticePlan;
     activityFeed: GuardianActivityFeedItem[];
 }
 
@@ -136,7 +139,9 @@ export function buildGuardianActivityFeed(input: GuardianActivityFeedInput): Gua
                 kind: 'session',
                 tone: event.source === 'daily' ? 'purple' : 'green',
                 title: `${sourceLabel(event.source)} session complete`,
-                detail: event.skillTag ? formatSkillLabel(event.skillTag) : 'Learning session recorded',
+                detail: event.learningObjectiveId
+                    ? objectiveTitle(event.learningObjectiveId)
+                    : event.skillTag ? formatSkillLabel(event.skillTag) : 'Learning session recorded',
                 meta: formatRelativeTime(event.timestamp, now),
                 timestamp: event.timestamp
             };
@@ -148,7 +153,11 @@ export function buildGuardianActivityFeed(input: GuardianActivityFeedInput): Gua
                 kind: 'hint',
                 tone: 'amber',
                 title: `${sourceLabel(event.source)} hint used`,
-                detail: event.skillTag ? formatSkillLabel(event.skillTag) : 'Hint evidence logged',
+                detail: event.causeTag
+                    ? formatSkillLabel(event.causeTag)
+                    : event.learningObjectiveId
+                        ? objectiveTitle(event.learningObjectiveId)
+                        : event.skillTag ? formatSkillLabel(event.skillTag) : 'Hint evidence logged',
                 meta: formatRelativeTime(event.timestamp, now),
                 timestamp: event.timestamp
             };
@@ -160,7 +169,9 @@ export function buildGuardianActivityFeed(input: GuardianActivityFeedInput): Gua
             kind: 'answer',
             tone: correct ? 'green' : event.result === 'wrong' ? 'red' : 'blue',
             title: `${correct ? 'Correct' : event.result === 'wrong' ? 'Wrong' : 'Recorded'} ${sourceLabel(event.source).toLowerCase()} answer`,
-            detail: event.skillTag ? formatSkillLabel(event.skillTag) : event.questionHash || 'Question evidence logged',
+            detail: event.learningObjectiveId
+                ? objectiveTitle(event.learningObjectiveId)
+                : event.skillTag ? formatSkillLabel(event.skillTag) : event.questionHash || 'Question evidence logged',
             meta: formatRelativeTime(event.timestamp, now),
             timestamp: event.timestamp
         };
@@ -255,7 +266,8 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         consistencyAudit,
         aiMonitor,
         sessionRecovery,
-        learningEvents
+        learningEvents,
+        masteryRecords
     ] = await Promise.all([
         getDashboardSummary(range, range * 6),
         getMistakes(40),
@@ -277,7 +289,8 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         db.learningEvents
             .where('timestamp')
             .aboveOrEqual(now - Math.max(range, 30) * DAY_MS)
-            .toArray()
+            .toArray(),
+        db.skillMastery.toArray()
     ]);
 
     const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
@@ -298,6 +311,13 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         learningTasks,
         now,
         limit: 8
+    });
+    const dailyPracticePlan = buildDailyPracticePlan({
+        masteryRecords,
+        dueCards,
+        recentMistakes: mistakes,
+        learningTasks,
+        now
     });
 
     return {
@@ -320,6 +340,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         consistencyAudit,
         aiMonitor,
         sessionRecovery,
+        dailyPracticePlan,
         activityFeed
     };
 }

@@ -20,7 +20,9 @@ import {
 } from '@/db/db';
 import {
     applyQuestionDefaults,
+    applyLearningMetadataForSource,
     buildRunObjectiveBonuses,
+    expandBossGateQuestions,
     computeSkillPriority as computeSkillPriorityFromModule,
     findWeakSkill,
     formatSkillLabel,
@@ -109,6 +111,8 @@ export type MonsterDifficulty = 'easy' | 'medium' | 'hard';
 
 // Question mode for productive recall
 export type QuestionMode = 'choice' | 'typing' | 'fill-blank';
+export type SupportLevel = 0 | 1 | 2 | 3;
+export type AttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
 
 export interface Monster {
     id: number;
@@ -127,6 +131,11 @@ export interface Monster {
     questionMode: QuestionMode; // Productive recall mode
     correctAnswer: string; // For typing/fill-blank questions
     learningObjectiveId?: string;
+    supportLevel?: SupportLevel;
+    attemptKind?: AttemptKind;
+    causeTag?: string;
+    bossStage?: number;
+    bossTotalStages?: number;
     sourceContextSpan?: string;
 }
 
@@ -189,6 +198,10 @@ export interface UserAnswer {
     userChoice: string;
     correctChoice: string;
     isCorrect: boolean;
+    learningObjectiveId?: string;
+    attemptKind?: AttemptKind;
+    supportLevel?: SupportLevel;
+    causeTag?: string;
 }
 
 export interface MasteryCelebration {
@@ -306,10 +319,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     startGame: (questions, context, source = 'battle') => {
         const revengeEntries = [...get().revengeQueue];
         const preparedRevenge = revengeEntries.map((entry, idx) =>
-            applyQuestionDefaults({ ...entry, id: entry.id || Date.now() + idx, sourceContextSpan: 'revenge' }, idx)
+            applyLearningMetadataForSource(
+                applyQuestionDefaults({ ...entry, id: entry.id || Date.now() + idx, sourceContextSpan: 'revenge' }, idx),
+                source
+            )
         );
-        const preparedIncoming = questions.map((q, idx) => applyQuestionDefaults(q, preparedRevenge.length + idx));
-        const combined = [...preparedRevenge, ...preparedIncoming];
+        const preparedIncoming = questions.map((q, idx) =>
+            applyLearningMetadataForSource(applyQuestionDefaults(q, preparedRevenge.length + idx), source)
+        );
+        const combined = expandBossGateQuestions([...preparedRevenge, ...preparedIncoming]);
         const firstHp = combined[0]?.hp || 1;
 
         set((state) => ({
@@ -350,7 +368,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                 getRecentMistakeIntensity(allSkillTags)
             ]))
             .then(([masteryBySkill, reviewRiskBySkill, recentMistakeBySkill]) => {
-                set({ masteryBySkill, reviewRiskBySkill, recentMistakeBySkill });
+                set((state) => ({
+                    masteryBySkill,
+                    reviewRiskBySkill,
+                    recentMistakeBySkill,
+                    questions: state.questions.map((q) =>
+                        applyLearningMetadataForSource(q, source, masteryBySkill[getSkillKey(q)])
+                    )
+                }));
             })
             .catch(console.error);
     },
@@ -373,7 +398,11 @@ export const useGameStore = create<GameState>((set, get) => ({
             questionText: currentQuestion.question,
             userChoice: selectedOption,
             correctChoice: currentQuestion.options[currentQuestion.correct_index],
-            isCorrect
+            isCorrect,
+            learningObjectiveId: currentQuestion.learningObjectiveId,
+            attemptKind: currentQuestion.attemptKind,
+            supportLevel: currentQuestion.supportLevel,
+            causeTag: currentQuestion.causeTag
         };
         set({ userAnswers: [...userAnswers, newAnswer] });
 
@@ -478,6 +507,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                 questionId: currentQuestion.id,
                 questionHash: hashQuestion(currentQuestion.question),
                 skillTag: currentQuestion.skillTag,
+                learningObjectiveId: currentQuestion.learningObjectiveId,
+                attemptKind: currentQuestion.attemptKind,
+                supportLevel: currentQuestion.supportLevel,
+                causeTag: currentQuestion.causeTag,
                 mode: currentQuestion.questionMode,
                 result: 'correct',
                 latencyMs: responseLatencyMs,
@@ -625,6 +658,10 @@ export const useGameStore = create<GameState>((set, get) => ({
                 questionId: currentQuestion.id,
                 questionHash: hashQuestion(currentQuestion.question),
                 skillTag: currentQuestion.skillTag,
+                learningObjectiveId: currentQuestion.learningObjectiveId,
+                attemptKind: currentQuestion.attemptKind,
+                supportLevel: currentQuestion.supportLevel,
+                causeTag: currentQuestion.causeTag,
                 mode: currentQuestion.questionMode,
                 result: 'wrong',
                 latencyMs: responseLatencyMs,
@@ -644,7 +681,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     addQuestions: (newQuestions) => {
         const { questions } = get();
         // Process new questions to add RPG stats
-        const processedQuestions = newQuestions.map((q, idx) => applyQuestionDefaults(q, questions.length + idx));
+        const { sessionSource, masteryBySkill } = get();
+        const processedQuestions = newQuestions.map((q, idx) => {
+            const prepared = applyQuestionDefaults(q, questions.length + idx);
+            return applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)]);
+        });
         set({ questions: [...questions, ...processedQuestions] });
     },
 
@@ -692,7 +733,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     injectQuestion: (question) => {
         const { questions, currentIndex } = get();
         const newQuestions = [...questions];
-        newQuestions.splice(currentIndex + 1, 0, applyQuestionDefaults(question, currentIndex + 1));
+        const prepared = applyQuestionDefaults(question, currentIndex + 1);
+        const { sessionSource, masteryBySkill } = get();
+        newQuestions.splice(
+            currentIndex + 1,
+            0,
+            applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)])
+        );
         set({ questions: newQuestions });
     },
 
@@ -967,6 +1014,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             questionId: currentQuestion.id,
             questionHash: hashQuestion(currentQuestion.question),
             skillTag: currentQuestion.skillTag,
+            learningObjectiveId: currentQuestion.learningObjectiveId,
+            attemptKind: currentQuestion.attemptKind,
+            supportLevel: currentQuestion.supportLevel,
+            causeTag: currentQuestion.causeTag,
             mode: currentQuestion.questionMode,
             source: state.sessionSource
         }).catch(console.error);
@@ -1044,7 +1095,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             });
             return false;
         }
-        const restoredQuestions = saved.questions.map((q, idx) => applyQuestionDefaults(q, idx));
+        const restoredQuestions = saved.questions.map((q, idx) =>
+            applyLearningMetadataForSource(applyQuestionDefaults(q, idx), saved.sessionSource)
+        );
         const allSkillTags = Array.from(new Set(restoredQuestions.map((q) => getSkillKey(q))));
 
         set({
@@ -1083,7 +1136,14 @@ export const useGameStore = create<GameState>((set, get) => ({
                 getRecentMistakeIntensity(allSkillTags)
             ]))
             .then(([masteryBySkill, reviewRiskBySkill, recentMistakeBySkill]) => {
-                set({ masteryBySkill, reviewRiskBySkill, recentMistakeBySkill });
+                set((state) => ({
+                    masteryBySkill,
+                    reviewRiskBySkill,
+                    recentMistakeBySkill,
+                    questions: state.questions.map((q) =>
+                        applyLearningMetadataForSource(q, saved.sessionSource, masteryBySkill[getSkillKey(q)])
+                    )
+                }));
             })
             .catch(console.error);
         void logSessionRecoveryEvent('success', {

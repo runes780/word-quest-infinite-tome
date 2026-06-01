@@ -178,6 +178,29 @@ const mockGetGuardianDashboardViewModel = jest.fn(async () => ({
         successRate: mockMetric,
         status: 'healthy'
     },
+    dailyPracticePlan: {
+        planId: 'daily_2026-06-01',
+        title: 'Today\'s Learning Path',
+        estimatedMinutes: 12,
+        rationale: 'Uses due review and recent mistakes.',
+        generatedAt: Date.now(),
+        evidence: [
+            { label: 'Due review', value: '1 card due for Reading Inference', source: 'srs' }
+        ],
+        steps: [{
+            id: 'review_reading_inference',
+            type: 'review',
+            title: 'Review Reading Inference',
+            objectiveId: 'reading_inference',
+            skillTag: 'cause_effect',
+            estimatedMinutes: 5,
+            questionCount: 3,
+            supportLevel: 3,
+            attemptKind: 'review',
+            rationale: 'Due FSRS cards come first.',
+            evidence: []
+        }]
+    },
     activityFeed: [{
         id: 'event-answer-1',
         kind: 'answer',
@@ -257,6 +280,7 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Learning Events')).toBeInTheDocument();
         expect(screen.getByText('Wrong battle answer')).toBeInTheDocument();
         expect(screen.getByText('Guardian Recommendations')).toBeInTheDocument();
+        expect(screen.getByText('Why This Plan')).toBeInTheDocument();
         expect(screen.getByText('Stability Monitor')).toBeInTheDocument();
     });
 });
