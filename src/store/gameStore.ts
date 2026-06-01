@@ -708,23 +708,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             return;
         }
 
-        // Only proceed if monster is defeated (HP <= 0) or if it was a wrong answer (game flow choice)
-        // Actually, for this game, we usually move on after feedback. 
-        // But with Bosses, we might want to stay on the same question?
-        // For MVP, let's assume "Next Question" means "Next Encounter".
-        // If Boss HP > 0, we might need to regenerate the question or just keep attacking?
-        // Let's simplify: A "Boss" is just a sequence of questions? 
-        // OR: A Boss Question requires 3 correct answers to *pass*.
-        // If we answer correctly but Boss HP > 0, we stay on the same question?
-        // No, that's boring. 
-        // Better: A Boss Fight is a series of 3 questions.
-        // BUT the data structure is 1 question = 1 monster.
-        // So "Boss HP" implies we stay on this index?
-        // Let's implement: If HP > 0, we stay on index, but we need a NEW question for the same monster?
-        // That's complex.
-        // Alternative: Boss HP is just visual flavor for now, or we just move on.
-        // Let's stick to: 1 Question = 1 Monster for now to avoid breaking the loop.
-        // We can add "Multi-stage Bosses" later where 1 Boss = 3 Questions in the array.
+        // Boss gates are expanded into three distinct encounters before the run starts.
 
         if (currentIndex < questions.length - 1) {
             const nextIndex = currentIndex + 1;
