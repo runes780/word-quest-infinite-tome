@@ -2,28 +2,56 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { GraduationCap, LineChart, RefreshCw, Download, Printer, X, Sparkles } from 'lucide-react';
+import {
+    Activity,
+    BarChart3,
+    Bell,
+    BookOpen,
+    CalendarDays,
+    CheckCircle2,
+    ChevronRight,
+    Download,
+    Flame,
+    GraduationCap,
+    HelpCircle,
+    Home,
+    Layers,
+    LineChart,
+    Loader2,
+    Printer,
+    RefreshCw,
+    Settings,
+    ShieldCheck,
+    Sparkles,
+    Target,
+    Trophy,
+    Users,
+    X
+} from 'lucide-react';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useGameStore } from '@/store/gameStore';
 import { translations } from '@/lib/translations';
-import { DashboardSummary, getDashboardSummary } from '@/lib/data/history';
-import { DataConsistencyAuditSnapshot, getDataConsistencyAuditSnapshot } from '@/lib/data/consistency';
-import {
-    buildRepeatedCauseActionSuggestion,
-    buildRepeatedCauseIntensityAlert,
-    evaluateRepeatedCauseGoalAgainstBaseline,
-    getMistakes,
-    getRepeatedCauseGoalAgainstBaseline,
-    getRepeatedCauseSnapshot,
-    getRepeatedCauseTrends,
+import type { DashboardSummary, DailyAccuracyRow, SkillAccuracyRow } from '@/lib/data/history';
+import type { DataConsistencyAuditSnapshot } from '@/lib/data/consistency';
+import type {
     MistakeRecord,
+    RepeatedCauseActionSuggestion,
     RepeatedCauseBaselineSummary,
+    RepeatedCauseIntensityAlert,
     RepeatedCauseSnapshot,
     RepeatedCauseTrend
 } from '@/lib/data/mistakes';
+import { getGuardianDashboardViewModel } from '@/lib/data/guardianDashboard';
+import type { GuardianActivityFeedItem, GuardianActivityKind } from '@/lib/data/guardianDashboard';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import {
+    computeStudyActionExecutionSummaryFromRows,
+    getMemoryStatus,
+    logGuardianDashboardEvent,
+    upsertStudyActionExecution
+} from '@/db/db';
+import type {
     AIRequestMonitorSnapshot,
     EngagementMetricRow,
     EngagementSnapshot,
@@ -35,23 +63,8 @@ import {
     StudyActionPriority,
     StudyActionStatus,
     SessionRecoverySnapshot,
-    computeStudyActionExecutionSummaryFromRows,
-    getAIRequestMonitorSnapshot,
-    getGuardianAcceptanceSnapshot,
-    getEngagementSnapshot,
-    getDueCardsWithPriority,
-    getMasteryAggregateSnapshot,
-    getMemoryStatus,
-    getSRSStats,
-    getStudyActionExecutionGoalSnapshot,
-    getStudyActionExecutions,
-    getStudyActionExecutionSummary,
-    getSessionRecoverySnapshot,
-    getWeeklyLearningTasks,
     LearningTask,
-    MasteryAggregateSnapshot,
-    logGuardianDashboardEvent,
-    upsertStudyActionExecution
+    MasteryAggregateSnapshot
 } from '@/db/db';
 import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
@@ -72,7 +85,21 @@ interface TonightActionItem {
     onCta?: () => void;
 }
 
-type ComparisonMetricKey = 'dailyChallengeParticipation' | 'weeklyTaskCompletion' | 'nextDayRetention';
+type Tone = 'blue' | 'green' | 'amber' | 'purple' | 'red' | 'slate';
+
+const FALLBACK_REPEATED_GOAL: RepeatedCauseBaselineSummary = {
+    targetReduction: 0.2,
+    rows: [],
+    overallStatus: 'insufficient'
+};
+
+const FALLBACK_REPEATED_ACTION: RepeatedCauseActionSuggestion = {
+    status: 'insufficient',
+    recommendedQuestions: 3,
+    reason: 'collect',
+    intensity: 'light',
+    rationale: 'Collect more mistake and review evidence before escalating targeted practice.'
+};
 
 export function ParentDashboard() {
     const { language } = useSettingsStore();
@@ -92,92 +119,48 @@ export function ParentDashboard() {
     const [studyActionGoal, setStudyActionGoal] = useState<StudyActionExecutionGoalSnapshot | null>(null);
     const [engagementSnapshot, setEngagementSnapshot] = useState<EngagementSnapshot | null>(null);
     const [guardianAcceptance, setGuardianAcceptance] = useState<GuardianAcceptanceSnapshot | null>(null);
-    const [engagementByWindow, setEngagementByWindow] = useState<Record<number, EngagementSnapshot>>({});
     const [repeatedCauseSnapshot, setRepeatedCauseSnapshot] = useState<RepeatedCauseSnapshot | null>(null);
     const [repeatedCauseTrends, setRepeatedCauseTrends] = useState<RepeatedCauseTrend[]>([]);
     const [repeatedCauseBaselineGoal, setRepeatedCauseBaselineGoal] = useState<RepeatedCauseBaselineSummary | null>(null);
+    const [repeatedActionData, setRepeatedActionData] = useState<RepeatedCauseActionSuggestion | null>(null);
+    const [repeatedAlert, setRepeatedAlert] = useState<RepeatedCauseIntensityAlert | null>(null);
     const [consistencyAudit, setConsistencyAudit] = useState<DataConsistencyAuditSnapshot | null>(null);
     const [aiMonitor, setAiMonitor] = useState<AIRequestMonitorSnapshot | null>(null);
     const [sessionRecovery, setSessionRecovery] = useState<SessionRecoverySnapshot | null>(null);
+    const [activityFeed, setActivityFeed] = useState<GuardianActivityFeedItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
     const reportRef = useRef<HTMLDivElement | null>(null);
 
-    const hasHistory = snapshot && snapshot.records.length > 0;
-
     const loadData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
-            const [
-                historyData,
-                mistakeData,
-                dueCardData,
-                srsStats,
-                masteryData,
-                weeklyTasks,
-                actionRows,
-                actionSummary,
-                actionGoal,
-                engagementData,
-                guardianAcceptanceData,
-                engagement7,
-                engagement14,
-                engagement30,
-                repeatedCauseData,
-                repeatedCauseTrendData,
-                repeatedCauseBaseline,
-                consistencyAuditData,
-                aiMonitorData,
-                sessionRecoveryData
-            ] = await Promise.all([
-                getDashboardSummary(range, range * 6),
-                getMistakes(40),
-                getDueCardsWithPriority(3),
-                getSRSStats(),
-                getMasteryAggregateSnapshot(range),
-                getWeeklyLearningTasks(),
-                getStudyActionExecutions(),
-                getStudyActionExecutionSummary(14),
-                getStudyActionExecutionGoalSnapshot(14),
-                getEngagementSnapshot(range),
-                getGuardianAcceptanceSnapshot(7),
-                getEngagementSnapshot(7),
-                getEngagementSnapshot(14),
-                getEngagementSnapshot(30),
-                getRepeatedCauseSnapshot(range),
-                getRepeatedCauseTrends([7, 14, 30]),
-                getRepeatedCauseGoalAgainstBaseline([7, 14, 30], 0.2, 5, 8, 800),
-                getDataConsistencyAuditSnapshot(),
-                getAIRequestMonitorSnapshot(7),
-                getSessionRecoverySnapshot(14)
-            ]);
-            setSnapshot(historyData);
-            setMistakes(mistakeData);
-            setDueCards(dueCardData);
-            setSrsDueCount(srsStats.due);
-            setMasterySnapshot(masteryData);
-            setLearningTasks(weeklyTasks);
-            setStudyActionExecutions(actionRows);
-            setStudyActionSummary(actionSummary);
-            setStudyActionGoal(actionGoal);
-            setEngagementSnapshot(engagementData);
-            setGuardianAcceptance(guardianAcceptanceData);
-            setEngagementByWindow({
-                7: engagement7,
-                14: engagement14,
-                30: engagement30
-            });
-            setRepeatedCauseSnapshot(repeatedCauseData);
-            setRepeatedCauseTrends(repeatedCauseTrendData);
-            setRepeatedCauseBaselineGoal(repeatedCauseBaseline);
-            setConsistencyAudit(consistencyAuditData);
-            setAiMonitor(aiMonitorData);
-            setSessionRecovery(sessionRecoveryData);
+            const dashboard = await getGuardianDashboardViewModel(range);
+            setSnapshot(dashboard.history);
+            setMistakes(dashboard.mistakes);
+            setDueCards(dashboard.dueCards);
+            setSrsDueCount(dashboard.srsStats.due);
+            setMasterySnapshot(dashboard.mastery);
+            setLearningTasks(dashboard.learningTasks);
+            setStudyActionExecutions(dashboard.studyActionExecutions);
+            setStudyActionSummary(dashboard.studyActionSummary);
+            setStudyActionGoal(dashboard.studyActionGoal);
+            setEngagementSnapshot(dashboard.engagement);
+            setGuardianAcceptance(dashboard.guardianAcceptance);
+            setRepeatedCauseSnapshot(dashboard.repeatedCauseSnapshot);
+            setRepeatedCauseTrends(dashboard.repeatedCauseTrends);
+            setRepeatedCauseBaselineGoal(dashboard.repeatedCauseBaselineGoal);
+            setRepeatedActionData(dashboard.repeatedAction);
+            setRepeatedAlert(dashboard.repeatedAlert);
+            setConsistencyAudit(dashboard.consistencyAudit);
+            setAiMonitor(dashboard.aiMonitor);
+            setSessionRecovery(dashboard.sessionRecovery);
+            setActivityFeed(dashboard.activityFeed);
         } catch (err) {
             console.error(err);
-            setError(t.dashboard.loadError || 'Failed to load');
+            setError(t.dashboard.loadError || 'Failed to load dashboard data.');
         } finally {
             setIsLoading(false);
         }
@@ -195,34 +178,25 @@ export function ParentDashboard() {
         });
     }, [isOpen]);
 
-    const lastActiveLabel = useMemo(() => {
-        if (!snapshot?.totals.lastActive) return t.dashboard.noHistoryShort || '—';
-        return new Date(snapshot.totals.lastActive).toLocaleDateString();
-    }, [snapshot, t.dashboard.noHistoryShort]);
-
-    const averageAccuracy = snapshot ? Math.round((snapshot.totals.accuracy || 0) * 100) : 0;
-    const targetedSummary = snapshot?.targetedReview;
-    const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
-    const repeatedAction = buildRepeatedCauseActionSuggestion(repeatedGoal, repeatedCauseSnapshot || undefined, {
-        targetedSessions: targetedSummary?.sessions || 0,
-        targetedAvgAccuracy: targetedSummary?.avgAccuracy || 0,
-        targetedSuccessRuns: targetedSummary?.successRuns || 0,
-        targetedConsecutiveLowRuns: targetedSummary?.consecutiveLowAccuracyRuns || 0
-    });
-    const repeatedAlert = buildRepeatedCauseIntensityAlert(repeatedAction, {
-        targetedConsecutiveLowRuns: targetedSummary?.consecutiveLowAccuracyRuns || 0
-    });
-
-    const skillRows = snapshot?.skills.slice(0, 6) ?? [];
+    const hasHistory = Boolean(snapshot && snapshot.records.length > 0);
     const dailyRows = snapshot?.daily ?? [];
-    const weeklyTaskRows = learningTasks.slice(0, 3);
-    const engagement = engagementSnapshot;
-
+    const skillRows = snapshot?.skills.slice(0, 5) ?? [];
     const recentMistakes = mistakes.slice(0, 5);
-    const weakestSkill = skillRows[0];
+    const weeklyTaskRows = learningTasks.slice(0, 3);
     const primaryMistake = recentMistakes[0];
     const primaryDueCard = dueCards[0];
+    const weakestSkill = skillRows[0];
     const dueStatus = primaryDueCard ? getMemoryStatus(primaryDueCard) : null;
+
+    const averageAccuracy = Math.round((snapshot?.totals.accuracy || 0) * 100);
+    const masteryAverage = masterySnapshot && masterySnapshot.totalAttempts > 0
+        ? Math.round((masterySnapshot.totalCorrect / masterySnapshot.totalAttempts) * 100)
+        : averageAccuracy;
+    const currentStreak = computeActivityStreak(dailyRows);
+    const latestMission = snapshot?.records[0]?.levelTitle || (isZh ? '暂无任务' : 'No mission yet');
+    const lastActiveLabel = snapshot?.totals.lastActive
+        ? new Date(snapshot.totals.lastActive).toLocaleDateString()
+        : (t.dashboard.noHistoryShort || 'No runs yet');
 
     const actionStatusById = useMemo(() => {
         return studyActionExecutions.reduce((acc, row) => {
@@ -232,6 +206,8 @@ export function ParentDashboard() {
     }, [studyActionExecutions]);
 
     const actionSummary = studyActionSummary ?? computeStudyActionExecutionSummaryFromRows(studyActionExecutions, 14);
+    const repeatedGoal = repeatedCauseBaselineGoal ?? FALLBACK_REPEATED_GOAL;
+    const repeatedAction = repeatedActionData ?? FALLBACK_REPEATED_ACTION;
 
     const handleStartTargetedReview = useCallback(() => {
         const pack = buildTargetedReviewPack({
@@ -288,96 +264,89 @@ export function ParentDashboard() {
                 estimatedMinutes
             });
             await logGuardianDashboardEvent('action_marked');
-            const [rows, summary, goal] = await Promise.all([
-                getStudyActionExecutions(),
-                getStudyActionExecutionSummary(14),
-                getStudyActionExecutionGoalSnapshot(14)
-            ]);
-            setStudyActionExecutions(rows);
-            setStudyActionSummary(summary);
-            setStudyActionGoal(goal);
-        } catch (e) {
-            console.error(e);
+            await loadData();
+        } catch (err) {
+            console.error(err);
         }
-    }, []);
+    }, [loadData]);
 
     const tonightActions: TonightActionItem[] = useMemo(() => {
         const mistakeEvidence = primaryMistake
-            ? `${primaryMistake.questionText.slice(0, 42)} · ${primaryMistake.wrongAnswer} -> ${primaryMistake.correctAnswer}`
+            ? `${primaryMistake.questionText.slice(0, 54)} · ${primaryMistake.wrongAnswer} -> ${primaryMistake.correctAnswer}`
             : (isZh ? '暂无错题样本' : 'No recent mistake sample');
         const fsrsEvidence = primaryDueCard
             ? `${primaryDueCard.skillTag || primaryDueCard.type || 'skill'} · ${dueStatus?.statusText.en || 'due'}`
             : (isZh ? '暂无到期复习卡' : 'No due SRS cards');
-
-        const actions: TonightActionItem[] = [
+        return [
             {
                 id: 'targeted_pack',
-                title: isZh ? '定向复习包' : 'Targeted Review Pack',
+                title: isZh ? '聚焦重复错因' : 'Focus on Repeated Cause',
                 description: isZh
-                    ? `围绕 ${repeatedAction.focusCauseTag || '核心错因'} 完成 ${repeatedAction.recommendedQuestions} 题。`
-                    : `Run ${repeatedAction.recommendedQuestions} questions on ${repeatedAction.focusCauseTag || 'the top repeated cause'}.`,
+                    ? `围绕 ${formatSkillLabel(repeatedAction.focusCauseTag || 'core_skills')} 完成 ${repeatedAction.recommendedQuestions} 题。`
+                    : `Run ${repeatedAction.recommendedQuestions} questions on ${formatSkillLabel(repeatedAction.focusCauseTag || 'core_skills')}.`,
                 priority: repeatedAction.status === 'not_met' ? 'urgent' : 'important',
                 estimatedMinutes: Math.max(8, repeatedAction.recommendedQuestions * 2),
                 evidence: isZh
-                    ? `证据：重复错因率 ${((repeatedCauseSnapshot?.repeatRate || 0) * 100).toFixed(1)}%`
-                    : `Evidence: repeated-cause rate ${((repeatedCauseSnapshot?.repeatRate || 0) * 100).toFixed(1)}%`,
+                    ? `重复错因率 ${formatPercent(repeatedCauseSnapshot?.repeatRate || 0)}`
+                    : `Repeated-cause rate ${formatPercent(repeatedCauseSnapshot?.repeatRate || 0)}`,
                 evidenceRows: [
-                    { label: isZh ? '错题样本' : 'Mistake evidence', value: mistakeEvidence },
-                    { label: isZh ? 'FSRS证据' : 'FSRS evidence', value: fsrsEvidence }
+                    { label: isZh ? '错题证据' : 'Mistake evidence', value: mistakeEvidence },
+                    { label: isZh ? '复习证据' : 'Review evidence', value: fsrsEvidence }
                 ],
                 ctaLabel: isZh ? '开始' : 'Start',
                 onCta: handleStartTargetedReview
             },
             {
                 id: 'srs_focus',
-                title: isZh ? 'SRS 到期复习' : 'SRS Due Review',
+                title: isZh ? '守住到期记忆' : 'Protect Due Memory',
                 description: isZh
-                    ? `完成 ${Math.min(8, Math.max(1, srsDueCount))} 张到期卡。`
-                    : `Finish ${Math.min(8, Math.max(1, srsDueCount))} due cards in one focused run.`,
+                    ? `完成 ${Math.min(8, Math.max(1, srsDueCount))} 张到期卡，优先保护遗忘风险。`
+                    : `Finish ${Math.min(8, Math.max(1, srsDueCount))} due cards to protect retention.`,
                 priority: srsDueCount >= 5 ? 'urgent' : 'important',
                 estimatedMinutes: Math.max(6, Math.min(20, srsDueCount * 2)),
-                evidence: isZh ? `证据：当前到期 ${srsDueCount} 张` : `Evidence: ${srsDueCount} cards due now`,
+                evidence: isZh ? `当前到期 ${srsDueCount} 张` : `${srsDueCount} cards due now`,
                 evidenceRows: [
-                    { label: isZh ? '错题样本' : 'Mistake evidence', value: mistakeEvidence },
-                    { label: isZh ? 'FSRS证据' : 'FSRS evidence', value: fsrsEvidence }
+                    { label: isZh ? '错题证据' : 'Mistake evidence', value: mistakeEvidence },
+                    { label: isZh ? '复习证据' : 'Review evidence', value: fsrsEvidence }
                 ],
                 ctaLabel: dueCards.length > 0 ? (isZh ? '开练' : 'Launch') : undefined,
                 onCta: dueCards.length > 0 ? handleStartSrsFocus : undefined
             },
             {
                 id: 'questline_push',
-                title: isZh ? '任务线推进' : 'Questline Push',
+                title: isZh ? '推进学习任务线' : 'Expand Questline',
                 description: isZh
-                    ? `本周已完成 ${weeklyTaskRows.filter((task) => task.status === 'completed').length}/${weeklyTaskRows.length}，优先推进未完成任务。`
-                    : `Weekly completion is ${weeklyTaskRows.filter((task) => task.status === 'completed').length}/${weeklyTaskRows.length}; push the next incomplete quest.`,
+                    ? `本周任务完成 ${weeklyTaskRows.filter((task) => task.status === 'completed').length}/${Math.max(1, weeklyTaskRows.length)}。`
+                    : `Weekly quest progress is ${weeklyTaskRows.filter((task) => task.status === 'completed').length}/${Math.max(1, weeklyTaskRows.length)}.`,
                 priority: weeklyTaskRows.some((task) => task.status === 'active') ? 'important' : 'optional',
                 estimatedMinutes: 10,
                 evidence: isZh
-                    ? `证据：任务完成率 ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`
-                    : `Evidence: quest completion ${(((engagement?.weeklyTaskCompletion.currentRate || 0) * 100).toFixed(1))}%`,
+                    ? `任务完成率 ${formatPercent(engagementSnapshot?.weeklyTaskCompletion.currentRate || 0)}`
+                    : `Quest completion ${formatPercent(engagementSnapshot?.weeklyTaskCompletion.currentRate || 0)}`,
                 evidenceRows: [
-                    { label: isZh ? '错题样本' : 'Mistake evidence', value: mistakeEvidence },
-                    { label: isZh ? 'FSRS证据' : 'FSRS evidence', value: fsrsEvidence }
+                    { label: isZh ? '错题证据' : 'Mistake evidence', value: mistakeEvidence },
+                    { label: isZh ? '复习证据' : 'Review evidence', value: fsrsEvidence }
                 ]
             }
         ];
-        return actions;
     }, [
+        dueCards.length,
+        dueStatus?.statusText.en,
+        engagementSnapshot?.weeklyTaskCompletion.currentRate,
+        handleStartSrsFocus,
+        handleStartTargetedReview,
         isZh,
-        repeatedAction,
+        primaryDueCard,
+        primaryMistake,
+        repeatedAction.focusCauseTag,
+        repeatedAction.recommendedQuestions,
+        repeatedAction.status,
         repeatedCauseSnapshot?.repeatRate,
         srsDueCount,
-        dueCards.length,
-        weeklyTaskRows,
-        engagement?.weeklyTaskCompletion.currentRate,
-        primaryMistake,
-        primaryDueCard,
-        dueStatus?.statusText.en,
-        handleStartSrsFocus,
-        handleStartTargetedReview
+        weeklyTaskRows
     ]);
 
-    const planVsCompletion = useMemo(() => {
+    const planSnapshot = useMemo(() => {
         return computeStudyPlanCompletionSnapshot(
             tonightActions.map((action) => ({
                 id: action.id,
@@ -386,7 +355,21 @@ export function ParentDashboard() {
             })),
             actionStatusById
         );
-    }, [tonightActions, actionStatusById]);
+    }, [actionStatusById, tonightActions]);
+
+    const learningEvents = useMemo(() => {
+        return activityFeed.map((event) => ({
+            ...event,
+            icon: activityIconForKind(event.kind)
+        })) as Array<{
+            id: string;
+            icon: typeof CheckCircle2;
+            tone: Tone;
+            title: string;
+            detail: string;
+            meta: string;
+        }>;
+    }, [activityFeed]);
 
     const handleExportImage = async () => {
         if (!reportRef.current || !hasHistory) return;
@@ -416,10 +399,10 @@ export function ParentDashboard() {
         <>
             <button
                 onClick={() => setIsOpen(true)}
-                className="fixed bottom-4 right-4 p-3 rounded-full bg-primary text-primary-foreground shadow-lg hover:scale-105 transition-transform z-40"
+                className="fixed bottom-4 right-4 z-40 grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:scale-105"
                 aria-label={t.dashboard.open}
             >
-                <GraduationCap className="w-6 h-6" />
+                <GraduationCap className="h-6 w-6" />
             </button>
 
             <AnimatePresence>
@@ -428,887 +411,328 @@ export function ParentDashboard() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur"
+                        className="fixed inset-0 z-50 bg-slate-950/75 p-2 backdrop-blur-sm sm:p-4"
                         onClick={() => setIsOpen(false)}
                     >
                         <motion.div
-                            initial={{ scale: 0.95, opacity: 0 }}
+                            initial={{ scale: 0.98, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.95, opacity: 0 }}
-                            className="w-full max-w-5xl bg-card border border-border rounded-3xl p-6 m-4 overflow-y-auto max-h-[90vh]"
-                            onClick={(e) => e.stopPropagation()}
+                            exit={{ scale: 0.98, opacity: 0 }}
+                            className="mx-auto flex h-[calc(100vh-1rem)] w-full max-w-[1560px] overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 text-slate-950 shadow-2xl sm:h-[calc(100vh-2rem)]"
+                            onClick={(event) => event.stopPropagation()}
                         >
-                            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-                                <div>
-                                    <h3 className="text-3xl font-bold text-primary flex items-center gap-2">
-                                        <GraduationCap className="w-7 h-7" /> {t.dashboard.title}
-                                    </h3>
-                                    <p className="text-sm text-muted-foreground">{t.dashboard.subtitle}</p>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs">
-                                    <span className="uppercase tracking-widest text-muted-foreground">{t.dashboard.rangeLabel}</span>
-                                    <div className="flex gap-2">
-                                        {RANGE_OPTIONS.map((days) => {
-                                            const label = t.dashboard.rangeOptions?.[String(days) as keyof typeof t.dashboard.rangeOptions] ?? `${days}d`;
-                                            return (
-                                                <button
-                                                    key={days}
-                                                    onClick={() => setRange(days)}
-                                                    className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors ${range === days ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
-                                                >
-                                                    {label}
-                                                </button>
-                                            );
-                                        })}
+                            <aside className="hidden w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-5 lg:flex">
+                                <div className="mb-8 flex items-center gap-3">
+                                    <div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+                                        <BookOpen className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black tracking-tight">Guardian Dashboard</h2>
+                                        <p className="text-xs font-medium text-slate-500">AI Learning Companion</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setIsOpen(false)} className="ml-auto">
-                                    <X className="w-5 h-5 text-muted-foreground" />
-                                </button>
-                            </div>
 
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="text-sm text-muted-foreground">
-                                    {isLoading ? t.dashboard.refreshing : t.dashboard.updatedLabel.replace('{date}', new Date().toLocaleTimeString())}
-                                </div>
-                                <button
-                                    onClick={loadData}
-                                    className="flex items-center gap-2 text-sm text-primary"
-                                    disabled={isLoading}
-                                >
-                                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                                    {t.dashboard.refresh}
-                                </button>
-                            </div>
+                                <nav className="space-y-1">
+                                    <SidebarItem icon={Home} label={isZh ? '总览' : 'Overview'} active />
+                                    <SidebarItem icon={Users} label={isZh ? '学习者' : 'Learners'} />
+                                    <SidebarItem icon={Layers} label={isZh ? '任务' : 'Missions'} />
+                                    <SidebarItem icon={BookOpen} label={isZh ? '知识库' : 'Knowledge'} />
+                                    <SidebarItem icon={BarChart3} label={isZh ? '报告' : 'Reports'} />
+                                    <SidebarItem icon={Sparkles} label={isZh ? '建议' : 'Recommendations'} />
+                                    <SidebarItem icon={Settings} label={isZh ? '设置' : 'Settings'} />
+                                    <SidebarItem icon={HelpCircle} label={isZh ? '帮助' : 'Help & Support'} />
+                                </nav>
 
-                            {error && (
-                                <div className="mb-4 text-sm text-destructive">{error}</div>
-                            )}
-
-                            <div ref={reportRef} className="space-y-6">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <SummaryCard
-                                        label={t.dashboard.lastActive}
-                                        value={hasHistory ? lastActiveLabel : '—'}
-                                        helper={hasHistory ? t.dashboard.latestMission : t.dashboard.noHistory}
-                                    />
-                                    <SummaryCard
-                                        label={t.dashboard.missions}
-                                        value={snapshot?.totals.missions ?? 0}
-                                        helper={t.dashboard.sessionsLabel.replace('{count}', String(snapshot?.totals.missions ?? 0))}
-                                    />
-                                    <SummaryCard
-                                        label={t.dashboard.avgAccuracy}
-                                        value={`${averageAccuracy}%`}
-                                        helper={t.dashboard.accuracyHelper}
-                                    />
-                                    <SummaryCard
-                                        label={t.dashboard.totalQuestions}
-                                        value={snapshot?.totals.total ?? 0}
-                                        helper={t.dashboard.targetsHelper}
-                                    />
-                                </div>
-
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '学习目标摘要' : 'Learning Goal Summary'}
+                                <div className="mt-auto space-y-4">
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="mb-3 flex items-center gap-2">
+                                            <span className="grid h-7 w-7 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                                                <CheckCircle2 className="h-4 w-4" />
+                                            </span>
+                                            <div>
+                                                <p className="text-sm font-bold">{isZh ? '系统状态' : 'System Status'}</p>
+                                                <p className="text-xs text-emerald-600">{systemStatusLabel(aiMonitor?.status)}</p>
+                                            </div>
                                         </div>
-                                        <span className={
-                                            repeatedGoal.overallStatus === 'passed'
-                                                ? 'text-green-500 text-xs font-semibold'
-                                                : repeatedGoal.overallStatus === 'not_met'
-                                                    ? 'text-destructive text-xs font-semibold'
-                                                    : 'text-muted-foreground text-xs font-semibold'
-                                        }>
-                                            {repeatedGoal.overallStatus === 'passed'
-                                                ? (isZh ? '重复错因目标达标' : 'Repeated-cause goal passed')
-                                                : repeatedGoal.overallStatus === 'not_met'
-                                                    ? (isZh ? '重复错因目标未达标' : 'Repeated-cause goal not met')
-                                                    : (isZh ? '重复错因样本不足' : 'Repeated-cause sample insufficient')}
-                                        </span>
+                                        <p className="text-xs text-slate-500">
+                                            {isZh ? '最近更新' : 'Last updated'}: {new Date().toLocaleTimeString()}
+                                        </p>
                                     </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        {isZh
-                                            ? `建议今晚聚焦${repeatedAction.priorityWindowDays || range}天窗口，围绕 ${repeatedAction.focusCauseTag || '核心错因'} 完成 ${repeatedAction.recommendedQuestions} 题定向练习。`
-                                            : `Tonight focus on the ${repeatedAction.priorityWindowDays || range}d window and run ${repeatedAction.recommendedQuestions} targeted questions on ${repeatedAction.focusCauseTag || 'the top cause tag'}.`}
-                                    </div>
-                                    <div className="text-[11px] text-muted-foreground mt-1">
-                                        {isZh
-                                            ? `建议强度：${repeatedAction.intensity} · ${repeatedAction.rationale}`
-                                            : `Intensity: ${repeatedAction.intensity} · ${repeatedAction.rationale}`}
-                                    </div>
-                                    {repeatedAlert && (
-                                        <div className={`mt-2 text-[11px] rounded-lg border px-2 py-1 ${
-                                            repeatedAlert.level === 'critical'
-                                                ? 'bg-destructive/10 border-destructive/30 text-destructive'
-                                                : 'bg-amber-500/10 border-amber-500/30 text-amber-500'
-                                        }`}>
-                                            {isZh
-                                                ? `连续高强度预警（${repeatedAlert.consecutiveLowRuns}轮）：建议拆分为短时复习并加强导师陪练。`
-                                                : `Sustained high-intensity alert (${repeatedAlert.consecutiveLowRuns} runs): split into shorter sessions with active mentor support.`}
+
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <p className="mb-3 text-sm font-bold">{isZh ? '快捷操作' : 'Quick Actions'}</p>
+                                        <div className="space-y-2">
+                                            <button
+                                                onClick={handleStartTargetedReview}
+                                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold hover:border-blue-200 hover:bg-blue-50"
+                                            >
+                                                <span>{isZh ? '创建定向任务' : 'Create Mission'}</span>
+                                                <Target className="h-4 w-4 text-blue-600" />
+                                            </button>
+                                            <button
+                                                onClick={handleStartSrsFocus}
+                                                disabled={dueCards.length === 0}
+                                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold hover:border-blue-200 hover:bg-blue-50 disabled:opacity-50"
+                                            >
+                                                <span>{isZh ? '复习到期卡' : 'Review Cards'}</span>
+                                                <BookOpen className="h-4 w-4 text-blue-600" />
+                                            </button>
                                         </div>
-                                    )}
-                                    <div className="mt-3 flex justify-end">
+                                    </div>
+                                </div>
+                            </aside>
+
+                            <div className="flex min-w-0 flex-1 flex-col">
+                                <header className="flex shrink-0 flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 md:flex-row md:items-center md:justify-between md:px-7">
+                                    <div className="flex items-center gap-4">
+                                        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-500">
+                                            <Sparkles className="h-7 w-7" />
+                                        </div>
+                                        <div>
+                                            <h1 className="text-2xl font-black tracking-tight md:text-3xl">
+                                                {isZh ? '早上好，守护者！' : 'Good morning, Guardian!'}
+                                            </h1>
+                                            <p className="text-sm text-slate-500">
+                                                {isZh ? '这是学习者今天和近期的关键学习证据。' : "Here's what's happening with your learners today."}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                                            <CalendarDays className="h-4 w-4 text-slate-500" />
+                                            <span>{range}d</span>
+                                            <div className="ml-2 flex gap-1">
+                                                {RANGE_OPTIONS.map((option) => (
+                                                    <button
+                                                        key={option}
+                                                        onClick={() => setRange(option)}
+                                                        className={`rounded-lg px-2 py-1 text-xs ${range === option ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
+                                                    >
+                                                        {option}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <button className="relative grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white">
+                                            <Bell className="h-5 w-5 text-slate-600" />
+                                            {repeatedAlert?.active && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500" />}
+                                        </button>
                                         <button
-                                            onClick={handleStartTargetedReview}
-                                            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90"
+                                            onClick={handleExportImage}
+                                            disabled={!hasHistory || isLoading || exporting !== null}
+                                            className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50"
                                         >
-                                            {isZh ? '开始定向复习包' : 'Start Targeted Pack'}
+                                            {exporting === 'image' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                            {isZh ? '导出报告' : 'Export Report'}
+                                        </button>
+                                        <button
+                                            onClick={() => setIsOpen(false)}
+                                            aria-label="Close dashboard"
+                                            className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white hover:bg-slate-100"
+                                        >
+                                            <X className="h-5 w-5 text-slate-500" />
                                         </button>
                                     </div>
-                                </section>
+                                </header>
 
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '数据一致性巡检' : 'Data Consistency Audit'}
-                                        </div>
-                                        <span className={`text-xs font-semibold ${
-                                            consistencyAudit?.overallStatus === 'ok'
-                                                ? 'text-green-500'
-                                                : consistencyAudit?.overallStatus === 'warning'
-                                                    ? 'text-destructive'
-                                                    : 'text-muted-foreground'
-                                        }`}>
-                                            {consistencyAudit?.overallStatus === 'ok'
-                                                ? (isZh ? '正常' : 'OK')
-                                                : consistencyAudit?.overallStatus === 'warning'
-                                                    ? (isZh ? '告警' : 'Warning')
-                                                    : (isZh ? '样本不足' : 'Insufficient')}
-                                        </span>
-                                    </div>
-                                    {consistencyAudit ? (
-                                        <div className="space-y-2">
-                                            {consistencyAudit.checks.map((check) => {
-                                                const tone = check.status === 'ok'
-                                                    ? 'text-green-500'
-                                                    : check.status === 'warning'
-                                                        ? 'text-destructive'
-                                                        : 'text-muted-foreground';
-                                                return (
-                                                    <div key={check.id} className="p-2 rounded-lg bg-background/40 border border-border/40 text-xs">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="font-medium">{check.label}</div>
-                                                            <span className={`font-semibold ${tone}`}>
-                                                                {check.status === 'ok'
-                                                                    ? (isZh ? '正常' : 'OK')
-                                                                    : check.status === 'warning'
-                                                                        ? (isZh ? '告警' : 'Warning')
-                                                                        : (isZh ? '不足' : 'Insufficient')}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-muted-foreground mt-1">
-                                                            {isZh ? '期望' : 'Expected'}: {check.expected} · {isZh ? '实际' : 'Actual'}: {check.actual} · Δ {check.delta}
-                                                        </div>
-                                                        <div className="text-[11px] text-muted-foreground mt-1">
-                                                            {check.note}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                            <div className="text-[11px] text-muted-foreground">
-                                                {consistencyAudit.comparedSince
-                                                    ? (isZh
-                                                        ? `对齐比较起点：${new Date(consistencyAudit.comparedSince).toLocaleDateString()}`
-                                                        : `Aligned comparison since ${new Date(consistencyAudit.comparedSince).toLocaleDateString()}`)
-                                                    : (isZh ? '暂无可对齐样本窗口' : 'No aligned comparison window yet')}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-muted-foreground">
-                                            {isZh ? '暂无巡检数据。完成一次学习会话后重试。' : 'No audit data yet. Complete one learning session and refresh.'}
+                                <div ref={reportRef} className="min-h-0 flex-1 overflow-y-auto p-4 md:p-7">
+                                    {error && (
+                                        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                                            {error}
                                         </div>
                                     )}
-                                </section>
 
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '定向复习执行结果' : 'Targeted Pack Outcomes'}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                            {targetedSummary?.sessions || 0} {isZh ? '次' : 'runs'}
-                                        </span>
-                                    </div>
-                                    {(targetedSummary?.sessions || 0) > 0 ? (
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '平均正确率' : 'Avg Accuracy'}</div>
-                                                <div className="font-semibold">{Math.round((targetedSummary?.avgAccuracy || 0) * 100)}%</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '平均得分' : 'Avg Score'}</div>
-                                                <div className="font-semibold">{Math.round(targetedSummary?.avgScore || 0)}</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '高质量轮次' : 'High-quality Runs'}</div>
-                                                <div className="font-semibold">{targetedSummary?.successRuns || 0}</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '最近焦点' : 'Last Focus'}</div>
-                                                <div className="font-semibold truncate">{targetedSummary?.lastFocusTag || '-'}</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '连续低正确率' : 'Consecutive Low Runs'}</div>
-                                                <div className="font-semibold">{targetedSummary?.consecutiveLowAccuracyRuns || 0}</div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-muted-foreground">
-                                            {isZh ? '还没有定向复习执行记录。建议先启动一次定向复习包。' : 'No targeted execution yet. Start one targeted pack to establish baseline outcomes.'}
-                                        </div>
-                                    )}
-                                </section>
+                                    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                                        <KpiCard
+                                            title={isZh ? '平均掌握度' : 'Mastery Score (Avg.)'}
+                                            value={`${masteryAverage}%`}
+                                            helper={isZh ? `窗口 ${range} 天` : `From last ${range} days`}
+                                            tone="blue"
+                                            icon={LineChart}
+                                            ringValue={masteryAverage}
+                                        />
+                                        <KpiCard
+                                            title={isZh ? '完成任务' : 'Missions Completed'}
+                                            value={formatNumber(snapshot?.totals.missions || 0)}
+                                            helper={latestMission}
+                                            tone="amber"
+                                            icon={Trophy}
+                                        />
+                                        <KpiCard
+                                            title={isZh ? '已回答题目' : 'Questions Answered'}
+                                            value={formatNumber(snapshot?.totals.total || 0)}
+                                            helper={isZh ? `正确 ${snapshot?.totals.correct || 0}` : `${snapshot?.totals.correct || 0} correct`}
+                                            tone="green"
+                                            icon={HelpCircle}
+                                        />
+                                        <KpiCard
+                                            title={isZh ? '平均正确率' : 'Avg. Accuracy'}
+                                            value={`${averageAccuracy}%`}
+                                            helper={engagementSnapshot ? statusCopy(engagementSnapshot.dailyChallengeParticipation.status, isZh) : lastActiveLabel}
+                                            tone="purple"
+                                            icon={Target}
+                                        />
+                                        <KpiCard
+                                            title={isZh ? '连续学习' : 'Streak'}
+                                            value={currentStreak}
+                                            helper={isZh ? '天连续活跃' : 'days in a row'}
+                                            tone="red"
+                                            icon={Flame}
+                                        />
+                                    </section>
 
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '7/14/30 天对比' : '7/14/30 Day Comparison'}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">{isZh ? '关键指标' : 'Core metrics'}</span>
-                                    </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-xs">
-                                            <thead>
-                                                <tr className="text-muted-foreground">
-                                                    <th className="text-left py-2">{isZh ? '指标' : 'Metric'}</th>
-                                                    {[7, 14, 30].map((window) => (
-                                                        <th key={window} className="text-right py-2">{window}d</th>
+                                    <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
+                                        <Panel title={isZh ? '掌握进度' : 'Mastery Progress'} subtitle={isZh ? '按技能域查看平均掌握度' : 'Average mastery by domain'} icon={LineChart}>
+                                            {skillRows.length > 0 ? (
+                                                <div className="space-y-4">
+                                                    {skillRows.map((skill, index) => (
+                                                        <SkillProgressRow key={skill.skill} row={skill} tone={progressTones[index % progressTones.length]} />
                                                     ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-border/40">
-                                                {[
-                                                    { key: 'dailyChallengeParticipation' as ComparisonMetricKey, labelZh: '每日挑战参与率', labelEn: 'Daily participation' },
-                                                    { key: 'weeklyTaskCompletion' as ComparisonMetricKey, labelZh: '任务完成率', labelEn: 'Quest completion' },
-                                                    { key: 'nextDayRetention' as ComparisonMetricKey, labelZh: '次日留存', labelEn: 'Next-day retention' }
-                                                ].map((row) => (
-                                                    <tr key={row.key}>
-                                                        <td className="py-2 text-muted-foreground">{isZh ? row.labelZh : row.labelEn}</td>
-                                                        {[7, 14, 30].map((window) => {
-                                                            const snapshot = engagementByWindow[window];
-                                                            const metric = snapshot ? snapshot[row.key] : null;
-                                                            const text = metric ? `${(metric.currentRate * 100).toFixed(1)}%` : '--';
-                                                            const tone = metric?.status === 'met'
-                                                                ? 'text-green-500'
-                                                                : metric?.status === 'not_met'
-                                                                    ? 'text-destructive'
-                                                                    : 'text-muted-foreground';
-                                                            return (
-                                                                <td key={`${row.key}-${window}`} className={`py-2 text-right font-semibold ${tone}`}>
-                                                                    {text}
-                                                                </td>
-                                                            );
-                                                        })}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </section>
+                                                </div>
+                                            ) : (
+                                                <EmptyState message={t.dashboard.noSkillData || 'No skill data yet.'} />
+                                            )}
+                                        </Panel>
 
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '学习任务线（本周）' : 'Learning Questline (This Week)'}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                            {weeklyTaskRows.filter((task) => task.status === 'completed').length}/{weeklyTaskRows.length} {isZh ? '完成' : 'done'}
-                                        </span>
-                                    </div>
-                                    {weeklyTaskRows.length > 0 ? (
-                                        <div className="space-y-3">
-                                            {weeklyTaskRows.map((task) => {
-                                                const progressRatio = task.goal > 0 ? task.progress / task.goal : 0;
-                                                const statusTone = task.status === 'completed'
-                                                    ? 'text-green-500'
-                                                    : task.status === 'expired'
-                                                        ? 'text-muted-foreground'
-                                                        : 'text-amber-500';
-                                                const latestEvidence = task.evidence[0];
-                                                return (
-                                                    <div key={task.taskId} className="p-3 rounded-xl bg-background/40 border border-border/40">
-                                                        <div className="flex items-center justify-between">
-                                                            <div>
-                                                                <div className="text-sm font-semibold">{task.title}</div>
-                                                                <div className="text-xs text-muted-foreground">{task.description}</div>
-                                                            </div>
-                                                            <div className={`text-xs font-semibold ${statusTone}`}>
-                                                                {task.status === 'completed'
-                                                                    ? (isZh ? '已完成' : 'Completed')
-                                                                    : task.status === 'expired'
-                                                                        ? (isZh ? '已过期' : 'Expired')
-                                                                        : (isZh ? '进行中' : 'In Progress')}
-                                                            </div>
-                                                        </div>
-                                                        <div className="mt-2 h-2 bg-background/40 rounded-full overflow-hidden">
-                                                            <div className="h-full bg-gradient-to-r from-primary to-emerald-400" style={{ width: `${Math.max(4, Math.min(100, progressRatio * 100))}%` }} />
-                                                        </div>
-                                                        <div className="mt-2 text-xs flex justify-between text-muted-foreground">
-                                                            <span>{task.progress}/{task.goal}</span>
-                                                            <span>+{task.rewardXp} XP · +{task.rewardGold} Gold</span>
-                                                        </div>
-                                                        {latestEvidence && (
-                                                            <div className="mt-1 text-[11px] text-muted-foreground">
-                                                                {isZh ? '最新证据' : 'Latest evidence'}: {latestEvidence.source}/{latestEvidence.eventType}
-                                                                {latestEvidence.skillTag ? ` · ${latestEvidence.skillTag}` : ''}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-muted-foreground">
-                                            {isZh ? '暂无任务线数据，完成一次战斗或每日挑战后会自动生成。' : 'No questline data yet. Complete one battle or daily run to initialize weekly tasks.'}
-                                        </div>
-                                    )}
-                                </section>
+                                        <Panel title="Review Queue" subtitle={isZh ? '需要优先关注的复习项目' : 'Items that need attention'} icon={ShieldCheck} badge={String(srsDueCount)}>
+                                            {dueCards.length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {dueCards.slice(0, 4).map((card, index) => (
+                                                        <ReviewQueueRow key={card.id || index} card={card} index={index} />
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <EmptyState message={isZh ? '暂无到期复习卡。' : 'No due review cards.'} />
+                                            )}
+                                        </Panel>
 
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? 'Phase 2 验收指标' : 'Phase 2 Acceptance Metrics'}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                            {engagement?.windowDays || range}d
-                                        </span>
-                                    </div>
-                                    {engagement ? (
-                                        <div className="grid md:grid-cols-3 gap-3">
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="每日挑战参与率"
-                                                labelEn="Daily Challenge Participation"
-                                                metric={engagement.dailyChallengeParticipation}
-                                                targetTextZh="目标：较上一窗口提升 15%"
-                                                targetTextEn="Target: +15% vs previous window"
-                                            />
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="任务完成率"
-                                                labelEn="Quest Completion Rate"
-                                                metric={engagement.weeklyTaskCompletion}
-                                                targetTextZh="目标：当前周 >= 60%"
-                                                targetTextEn="Target: >=60% this week"
-                                            />
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="次日留存"
-                                                labelEn="Next-day Retention"
-                                                metric={engagement.nextDayRetention}
-                                                targetTextZh="目标：较上一窗口提升 5pp"
-                                                targetTextEn="Target: +5pp vs previous window"
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-muted-foreground">
-                                            {isZh ? '暂无指标数据，继续完成学习活动后将自动更新。' : 'No metrics yet. Continue learning activities to populate the acceptance panel.'}
-                                        </div>
-                                    )}
-                                </section>
-
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? 'Phase 3 验收指标' : 'Phase 3 Acceptance Metrics'}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                            {isZh ? '执行与周活' : 'Execution & WAU'}
-                                        </span>
-                                    </div>
-                                    <div className="grid md:grid-cols-2 gap-3">
-                                        {studyActionGoal ? (
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="建议执行率"
-                                                labelEn="Suggestion Execution Rate"
-                                                metric={studyActionGoal.executionRate}
-                                                targetTextZh="目标：执行率 >= 40%"
-                                                targetTextEn="Target: execution rate >= 40%"
-                                            />
-                                        ) : (
-                                            <div className="text-xs text-muted-foreground p-3 rounded-xl bg-background/40 border border-border/40">
-                                                {isZh ? '暂无执行率样本。先标记一次计划动作。' : 'No execution sample yet. Mark one action to initialize.'}
-                                            </div>
-                                        )}
-                                        {guardianAcceptance ? (
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="家长面板周活"
-                                                labelEn="Guardian Panel WAU"
-                                                metric={guardianAcceptance.weeklyActiveRate}
-                                                targetTextZh="目标：较上一窗口提升 20%"
-                                                targetTextEn="Target: +20% vs previous window"
-                                            />
-                                        ) : (
-                                            <div className="text-xs text-muted-foreground p-3 rounded-xl bg-background/40 border border-border/40">
-                                                {isZh ? '暂无周活样本。继续使用面板后会自动判定。' : 'No WAU sample yet. Keep using the panel to evaluate lift.'}
-                                            </div>
-                                        )}
-                                    </div>
-                                </section>
-
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? 'AI 稳定性监控' : 'AI Reliability Monitor'}
-                                        </div>
-                                        <span className={`text-xs font-semibold ${
-                                            aiMonitor?.status === 'healthy'
-                                                ? 'text-green-500'
-                                                : aiMonitor?.status === 'critical'
-                                                    ? 'text-destructive'
-                                                    : aiMonitor?.status === 'warning'
-                                                        ? 'text-amber-500'
-                                                        : 'text-muted-foreground'
-                                        }`}>
-                                            {aiMonitor?.status === 'healthy'
-                                                ? (isZh ? '健康' : 'Healthy')
-                                                : aiMonitor?.status === 'critical'
-                                                    ? (isZh ? '严重' : 'Critical')
-                                                    : aiMonitor?.status === 'warning'
-                                                        ? (isZh ? '预警' : 'Warning')
-                                                        : (isZh ? '样本不足' : 'Insufficient')}
-                                        </span>
-                                    </div>
-                                    {aiMonitor ? (
-                                        <div className="grid md:grid-cols-3 gap-3">
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="请求成功率"
-                                                labelEn="Request Success Rate"
-                                                metric={aiMonitor.successRate}
-                                                targetTextZh="目标：成功率 >= 90%"
-                                                targetTextEn="Target: success rate >= 90%"
-                                            />
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="非限速比例"
-                                                labelEn="Non-rate-limited Rate"
-                                                metric={aiMonitor.nonRateLimitedRate}
-                                                targetTextZh="目标：非限速比例 >= 85%"
-                                                targetTextEn="Target: non-rate-limited rate >= 85%"
-                                            />
-                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
-                                                <div className="font-semibold">{isZh ? '请求负载' : 'Request Load'}</div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    {isZh ? '样本数' : 'Samples'}: {aiMonitor.totalRequests}
+                                        <Panel title="Learning Events" subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity}>
+                                            {learningEvents.length > 0 ? (
+                                                <div className="space-y-4">
+                                                    {learningEvents.map((event) => (
+                                                        <TimelineRow key={event.id} {...event} />
+                                                    ))}
                                                 </div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    {isZh ? '平均延迟' : 'Avg latency'}: {aiMonitor.avgLatencyMs}ms
-                                                </div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    P95: {aiMonitor.p95LatencyMs}ms
-                                                </div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    {isZh ? '重试压力' : 'Retry pressure'}: {(aiMonitor.retryPressureRate * 100).toFixed(1)}%
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-muted-foreground">
-                                            {isZh ? '暂无 AI 请求样本，触发一次关卡生成/导师分析后将自动显示。' : 'No AI request sample yet. Generate one mission or mentor analysis to populate this panel.'}
-                                        </div>
-                                    )}
-                                </section>
-
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '会话恢复监控' : 'Session Recovery Monitor'}
-                                        </div>
-                                        <span className={`text-xs font-semibold ${
-                                            sessionRecovery?.status === 'healthy'
-                                                ? 'text-green-500'
-                                                : sessionRecovery?.status === 'critical'
-                                                    ? 'text-destructive'
-                                                    : sessionRecovery?.status === 'warning'
-                                                        ? 'text-amber-500'
-                                                        : 'text-muted-foreground'
-                                        }`}>
-                                            {sessionRecovery?.status === 'healthy'
-                                                ? (isZh ? '健康' : 'Healthy')
-                                                : sessionRecovery?.status === 'critical'
-                                                    ? (isZh ? '严重' : 'Critical')
-                                                    : sessionRecovery?.status === 'warning'
-                                                        ? (isZh ? '预警' : 'Warning')
-                                                        : (isZh ? '样本不足' : 'Insufficient')}
-                                        </span>
-                                    </div>
-                                    {sessionRecovery ? (
-                                        <div className="grid md:grid-cols-2 gap-3">
-                                            <MetricTile
-                                                isZh={isZh}
-                                                labelZh="恢复成功率"
-                                                labelEn="Recovery Success Rate"
-                                                metric={sessionRecovery.successRate}
-                                                targetTextZh="目标：恢复成功率 >= 85%"
-                                                targetTextEn="Target: recovery success >= 85%"
-                                            />
-                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
-                                                <div className="font-semibold">{isZh ? '恢复尝试' : 'Recovery Attempts'}</div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    {isZh ? '窗口' : 'Window'}: {sessionRecovery.windowDays}d
-                                                </div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    {isZh ? '尝试次数' : 'Attempts'}: {sessionRecovery.attempts}
-                                                </div>
-                                                <div className="mt-1 text-muted-foreground">
-                                                    {isZh ? '当前成功率' : 'Current rate'}: {(sessionRecovery.successRate.currentRate * 100).toFixed(1)}%
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-muted-foreground">
-                                            {isZh ? '暂无恢复样本。触发一次恢复流程后会自动判定。' : 'No recovery sample yet. Trigger one resume flow to evaluate this metric.'}
-                                        </div>
-                                    )}
-                                </section>
-
-                                <section className="p-4 rounded-2xl bg-secondary/35 border border-border">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            {isZh ? '今晚复习计划' : 'Tonight Study Plan'}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">
-                                            {isZh ? '14天执行率' : '14d execution'}: {(actionSummary.executionRate * 100).toFixed(1)}%
-                                        </span>
-                                    </div>
-                                    <div className="text-[11px] text-muted-foreground mb-3">
-                                        {isZh
-                                            ? `已完成 ${actionSummary.completed} · 待办 ${actionSummary.pending} · 跳过 ${actionSummary.skipped}`
-                                            : `Completed ${actionSummary.completed} · Pending ${actionSummary.pending} · Skipped ${actionSummary.skipped}`}
-                                    </div>
-                                    <div className="space-y-2">
-                                        {tonightActions.map((action) => {
-                                            const status = actionStatusById[action.id] || 'pending';
-                                            const priorityTone = action.priority === 'urgent'
-                                                ? 'text-destructive'
-                                                : action.priority === 'important'
-                                                    ? 'text-amber-500'
-                                                    : 'text-muted-foreground';
-                                            const statusTone = status === 'completed'
-                                                ? 'text-green-500'
-                                                : status === 'skipped'
-                                                    ? 'text-muted-foreground'
-                                                    : 'text-amber-500';
-                                            return (
-                                                <div key={action.id} className="p-3 rounded-xl bg-background/40 border border-border/40">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <div>
-                                                            <div className="text-sm font-semibold">{action.title}</div>
-                                                            <div className="text-xs text-muted-foreground">{action.description}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className={`text-[11px] font-semibold ${priorityTone}`}>
-                                                                {action.priority.toUpperCase()}
-                                                            </div>
-                                                            <div className={`text-[11px] font-semibold ${statusTone}`}>
-                                                                {status === 'completed'
-                                                                    ? (isZh ? '已完成' : 'Completed')
-                                                                    : status === 'skipped'
-                                                                        ? (isZh ? '已跳过' : 'Skipped')
-                                                                        : (isZh ? '待执行' : 'Pending')}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-1 text-[11px] text-muted-foreground">
-                                                        {isZh ? `预计 ${action.estimatedMinutes} 分钟` : `${action.estimatedMinutes} min estimate`} · {action.evidence}
-                                                    </div>
-                                                    <div className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-1">
-                                                        {action.evidenceRows.map((evidenceRow) => (
-                                                            <div key={`${action.id}-${evidenceRow.label}`} className="text-[11px] text-muted-foreground">
-                                                                <span className="font-semibold">{evidenceRow.label}:</span> {evidenceRow.value}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                    <div className="mt-2 flex flex-wrap gap-2">
-                                                        {action.onCta && (
-                                                            <button
-                                                                onClick={action.onCta}
-                                                                className="px-2.5 py-1 rounded-md bg-primary text-primary-foreground text-[11px] font-semibold"
-                                                            >
-                                                                {action.ctaLabel || (isZh ? '开始' : 'Start')}
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            onClick={() => handleSetActionStatus(action.id, 'completed', action.priority, action.estimatedMinutes)}
-                                                            className="px-2.5 py-1 rounded-md border border-green-500/40 text-green-500 text-[11px] font-semibold"
-                                                        >
-                                                            {isZh ? '标记完成' : 'Mark Done'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleSetActionStatus(action.id, 'skipped', action.priority, action.estimatedMinutes)}
-                                                            className="px-2.5 py-1 rounded-md border border-border text-muted-foreground text-[11px] font-semibold"
-                                                        >
-                                                            {isZh ? '跳过' : 'Skip'}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <div className="mt-3 pt-3 border-t border-border/40">
-                                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                                            {isZh ? '计划 vs 完成' : 'Plan vs Completion'}
-                                        </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '计划动作' : 'Planned actions'}</div>
-                                                <div className="font-semibold">{planVsCompletion.totalActions}</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '已完成动作' : 'Completed actions'}</div>
-                                                <div className="font-semibold">{planVsCompletion.completedActions}</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '计划时长' : 'Planned minutes'}</div>
-                                                <div className="font-semibold">{planVsCompletion.plannedMinutes}</div>
-                                            </div>
-                                            <div className="p-2 rounded-lg bg-background/40 border border-border/40">
-                                                <div className="text-muted-foreground">{isZh ? '完成时长' : 'Completed minutes'}</div>
-                                                <div className="font-semibold">{planVsCompletion.completedMinutes}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-
-                                <div className="grid lg:grid-cols-2 gap-6">
-                                    <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
-                                        <header className="flex items-center justify-between mb-4">
-                                            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                                <LineChart className="w-4 h-4 text-primary" />
-                                                {t.dashboard.dailyAccuracy}
-                                            </div>
-                                            <span className="text-xs text-muted-foreground">{t.dashboard.rangeSummary.replace('{days}', String(range))}</span>
-                                        </header>
-                                        {hasHistory ? (
-                                            <div className="flex gap-2 h-32 items-end">
-                                                {dailyRows.map((day) => (
-                                                    <div key={day.date} className="flex flex-col items-center flex-1">
-                                                        <div className="w-full bg-primary/20 rounded-t-lg relative" style={{ height: `${Math.max(5, day.accuracy * 100)}%` }}>
-                                                            <span className="absolute -top-6 text-[10px] font-semibold text-primary">
-                                                                {Math.round(day.accuracy * 100)}%
-                                                            </span>
-                                                        </div>
-                                                        <span className="text-[10px] text-muted-foreground mt-2">{day.label}</span>
-                                                        <span className="text-[10px] text-muted-foreground">{day.missions} {t.dashboard.sessionsShort}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <EmptyState message={t.dashboard.emptyReport} />)
-                                        }
+                                            ) : (
+                                                <EmptyState message={isZh ? '暂无学习事件。' : 'No learning events yet.'} />
+                                            )}
+                                        </Panel>
                                     </section>
 
-                                    <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
-                                        <header className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">
-                                            <Sparkles className="w-4 h-4 text-primary" />
-                                            {t.dashboard.skillBreakdown}
-                                        </header>
-                                        {skillRows.length > 0 ? (
+                                    <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
+                                        <Panel title={isZh ? '每周趋势' : 'Weekly Trend'} subtitle={isZh ? '正确率与任务量走势' : 'Accuracy and mission volume'} icon={BarChart3}>
+                                            <WeeklyTrend rows={dailyRows} />
+                                        </Panel>
+
+                                        <Panel title="Guardian Recommendations" subtitle={isZh ? '基于证据的今晚行动' : 'Personalized tips to help learners grow'} icon={Sparkles}>
                                             <div className="space-y-3">
-                                                {skillRows.map((row) => (
-                                                    <div key={row.skill} className="text-sm">
-                                                        <div className="flex justify-between text-xs text-muted-foreground">
-                                                            <span>{row.skill.replace(/_/g, ' ')}</span>
-                                                            <span>{Math.round(row.accuracy * 100)}% · {row.total} {t.dashboard.attempts}</span>
-                                                        </div>
-                                                        <div className="h-2 bg-background/40 rounded-full overflow-hidden mt-1">
-                                                            <div className="h-full bg-gradient-to-r from-primary to-purple-400" style={{ width: `${Math.max(5, row.accuracy * 100)}%` }} />
-                                                        </div>
-                                                    </div>
+                                                {tonightActions.map((action) => (
+                                                    <RecommendationRow
+                                                        key={action.id}
+                                                        action={action}
+                                                        status={actionStatusById[action.id] || 'pending'}
+                                                        onSetStatus={handleSetActionStatus}
+                                                    />
                                                 ))}
                                             </div>
-                                        ) : (
-                                            <EmptyState message={t.dashboard.noSkillData} />)
-                                        }
-                                    </section>
-                                </div>
+                                        </Panel>
 
-                                <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
-                                    <header className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            <Sparkles className="w-4 h-4 text-primary" />
-                                            Action Plan
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">{srsDueCount} SRS due</span>
-                                    </header>
-                                    <div className="space-y-2 text-sm">
-                                        {masterySnapshot && (
-                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40">
-                                                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-                                                    {isZh ? '掌握度脉冲' : 'Mastery Pulse'} ({masterySnapshot.windowDays}d)
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {isZh ? '作答' : 'Attempts'}: {masterySnapshot.totalAttempts} · {isZh ? '正确' : 'Correct'}: {masterySnapshot.totalCorrect}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {isZh ? '状态' : 'States'}: new {masterySnapshot.stateCounts.new}, learning {masterySnapshot.stateCounts.learning}, consolidated {masterySnapshot.stateCounts.consolidated}, mastered {masterySnapshot.stateCounts.mastered}
-                                                </div>
-                                                {masterySnapshot.bySkill.slice(0, 2).map((row) => (
-                                                    <div key={row.skillTag} className="mt-2 text-xs">
-                                                        <span className="font-medium">{row.skillTag.replace(/_/g, ' ')}</span>
-                                                        <span className="text-muted-foreground"> · {Math.round(row.smoothedAccuracy * 100)}% · {row.currentState}</span>
-                                                    </div>
-                                                ))}
+                                        <Panel title="Stability Monitor" subtitle={isZh ? '系统性能与可靠性' : 'System performance and reliability'} icon={ShieldCheck}>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <StabilityMetric label={isZh ? '成功率' : 'Success'} value={aiMonitor ? formatPercent(aiMonitor.successRate.currentRate) : '--'} />
+                                                <StabilityMetric label={isZh ? '响应' : 'Avg. Response'} value={aiMonitor ? `${Math.round(aiMonitor.avgLatencyMs)}ms` : '--'} />
+                                                <StabilityMetric label={isZh ? '重试压力' : 'Retry Rate'} value={aiMonitor ? formatPercent(aiMonitor.retryPressureRate) : '--'} />
                                             </div>
-                                        )}
-                                        <div className="p-3 rounded-xl bg-background/40 border border-border/40">
-                                            1. {weakestSkill
-                                                ? `Review weakest skill "${weakestSkill.skill.replace(/_/g, ' ')}" with 3-5 targeted questions.`
-                                                : 'Complete one mission to identify the weakest skill.'}
-                                        </div>
-                                        <div className="p-3 rounded-xl bg-background/40 border border-border/40">
-                                            2. Finish {Math.min(5, Math.max(1, srsDueCount))} due FSRS cards tonight to protect retention.
-                                        </div>
-                                        <div className="p-3 rounded-xl bg-background/40 border border-border/40">
-                                            3. Review one recent mistake and explain the rule aloud in your own words.
-                                        </div>
-                                        {repeatedCauseSnapshot && (
-                                            <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
-                                                <div className="uppercase tracking-wide text-muted-foreground mb-1">
-                                                    {isZh ? '重复错因率' : 'Repeated Cause Rate'} ({repeatedCauseSnapshot.windowDays}d)
+                                            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px]">
+                                                <div className="space-y-2 text-sm">
+                                                    <ServiceRow label="Content Service" status="operational" />
+                                                    <ServiceRow label="AI Inference" status={aiMonitor?.status || 'insufficient'} />
+                                                    <ServiceRow label="Analytics Service" status={consistencyAudit?.overallStatus === 'warning' ? 'warning' : 'operational'} />
+                                                    <ServiceRow label="Session Recovery" status={sessionRecovery?.status || 'insufficient'} />
                                                 </div>
-                                                <div className="font-medium">
-                                                    {(repeatedCauseSnapshot.repeatRate * 100).toFixed(1)}% ({repeatedCauseSnapshot.repeatedMistakes}/{repeatedCauseSnapshot.taggedMistakes})
+                                                <div className="grid place-items-center rounded-2xl bg-blue-50 p-4 text-center">
+                                                    <ShieldCheck className="mb-2 h-14 w-14 text-blue-600" />
+                                                    <p className="text-sm font-black text-slate-900">{systemStatusLabel(aiMonitor?.status)}</p>
+                                                    <p className="text-xs text-slate-500">{isZh ? '无重大事件' : 'No incidents reported'}</p>
                                                 </div>
-                                                {repeatedCauseSnapshot.topCauses.length > 0 && (
-                                                    <div className="mt-1 text-muted-foreground">
-                                                        Top: {repeatedCauseSnapshot.topCauses.map((row) => `${row.causeTag}(${row.count})`).join(', ')}
-                                                    </div>
-                                                )}
-                                                {repeatedCauseTrends.length > 0 && (
-                                                    <div className="mt-3 pt-2 border-t border-border/40 space-y-1">
-                                                        <div className="flex justify-between font-medium">
-                                                            <span>{isZh ? '目标(-20%)' : 'Goal (-20%)'}</span>
-                                                            <span className={
-                                                                repeatedGoal.overallStatus === 'passed'
-                                                                    ? 'text-green-500'
-                                                                    : repeatedGoal.overallStatus === 'not_met'
-                                                                        ? 'text-destructive'
-                                                                        : 'text-muted-foreground'
-                                                            }>
-                                                                {repeatedGoal.overallStatus === 'passed'
-                                                                    ? (isZh ? '达标' : 'Passed')
-                                                                    : repeatedGoal.overallStatus === 'not_met'
-                                                                        ? (isZh ? '未达标' : 'Not Met')
-                                                                        : (isZh ? '样本不足' : 'Insufficient')}
+                                            </div>
+                                        </Panel>
+                                    </section>
+
+                                    <section className="mt-4 grid gap-4 xl:grid-cols-3">
+                                        <Panel title={isZh ? '计划执行' : 'Plan vs Completion'} subtitle={isZh ? '今晚建议执行回写' : 'Guardian action follow-through'} icon={CheckCircle2}>
+                                            <div className="grid grid-cols-3 gap-3">
+                                                <MiniMetric label={isZh ? '计划' : 'Planned'} value={planSnapshot.totalActions} />
+                                                <MiniMetric label={isZh ? '完成' : 'Done'} value={planSnapshot.completedActions} />
+                                                <MiniMetric label={isZh ? '分钟' : 'Minutes'} value={`${planSnapshot.completedMinutes}/${planSnapshot.plannedMinutes}`} />
+                                            </div>
+                                            <p className="mt-3 text-xs text-slate-500">
+                                                {isZh ? '建议执行率' : 'Execution rate'}: {formatPercent(actionSummary.executionRate)}
+                                                {studyActionGoal ? ` · ${statusCopy(studyActionGoal.executionRate.status, isZh)}` : ''}
+                                            </p>
+                                        </Panel>
+
+                                        <Panel title={isZh ? '重复错因目标' : 'Repeated-Cause Goal'} subtitle={isZh ? '对比基线是否下降 20%' : 'Baseline comparison for 20% reduction'} icon={Target}>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div>
+                                                    <p className="text-3xl font-black">{formatPercent(repeatedCauseSnapshot?.repeatRate || 0)}</p>
+                                                    <p className="text-sm text-slate-500">
+                                                        {repeatedCauseSnapshot
+                                                            ? `${repeatedCauseSnapshot.repeatedMistakes}/${repeatedCauseSnapshot.taggedMistakes} tagged mistakes`
+                                                            : (isZh ? '暂无样本' : 'No samples yet')}
+                                                    </p>
+                                                </div>
+                                                <StatusPill status={repeatedGoal.overallStatus} isZh={isZh} />
+                                            </div>
+                                            {repeatedCauseTrends.length > 0 && (
+                                                <div className="mt-3 space-y-2">
+                                                    {repeatedCauseTrends.slice(0, 3).map((trend) => (
+                                                        <div key={trend.windowDays} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                                                            <span>{trend.windowDays}d</span>
+                                                            <span>{formatPercent(trend.current.repeatRate)}</span>
+                                                            <span className={trend.deltaRate <= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                                                {trend.deltaRate <= 0 ? '↓' : '↑'} {Math.abs(trend.deltaRate * 100).toFixed(1)}pp
                                                             </span>
                                                         </div>
-                                                        {repeatedCauseTrends.map((trend) => {
-                                                            const currentPct = (trend.current.repeatRate * 100).toFixed(1);
-                                                            const previousPct = (trend.previous.repeatRate * 100).toFixed(1);
-                                                            const deltaPct = Math.abs(trend.deltaRate * 100).toFixed(1);
-                                                            const improving = trend.deltaRate <= 0;
-                                                            const tone = improving ? 'text-green-500' : 'text-destructive';
-                                                            const goalRow = repeatedGoal.rows.find((row) => row.windowDays === trend.windowDays);
-                                                            const goalTone = goalRow?.status === 'passed'
-                                                                ? 'text-green-500'
-                                                                : goalRow?.status === 'not_met'
-                                                                    ? 'text-destructive'
-                                                                    : 'text-muted-foreground';
-                                                            const baselinePct = goalRow ? `${(goalRow.baselineRate * 100).toFixed(1)}%` : '--';
-                                                            const reductionPct = goalRow ? `${Math.max(0, goalRow.reductionFromBaseline * 100).toFixed(1)}%` : '--';
-                                                            return (
-                                                                <div key={trend.windowDays} className="flex justify-between">
-                                                                    <span className="text-muted-foreground">{trend.windowDays}d</span>
-                                                                    <span>{currentPct}% vs {previousPct}%</span>
-                                                                    <span className={tone}>
-                                                                        {improving ? '↓' : '↑'} {deltaPct}pp
-                                                                    </span>
-                                                                    <span className="text-muted-foreground">
-                                                                        B:{baselinePct}
-                                                                    </span>
-                                                                    <span className={goalTone}>
-                                                                        {goalRow?.status === 'passed'
-                                                                            ? `✓ ${reductionPct}`
-                                                                            : goalRow?.status === 'not_met'
-                                                                                ? `× ${reductionPct}`
-                                                                                : '…'}
-                                                                    </span>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                    {dueCards.length > 0 && (
-                                        <div className="mt-4 pt-4 border-t border-border/40 space-y-2">
-                                            <div className="text-xs uppercase tracking-wide text-muted-foreground">Evidence Chain (FSRS Due)</div>
-                                            {dueCards.map((card, idx) => {
-                                                const status = getMemoryStatus(card);
-                                                return (
-                                                    <div key={card.id || idx} className="p-3 rounded-xl bg-background/30 border border-border/30 text-xs">
-                                                        <div className="flex justify-between mb-1">
-                                                            <span className="font-medium">{card.skillTag || card.type || 'skill'}</span>
-                                                            <span>{status.statusEmoji} {status.statusText.en}</span>
-                                                        </div>
-                                                        <div className="text-muted-foreground truncate">{card.question}</div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </section>
-
-                                <section className="p-5 rounded-2xl bg-secondary/30 border border-border">
-                                    <header className="flex items-center justify-between mb-4">
-                                        <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                                            <GraduationCap className="w-4 h-4 text-primary" />
-                                            {t.dashboard.recentMistakes}
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">{t.dashboard.reviewHint}</span>
-                                    </header>
-                                    {recentMistakes.length > 0 ? (
-                                        <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
-                                            {recentMistakes.map((mistake) => (
-                                                <div key={mistake.id} className="p-3 rounded-2xl bg-background/40 border border-border/40">
-                                                    <div className="text-xs text-muted-foreground flex justify-between">
-                                                        <span>{new Date(mistake.timestamp).toLocaleString()}</span>
-                                                        {mistake.skillTag && (
-                                                            <span className="uppercase tracking-wide">{mistake.skillTag}</span>
-                                                        )}
-                                                    </div>
-                                                    <p className="font-semibold text-sm mt-2">{mistake.questionText}</p>
-                                                    <div className="flex flex-wrap gap-2 text-xs mt-3">
-                                                        <span className="px-2 py-1 rounded-full bg-green-500/10 border border-green-500/30 text-green-400">
-                                                            {t.dashboard.correct}: {mistake.correctAnswer}
-                                                        </span>
-                                                        <span className="px-2 py-1 rounded-full bg-destructive/10 border border-destructive/20 text-destructive">
-                                                            {t.dashboard.chosen}: {mistake.wrongAnswer}
-                                                        </span>
-                                                    </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <EmptyState message={t.dashboard.noMistakes} />)
-                                    }
-                                </section>
-                            </div>
+                                            )}
+                                        </Panel>
 
-                            <div className="flex flex-wrap gap-3 mt-6">
-                                <button
-                                    onClick={handleExportImage}
-                                    disabled={!hasHistory || isLoading || exporting !== null}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    {t.dashboard.exportImage}
-                                </button>
-                                <button
-                                    onClick={handleExportPdf}
-                                    disabled={!hasHistory || isLoading || exporting !== null}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary text-foreground border border-border disabled:opacity-50"
-                                >
-                                    <Printer className="w-4 h-4" />
-                                    {t.dashboard.exportPdf}
-                                </button>
+                                        <Panel title={isZh ? '监护人采纳' : 'Guardian Acceptance'} subtitle={isZh ? '面板周活与建议追踪' : 'Weekly usage and recommendation loop'} icon={Users}>
+                                            <MetricTile metric={guardianAcceptance?.weeklyActiveRate} label={isZh ? '周活跃率' : 'Weekly active'} isZh={isZh} />
+                                            <MetricTile metric={engagementSnapshot?.nextDayRetention} label={isZh ? '次日留存' : 'Next-day retention'} isZh={isZh} />
+                                        </Panel>
+                                    </section>
+
+                                    <div className="mt-5 flex flex-wrap gap-3">
+                                        <button
+                                            onClick={handleExportImage}
+                                            disabled={!hasHistory || isLoading || exporting !== null}
+                                            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                                        >
+                                            <Download className="h-4 w-4" />
+                                            {t.dashboard.exportImage}
+                                        </button>
+                                        <button
+                                            onClick={handleExportPdf}
+                                            disabled={!hasHistory || isLoading || exporting !== null}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                        >
+                                            <Printer className="h-4 w-4" />
+                                            {t.dashboard.exportPdf}
+                                        </button>
+                                        <button
+                                            onClick={loadData}
+                                            disabled={isLoading}
+                                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
+                                        >
+                                            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                                            {t.dashboard.refresh}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>
@@ -1318,73 +742,454 @@ export function ParentDashboard() {
     );
 }
 
-function SummaryCard({ label, value, helper }: { label: string; value: string | number; helper?: string; }) {
+function SidebarItem({ icon: Icon, label, active = false }: { icon: typeof Home; label: string; active?: boolean; }) {
     return (
-        <div className="p-4 rounded-2xl bg-secondary/30 border border-border/60">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">{label}</div>
-            <div className="text-2xl font-bold text-foreground">{value}</div>
-            {helper && <div className="text-[11px] text-muted-foreground mt-1">{helper}</div>}
+        <button
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+        >
+            <Icon className="h-5 w-5" />
+            {label}
+        </button>
+    );
+}
+
+function KpiCard({
+    title,
+    value,
+    helper,
+    icon: Icon,
+    tone,
+    ringValue
+}: {
+    title: string;
+    value: string | number;
+    helper: string;
+    icon: typeof LineChart;
+    tone: Tone;
+    ringValue?: number;
+}) {
+    const toneClass = iconToneClass(tone);
+    return (
+        <div className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-700">{title}</p>
+                    <p className="mt-3 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+                    <p className="mt-2 text-xs font-medium leading-snug text-slate-500">{helper}</p>
+                </div>
+                {typeof ringValue === 'number' ? (
+                    <MasteryRing value={ringValue} />
+                ) : (
+                    <div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${toneClass.bg} ${toneClass.text}`}>
+                        <Icon className="h-7 w-7" />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
 
-function MetricTile({
-    isZh,
-    labelZh,
-    labelEn,
-    metric,
-    targetTextZh,
-    targetTextEn
+function Panel({
+    title,
+    subtitle,
+    icon: Icon,
+    badge,
+    children
 }: {
-    isZh: boolean;
-    labelZh: string;
-    labelEn: string;
-    metric: EngagementMetricRow;
-    targetTextZh: string;
-    targetTextEn: string;
+    title: string;
+    subtitle: string;
+    icon: typeof LineChart;
+    badge?: string;
+    children: React.ReactNode;
 }) {
-    const statusTone = metric.status === 'met'
-        ? 'text-green-500'
-        : metric.status === 'not_met'
-            ? 'text-destructive'
-            : 'text-muted-foreground';
-    const statusText = metric.status === 'met'
-        ? (isZh ? '达标' : 'Met')
-        : metric.status === 'not_met'
-            ? (isZh ? '未达标' : 'Not Met')
-            : (isZh ? '样本不足' : 'Insufficient');
-    const currentPct = `${(metric.currentRate * 100).toFixed(1)}%`;
-    const previousPct = `${(metric.previousRate * 100).toFixed(1)}%`;
-    const delta = metric.targetType === 'absolute_rate'
-        ? metric.currentRate - metric.target
-        : metric.absoluteDelta;
-    const deltaPrefix = delta >= 0 ? '+' : '';
-    const deltaPct = `${deltaPrefix}${(delta * 100).toFixed(1)}pp`;
-
     return (
-        <div className="p-3 rounded-xl bg-background/40 border border-border/40 text-xs">
-            <div className="flex justify-between items-start gap-2">
-                <div className="font-semibold">{isZh ? labelZh : labelEn}</div>
-                <span className={`font-semibold ${statusTone}`}>{statusText}</span>
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <header className="mb-4 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                        <Icon className="h-5 w-5" />
+                    </span>
+                    <div>
+                        <h3 className="font-black tracking-tight text-slate-950">{title}</h3>
+                        <p className="text-sm text-slate-500">{subtitle}</p>
+                    </div>
+                </div>
+                {badge && (
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">{badge}</span>
+                )}
+            </header>
+            {children}
+        </section>
+    );
+}
+
+const progressTones: Tone[] = ['blue', 'green', 'purple', 'amber', 'slate'];
+
+function SkillProgressRow({ row, tone }: { row: SkillAccuracyRow; tone: Tone; }) {
+    const toneClass = progressToneClass(tone);
+    const percentage = Math.round(row.accuracy * 100);
+    return (
+        <div className="grid grid-cols-[minmax(120px,1fr)_minmax(110px,180px)_44px] items-center gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+            <div className="flex min-w-0 items-center gap-3">
+                <span className={`grid h-8 w-8 place-items-center rounded-xl ${toneClass.bg} ${toneClass.text}`}>
+                    <BookOpen className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-800">{formatSkillLabel(row.skill)}</p>
+                    <p className="text-xs text-slate-500">{row.correct}/{row.total} correct</p>
+                </div>
             </div>
-            <div className="mt-1 text-muted-foreground">
-                {isZh ? '当前' : 'Current'}: {currentPct} · {isZh ? '上一窗口' : 'Prev'}: {previousPct}
+            <div className="h-2.5 rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${toneClass.bar}`} style={{ width: `${Math.max(4, percentage)}%` }} />
             </div>
-            <div className="mt-1 text-muted-foreground">
-                {isZh ? '变化' : 'Delta'}: {deltaPct}
+            <span className="text-right text-sm font-black text-slate-700">{percentage}%</span>
+        </div>
+    );
+}
+
+function ReviewQueueRow({ card, index }: { card: FSRSCard; index: number; }) {
+    const status = getMemoryStatus(card);
+    const priority = index === 0 ? 'High' : index < 3 ? 'Medium' : 'Low';
+    const tone = priority === 'High' ? 'red' : priority === 'Medium' ? 'amber' : 'blue';
+    return (
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${iconToneClass(tone).bg} ${iconToneClass(tone).text}`}>
+                <BookOpen className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review')}</p>
+                <p className="truncate text-xs text-slate-500">{card.question}</p>
             </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-                {isZh ? targetTextZh : targetTextEn}
+            <div className="text-right">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priority}</span>
+                <p className="mt-1 text-xs text-slate-500">{status.statusText.en}</p>
             </div>
+        </div>
+    );
+}
+
+function activityIconForKind(kind: GuardianActivityKind): typeof CheckCircle2 {
+    switch (kind) {
+        case 'mission':
+            return CheckCircle2;
+        case 'answer':
+            return HelpCircle;
+        case 'session':
+            return Activity;
+        case 'hint':
+            return Sparkles;
+        case 'mistake':
+            return Target;
+        case 'task':
+            return Trophy;
+        default:
+            return CheckCircle2;
+    }
+}
+
+function TimelineRow({
+    icon: Icon,
+    tone,
+    title,
+    detail,
+    meta
+}: {
+    icon: typeof CheckCircle2;
+    tone: Tone;
+    title: string;
+    detail: string;
+    meta: string;
+}) {
+    const toneClass = iconToneClass(tone);
+    return (
+        <div className="relative flex gap-3">
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${toneClass.bg} ${toneClass.text}`}>
+                <Icon className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1 border-b border-slate-100 pb-3 last:border-0">
+                <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-black text-slate-900">{title}</p>
+                    <span className="text-xs font-semibold text-slate-500">{meta}</span>
+                </div>
+                <p className="mt-1 truncate text-xs text-slate-500">{detail}</p>
+            </div>
+        </div>
+    );
+}
+
+function WeeklyTrend({ rows }: { rows: DailyAccuracyRow[]; }) {
+    if (rows.length === 0) return <EmptyState message="No weekly trend yet." />;
+    const accuracyPath = buildSparkPath(rows.map((row) => row.accuracy), 320, 130);
+    const missionPath = buildSparkPath(rows.map((row) => row.missions), 320, 130);
+    const labelStep = Math.max(1, Math.ceil(rows.length / 6));
+    return (
+        <div>
+            <div className="mb-3 flex items-center justify-end gap-4 text-xs font-semibold">
+                <span className="inline-flex items-center gap-1 text-blue-700"><span className="h-2 w-2 rounded-full bg-blue-600" /> Accuracy</span>
+                <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Missions</span>
+            </div>
+            <svg viewBox="0 0 360 170" className="h-48 w-full overflow-visible">
+                {[0, 1, 2, 3].map((line) => (
+                    <line key={line} x1="28" x2="344" y1={24 + line * 36} y2={24 + line * 36} stroke="#e2e8f0" strokeWidth="1" />
+                ))}
+                <path d={`${accuracyPath} L 344 148 L 28 148 Z`} fill="rgba(37, 99, 235, 0.08)" />
+                <path d={accuracyPath} fill="none" stroke="#2563eb" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+                <path d={missionPath} fill="none" stroke="#10b981" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
+                {rows.map((row, index) => {
+                    const shouldShowLabel = index === 0 ||
+                        index === rows.length - 1 ||
+                        (index % labelStep === 0 && index < rows.length - labelStep);
+                    if (!shouldShowLabel) return null;
+                    const x = 28 + (index / Math.max(1, rows.length - 1)) * 316;
+                    return (
+                        <text key={row.date} x={x} y="166" textAnchor="middle" className="fill-slate-500 text-[10px] font-semibold">
+                            {row.label}
+                        </text>
+                    );
+                })}
+            </svg>
+        </div>
+    );
+}
+
+function RecommendationRow({
+    action,
+    status,
+    onSetStatus
+}: {
+    action: TonightActionItem;
+    status: StudyActionStatus;
+    onSetStatus: (actionId: string, status: StudyActionStatus, priority: StudyActionPriority, estimatedMinutes: number) => void;
+}) {
+    return (
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+            <div className="flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
+                    <Target className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-black text-slate-900">{action.title}</p>
+                        <PriorityBadge priority={action.priority} />
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">{action.description}</p>
+                    <p className="mt-2 text-xs font-semibold text-slate-600">{action.evidence}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {action.ctaLabel && action.onCta && (
+                            <button onClick={action.onCta} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-black text-white">
+                                {action.ctaLabel}
+                            </button>
+                        )}
+                        <button
+                            onClick={() => onSetStatus(action.id, 'completed', action.priority, action.estimatedMinutes)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-black ${status === 'completed' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
+                        >
+                            Done
+                        </button>
+                        <button
+                            onClick={() => onSetStatus(action.id, 'skipped', action.priority, action.estimatedMinutes)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-black ${status === 'skipped' ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
+                        >
+                            Skip
+                        </button>
+                    </div>
+                </div>
+                <ChevronRight className="mt-3 h-4 w-4 shrink-0 text-slate-400" />
+            </div>
+        </div>
+    );
+}
+
+function StabilityMetric({ label, value }: { label: string; value: string; }) {
+    return (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-bold text-slate-500">{label}</p>
+            <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
+            <div className="mt-2 h-6 overflow-hidden rounded bg-white">
+                <svg viewBox="0 0 120 24" className="h-full w-full">
+                    <path d="M0 18 L10 13 L20 16 L30 10 L40 14 L50 8 L60 13 L70 7 L80 12 L90 9 L100 14 L120 10" fill="none" stroke="#10b981" strokeWidth="3" />
+                </svg>
+            </div>
+        </div>
+    );
+}
+
+function ServiceRow({ label, status }: { label: string; status: string; }) {
+    const healthy = status === 'healthy' || status === 'operational' || status === 'ok';
+    const warning = status === 'warning' || status === 'insufficient';
+    return (
+        <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 font-semibold text-slate-700">
+                <CheckCircle2 className={`h-4 w-4 ${healthy ? 'text-emerald-600' : warning ? 'text-amber-500' : 'text-red-500'}`} />
+                {label}
+            </span>
+            <span className={`text-xs font-black ${healthy ? 'text-emerald-600' : warning ? 'text-amber-600' : 'text-red-600'}`}>
+                {healthy ? 'Operational' : warning ? 'Watch' : 'Issue'}
+            </span>
+        </div>
+    );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string | number; }) {
+    return (
+        <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-xs font-bold text-slate-500">{label}</p>
+            <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
+        </div>
+    );
+}
+
+function MetricTile({ metric, label, isZh }: { metric?: EngagementMetricRow; label: string; isZh: boolean; }) {
+    return (
+        <div className="mt-3 rounded-xl bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-black text-slate-900">{label}</p>
+                <span className={`text-xs font-black ${metricStatusClass(metric?.status)}`}>{statusCopy(metric?.status || 'insufficient', isZh)}</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+                {isZh ? '当前' : 'Current'}: {formatPercent(metric?.currentRate || 0)} · {isZh ? '上期' : 'Prev'}: {formatPercent(metric?.previousRate || 0)}
+            </p>
         </div>
     );
 }
 
 function EmptyState({ message }: { message: string; }) {
     return (
-        <div className="flex flex-col items-center justify-center text-center gap-2 text-sm text-muted-foreground py-6">
-            <LineChart className="w-6 h-6" />
-            <p>{message}</p>
+        <div className="grid min-h-[120px] place-items-center rounded-2xl bg-slate-50 text-center text-sm font-medium text-slate-500">
+            <div>
+                <LineChart className="mx-auto mb-2 h-6 w-6" />
+                <p>{message}</p>
+            </div>
         </div>
     );
+}
+
+function MasteryRing({ value }: { value: number; }) {
+    const safe = Math.max(0, Math.min(100, value));
+    const circumference = 2 * Math.PI * 22;
+    const offset = circumference - (safe / 100) * circumference;
+    return (
+        <div className="relative h-16 w-16 shrink-0">
+            <svg viewBox="0 0 56 56" className="h-16 w-16 rotate-[-90deg]">
+                <circle cx="28" cy="28" r="22" stroke="#dbeafe" strokeWidth="7" fill="none" />
+                <circle
+                    cx="28"
+                    cy="28"
+                    r="22"
+                    stroke="#2563eb"
+                    strokeWidth="7"
+                    strokeLinecap="round"
+                    fill="none"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={offset}
+                />
+            </svg>
+            <span className="absolute inset-0 grid place-items-center text-sm font-black text-blue-700">{safe}%</span>
+        </div>
+    );
+}
+
+function PriorityBadge({ priority }: { priority: StudyActionPriority; }) {
+    const classes = priority === 'urgent'
+        ? 'bg-red-50 text-red-700'
+        : priority === 'important'
+            ? 'bg-amber-50 text-amber-700'
+            : 'bg-blue-50 text-blue-700';
+    return <span className={`rounded-full px-2 py-1 text-[11px] font-black uppercase ${classes}`}>{priority}</span>;
+}
+
+function StatusPill({ status, isZh }: { status: 'passed' | 'not_met' | 'insufficient'; isZh: boolean; }) {
+    const classes = status === 'passed'
+        ? 'bg-emerald-50 text-emerald-700'
+        : status === 'not_met'
+            ? 'bg-red-50 text-red-700'
+            : 'bg-slate-100 text-slate-600';
+    return <span className={`rounded-full px-3 py-1 text-xs font-black ${classes}`}>{statusCopy(status, isZh)}</span>;
+}
+
+function computeActivityStreak(rows: DailyAccuracyRow[]) {
+    let streak = 0;
+    for (let index = rows.length - 1; index >= 0; index--) {
+        if ((rows[index]?.missions || 0) <= 0) break;
+        streak += 1;
+    }
+    return streak;
+}
+
+function buildSparkPath(values: number[], width: number, height: number) {
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const spread = Math.max(0.01, max - min);
+    const left = 28;
+    const top = 18;
+    const plotWidth = width - 4;
+    const plotHeight = height;
+    return values.map((value, index) => {
+        const x = left + (index / Math.max(1, values.length - 1)) * plotWidth;
+        const y = top + (1 - (value - min) / spread) * plotHeight;
+        return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(' ');
+}
+
+function formatSkillLabel(value: string) {
+    return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatPercent(value: number) {
+    return `${Math.round(value * 100)}%`;
+}
+
+function formatNumber(value: number) {
+    return new Intl.NumberFormat().format(value);
+}
+
+function statusCopy(status: string, isZh: boolean) {
+    if (status === 'met' || status === 'passed') return isZh ? '达标' : 'Met';
+    if (status === 'not_met') return isZh ? '未达标' : 'Not Met';
+    if (status === 'healthy' || status === 'ok') return isZh ? '健康' : 'Healthy';
+    if (status === 'warning') return isZh ? '预警' : 'Warning';
+    if (status === 'critical') return isZh ? '严重' : 'Critical';
+    return isZh ? '样本不足' : 'Insufficient';
+}
+
+function systemStatusLabel(status?: string) {
+    if (status === 'critical') return 'Needs Attention';
+    if (status === 'warning') return 'Monitoring';
+    if (status === 'insufficient') return 'Collecting Data';
+    return 'All Systems Operational';
+}
+
+function metricStatusClass(status?: string) {
+    if (status === 'met' || status === 'passed') return 'text-emerald-600';
+    if (status === 'not_met' || status === 'critical') return 'text-red-600';
+    if (status === 'warning') return 'text-amber-600';
+    return 'text-slate-500';
+}
+
+function priorityToneClass(priority: string) {
+    if (priority === 'High') return 'bg-red-50 text-red-700';
+    if (priority === 'Medium') return 'bg-amber-50 text-amber-700';
+    return 'bg-blue-50 text-blue-700';
+}
+
+function iconToneClass(tone: Tone) {
+    return {
+        blue: { bg: 'bg-blue-50', text: 'text-blue-600' },
+        green: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+        amber: { bg: 'bg-amber-50', text: 'text-amber-600' },
+        purple: { bg: 'bg-violet-50', text: 'text-violet-600' },
+        red: { bg: 'bg-red-50', text: 'text-red-600' },
+        slate: { bg: 'bg-slate-100', text: 'text-slate-600' }
+    }[tone];
+}
+
+function progressToneClass(tone: Tone) {
+    return {
+        blue: { bg: 'bg-blue-50', text: 'text-blue-600', bar: 'bg-blue-600' },
+        green: { bg: 'bg-emerald-50', text: 'text-emerald-600', bar: 'bg-emerald-500' },
+        amber: { bg: 'bg-amber-50', text: 'text-amber-600', bar: 'bg-amber-500' },
+        purple: { bg: 'bg-violet-50', text: 'text-violet-600', bar: 'bg-violet-500' },
+        red: { bg: 'bg-red-50', text: 'text-red-600', bar: 'bg-red-500' },
+        slate: { bg: 'bg-slate-100', text: 'text-slate-600', bar: 'bg-slate-500' }
+    }[tone];
 }
