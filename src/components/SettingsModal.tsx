@@ -5,19 +5,11 @@ import { Settings, X, RefreshCw, ToggleLeft, ToggleRight, Volume2, VolumeX, Sun,
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { translations } from '@/lib/translations';
-
-interface RouterModel {
-    id: string;
-    name: string;
-    pricing: {
-        prompt: string;
-        completion: string;
-    };
-}
+import { buildModelOptions, RouterModelOption } from '@/lib/ai/modelOptions';
 
 export function SettingsModal() {
     const { apiKey, setApiKey, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, theme, setTheme, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
-    const [availableModels, setAvailableModels] = useState<RouterModel[]>([]);
+    const [availableModels, setAvailableModels] = useState<RouterModelOption[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [showFreeOnly, setShowFreeOnly] = useState(false);
 
@@ -47,16 +39,7 @@ export function SettingsModal() {
         }
     }, [isSettingsOpen, apiKey, availableModels.length]);
 
-    const filteredModels = availableModels.filter(m =>
-        showFreeOnly ? m.id.endsWith(':free') : true
-    );
-
-    // Ensure selected model is in the list or add it temporarily if not fetched yet
-    const displayModels = filteredModels.length > 0 ? filteredModels : [
-        { id: 'google/gemini-flash-1.5', name: 'Gemini 1.5 Flash' },
-        { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku' },
-        { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B (Free)' },
-    ];
+    const displayModels = buildModelOptions(availableModels, showFreeOnly);
 
     return (
         <>

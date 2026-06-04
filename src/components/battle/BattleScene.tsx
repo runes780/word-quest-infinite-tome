@@ -59,6 +59,9 @@ export function BattleScene({
     const bossStageLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
         ? `Stage ${currentQuestion.bossStage} / ${currentQuestion.bossTotalStages}`
         : null;
+    const monsterLabel = currentQuestion.isBoss
+        ? `${currentQuestion.type} ${t.battle.boss}`
+        : currentQuestion.type;
 
     return (
         <div className="relative battle-arena rounded-3xl border-2 border-primary/15 overflow-hidden flex flex-col items-center justify-center p-8 shadow-soft">
@@ -206,7 +209,7 @@ export function BattleScene({
                                 className="relative z-10 h-[118%] w-[118%] object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.4)] transform hover:scale-110 transition-transform duration-300"
                                 draggable={false}
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                            <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/40 to-transparent" />
                         </div>
 
                         <AnimatePresence>
@@ -230,7 +233,7 @@ export function BattleScene({
                                 currentQuestion.type === 'vocab' ? "border-orange-500/50 text-orange-200" :
                                     "border-emerald-500/50 text-emerald-200"
                         )}>
-                            {currentQuestion.type} {t.battle.boss}
+                            {monsterLabel}
                         </div>
 
                         {currentQuestion.isBoss && (
@@ -257,19 +260,6 @@ export function BattleScene({
                             </div>
                         )}
 
-                        <AnimatePresence>
-                            {damageText.map((d) => (
-                                <motion.div
-                                    key={d.id}
-                                    initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                                    animate={{ opacity: 1, y: d.y, scale: 1.5 }}
-                                    exit={{ opacity: 0 }}
-                                    className="absolute left-1/2 top-0 -translate-x-1/2 text-4xl font-black text-red-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] z-50 pointer-events-none"
-                                >
-                                    {d.text}
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
                     </motion.div>
                 </div>
             </div>

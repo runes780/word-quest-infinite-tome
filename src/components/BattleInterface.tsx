@@ -154,6 +154,72 @@ export function BattleInterface() {
         });
     };
 
+    const triggerCorrectCombatFeedback = (result: { damageDealt: number; isCritical: boolean; isSuperEffective: boolean; }) => {
+        const types: ('slash' | 'fireball' | 'lightning')[] = ['slash', 'fireball', 'lightning'];
+        const newAttackType = types[Math.floor(Math.random() * types.length)];
+        setAttackType(newAttackType);
+
+        if (soundEnabled) {
+            if (newAttackType === 'slash') playSound.attackSlash();
+            else if (newAttackType === 'fireball') playSound.attackFire();
+            else playSound.attackZap();
+        }
+
+        const newParticles = Array.from({ length: 12 }).map((_, i) => ({
+            id: Date.now() + i,
+            x: Math.random() * 100 - 50,
+            y: Math.random() * 100 - 50,
+            color: newAttackType === 'fireball' ? '#f97316' : newAttackType === 'lightning' ? '#facc15' : '#ffffff'
+        }));
+        setParticles(newParticles);
+        setTimeout(() => setParticles([]), 1000);
+
+        const damage = result.damageDealt;
+        let text = `-${damage}`;
+        let color = '#ffffff';
+        let scale = 1;
+        const randomX = Math.random() * 40 - 20;
+        const randomRotate = Math.random() * 10 - 5;
+
+        if (result.isCritical) {
+            text = `${t.battle.critical} -${damage}`;
+            color = '#ef4444';
+            scale = 1.5;
+            if (soundEnabled) setTimeout(playSound.crit, 100);
+        } else if (result.isSuperEffective) {
+            text = `${t.battle.weakness} -${damage}`;
+            color = '#facc15';
+            scale = 1.3;
+            if (soundEnabled) setTimeout(playSound.attackZap, 150);
+        } else {
+            if (soundEnabled) setTimeout(playSound.hit, 200);
+        }
+
+        setDamageText([{ id: Date.now(), x: randomX, y: -50, text, color, scale, rotate: randomRotate }]);
+        setTimeout(() => setDamageText([]), 1000);
+
+        setComboScale(1.5);
+        setTimeout(() => setComboScale(1), 200);
+
+        const newCoins = Array.from({ length: 8 }).map((_, i) => ({
+            id: Date.now() + i,
+            delay: i * 0.15
+        }));
+        setFlyingCoins(newCoins);
+        setTimeout(() => setFlyingCoins([]), 3000);
+
+        if (soundEnabled) {
+            newCoins.forEach((_, i) => setTimeout(playSound.coin, i * 150 + 500));
+        }
+
+        newCoins.forEach((_, i) => {
+            setTimeout(() => {
+                setGoldScale(1.5);
+                setTimeout(() => setGoldScale(1), 150);
+            }, 1000 + (i * 150));
+        });
+    };
+
     useEffect(() => () => {
         stopSpeech();
     }, []);
@@ -168,78 +234,7 @@ export function BattleInterface() {
         queueUnlockedAchievements();
 
         if (result.correct) {
-            const types: ('slash' | 'fireball' | 'lightning')[] = ['slash', 'fireball', 'lightning'];
-            const newAttackType = types[Math.floor(Math.random() * types.length)];
-            setAttackType(newAttackType);
-
-            if (soundEnabled) {
-                if (newAttackType === 'slash') playSound.attackSlash();
-                else if (newAttackType === 'fireball') playSound.attackFire();
-                else playSound.attackZap();
-            }
-
-            // Generate particles
-            const newParticles = Array.from({ length: 12 }).map((_, i) => ({
-                id: Date.now() + i,
-                x: Math.random() * 100 - 50,
-                y: Math.random() * 100 - 50,
-                color: newAttackType === 'fireball' ? '#f97316' : newAttackType === 'lightning' ? '#facc15' : '#ffffff'
-            }));
-            setParticles(newParticles);
-            setTimeout(() => setParticles([]), 1000);
-
-            // Damage Text & Effects
-            const damage = result.damageDealt;
-            let text = `-${damage}`;
-            let color = '#ffffff';
-            let scale = 1;
-            // Randomize start position slightly for variety
-            const randomX = Math.random() * 40 - 20;
-            const randomRotate = Math.random() * 10 - 5;
-
-            if (result.isCritical) {
-                text = `${t.battle.critical} -${damage}`;
-                color = '#ef4444'; // Red
-                scale = 1.5;
-                if (soundEnabled) setTimeout(playSound.crit, 100);
-            } else if (result.isSuperEffective) {
-                text = `${t.battle.weakness} -${damage}`;
-                color = '#facc15'; // Yellow
-                scale = 1.3;
-                if (soundEnabled) setTimeout(playSound.attackZap, 150);
-            } else {
-                if (soundEnabled) setTimeout(playSound.hit, 200);
-            }
-
-            setDamageText([{ id: Date.now(), x: randomX, y: -50, text, color, scale, rotate: randomRotate }]);
-            setTimeout(() => setDamageText([]), 1000);
-
-            // Combo Effect
-            setComboScale(1.5);
-            setTimeout(() => setComboScale(1), 200);
-
-            // Flying Coins (Duolingo Style: Slower, targeted)
-            const newCoins = Array.from({ length: 8 }).map((_, i) => ({
-                id: Date.now() + i,
-                delay: i * 0.15 // Slower stagger
-            }));
-            setFlyingCoins(newCoins);
-
-            // Clear coins after animation
-            setTimeout(() => setFlyingCoins([]), 3000);
-
-            // Play sounds with stagger
-            if (soundEnabled) {
-                newCoins.forEach((_, i) => setTimeout(playSound.coin, i * 150 + 500));
-            }
-
-            // Pump the gold counter when coins arrive
-            newCoins.forEach((_, i) => {
-                setTimeout(() => {
-                    setGoldScale(1.5);
-                    setTimeout(() => setGoldScale(1), 150);
-                }, 1000 + (i * 150)); // Sync with arrival
-            });
+            triggerCorrectCombatFeedback(result);
         }
 
         setShowResult(true);
@@ -258,10 +253,11 @@ export function BattleInterface() {
         const result = answerQuestion(correct ? currentQuestion.correct_index : -1, { userResponse: input });
         setResultMessage(result.explanation);
         queueUnlockedAchievements();
-        if (!correct) {
-            markWrongAndMaybeMentor(input);
-        } else {
+        if (correct) {
+            triggerCorrectCombatFeedback(result);
             setConsecutiveWrong(0);
+        } else {
+            markWrongAndMaybeMentor(input);
         }
     };
 
@@ -277,10 +273,11 @@ export function BattleInterface() {
         const result = answerQuestion(idx, { userResponse: spokenText });
         setResultMessage(result.explanation);
         queueUnlockedAchievements();
-        if (!correct) {
-            markWrongAndMaybeMentor(spokenText);
-        } else {
+        if (correct) {
+            triggerCorrectCombatFeedback(result);
             setConsecutiveWrong(0);
+        } else {
+            markWrongAndMaybeMentor(spokenText);
         }
     };
 

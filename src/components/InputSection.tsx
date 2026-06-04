@@ -14,15 +14,17 @@ import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
 import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
-import { FSRSCard } from '@/db/db';
+import { FSRSCard, getPlayerProfile } from '@/db/db';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import { getDailyPracticePlan, PracticePlan, PracticePlanStep } from '@/lib/data/dailyPracticePlan';
+import { buildDailyFlameStatus, DailyFlameStatus } from '@/lib/data/dailyFlame';
 import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
 import {
     createPracticePlanRun,
     currentPracticePlanStep,
     loadPracticePlanStepLaunch
 } from '@/lib/data/practicePlanRunner';
+import { DailyFlameCard } from './DailyFlameCard';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -61,6 +63,7 @@ export function InputSection() {
     const [showDailyChallenge, setShowDailyChallenge] = useState(false);
     const [showSRSDashboard, setShowSRSDashboard] = useState(false);
     const [practicePlan, setPracticePlan] = useState<PracticePlan | null>(null);
+    const [dailyFlameStatus, setDailyFlameStatus] = useState<DailyFlameStatus | null>(null);
     const [isPlanLoading, setIsPlanLoading] = useState(false);
     const [planError, setPlanError] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -72,7 +75,12 @@ export function InputSection() {
         setIsPlanLoading(true);
         setPlanError('');
         try {
-            setPracticePlan(await getDailyPracticePlan());
+            const [nextPlan, profile] = await Promise.all([
+                getDailyPracticePlan(),
+                getPlayerProfile()
+            ]);
+            setPracticePlan(nextPlan);
+            setDailyFlameStatus(buildDailyFlameStatus({ profile }));
         } catch (err) {
             console.error(err);
             setPlanError(language === 'zh' ? '今日计划暂时无法读取。' : 'Practice plan is unavailable right now.');
@@ -273,6 +281,10 @@ export function InputSection() {
             />
 
             <div className="w-full max-w-2xl mx-auto p-6">
+                {dailyFlameStatus && (
+                    <DailyFlameCard status={dailyFlameStatus} language={language} />
+                )}
+
                 <PracticePlanPanel
                     plan={practicePlan}
                     isLoading={isPlanLoading}

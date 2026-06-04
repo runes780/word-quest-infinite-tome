@@ -89,4 +89,77 @@ describe('BattleScene art assets', () => {
 
         expect(screen.getByText('Stage 3 / 3')).toBeInTheDocument();
     });
+
+    test('renders each damage text once', () => {
+        render(
+            <BattleScene
+                currentQuestion={question}
+                showResult
+                isCorrect
+                attackType="slash"
+                particles={[]}
+                damageText={[{
+                    id: 1,
+                    x: 0,
+                    y: -50,
+                    text: '-1',
+                    color: '#ffffff',
+                    scale: 1,
+                    rotate: 0
+                }]}
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                playerStreak={0}
+                comboScale={1}
+                bossComboThreshold={2}
+                t={translations.en}
+            />
+        );
+
+        expect(screen.getAllByText('-1')).toHaveLength(1);
+    });
+
+    test('does not label regular monsters as bosses', () => {
+        render(
+            <BattleScene
+                currentQuestion={question}
+                showResult={false}
+                isCorrect={false}
+                attackType="slash"
+                particles={[]}
+                damageText={[]}
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                playerStreak={0}
+                comboScale={1}
+                bossComboThreshold={2}
+                t={translations.en}
+            />
+        );
+
+        expect(screen.queryByText('vocab BOSS')).not.toBeInTheDocument();
+        expect(screen.getByText('vocab')).toBeInTheDocument();
+    });
+
+    test('clips monster shading to the circular asset frame', () => {
+        const { container } = render(
+            <BattleScene
+                currentQuestion={question}
+                showResult={false}
+                isCorrect={false}
+                attackType="slash"
+                particles={[]}
+                damageText={[]}
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                playerStreak={0}
+                comboScale={1}
+                bossComboThreshold={2}
+                t={translations.en}
+            />
+        );
+
+        const shade = container.querySelector('[class*="bg-gradient-to-t"][class*="from-black/40"]');
+        expect(shade).toHaveClass('rounded-full');
+    });
 });
