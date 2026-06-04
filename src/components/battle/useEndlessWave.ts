@@ -3,9 +3,11 @@ import type { Monster } from '@/store/gameStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
+import type { AIProvider } from '@/lib/ai/modelOptions';
 
 interface UseEndlessWaveParams {
     apiKey: string;
+    apiProvider: AIProvider;
     model: string;
     context: string;
     currentIndex: number;
@@ -92,6 +94,7 @@ function mapFallbackQuestionToMonster(item: {
 
 export function useEndlessWave({
     apiKey,
+    apiProvider,
     model,
     context,
     currentIndex,
@@ -113,7 +116,7 @@ export function useEndlessWave({
             const contextHash = hashContext(context);
 
             try {
-                const client = new OpenRouterClient(apiKey, model);
+                const client = new OpenRouterClient(apiKey, model, apiProvider);
                 const prompt = generateLevelPrompt(
                     `${context}\n\n(Player is Level ${playerLevel}. Generate a new wave of challengers!)`
                 );
@@ -167,7 +170,7 @@ export function useEndlessWave({
         };
 
         generateMoreQuestions();
-    }, [currentIndex, questionsLength, isGeneratingMore, context, apiKey, model, addQuestions, playerLevel]);
+    }, [currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions, playerLevel]);
 
     return { isGeneratingMore };
 }

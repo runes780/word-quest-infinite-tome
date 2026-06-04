@@ -1,5 +1,6 @@
 
 import { logOpenRouterMetric } from './metrics';
+import type { AIProvider } from './modelOptions';
 
 export interface OpenRouterResponse {
     choices: {
@@ -72,8 +73,12 @@ export class OpenRouterClient {
     private isFreeModel: boolean;
     private scheduler: RequestScheduler;
 
-    constructor(private apiKey: string, private model: string) {
-        this.isFreeModel = model.endsWith(':free');
+    constructor(
+        private apiKey: string,
+        private model: string,
+        private provider: AIProvider = 'openrouter'
+    ) {
+        this.isFreeModel = provider === 'openrouter' && model.endsWith(':free');
         this.scheduler = this.isFreeModel ? sharedSchedulers.free : sharedSchedulers.paid;
         // Free models need more retries due to rate limits
         this.maxRetries = this.isFreeModel ? 2 : 1;
@@ -102,10 +107,10 @@ export class OpenRouterClient {
                         }
                         attempts += 1;
 
-                        console.log(`[OpenRouter] Sending streaming request to ${this.model}...`);
+                        console.log(`[AI] Sending ${this.provider} streaming request to ${this.model}...`);
 
                         fetchTimeoutId = setTimeout(() => {
-                            console.log(`[OpenRouter] Fetch timed out after ${this.fetchTimeoutMs / 1000}s`);
+                            console.log(`[AI] Fetch timed out after ${this.fetchTimeoutMs / 1000}s`);
                             controller.abort();
                         }, this.fetchTimeoutMs);
 
@@ -122,14 +127,23 @@ export class OpenRouterClient {
                             requestBody.response_format = { type: "json_object" };
                         }
 
-                        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                        const headers: Record<string, string> = {
+                            "Authorization": `Bearer ${this.apiKey}`,
+                            "Content-Type": "application/json"
+                        };
+
+                        if (this.provider === 'openrouter') {
+                            headers["HTTP-Referer"] = "https://wordquest.app";
+                            headers["X-Title"] = "Word Quest";
+                        }
+
+                        const endpoint = this.provider === 'deepseek'
+                            ? "https://api.deepseek.com/chat/completions"
+                            : "https://openrouter.ai/api/v1/chat/completions";
+
+                        const response = await fetch(endpoint, {
                             method: "POST",
-                            headers: {
-                                "Authorization": `Bearer ${this.apiKey}`,
-                                "Content-Type": "application/json",
-                                "HTTP-Referer": "https://wordquest.app",
-                                "X-Title": "Word Quest",
-                            },
+                            headers,
                             body: JSON.stringify(requestBody),
                             signal: controller.signal
                         });
@@ -137,12 +151,12 @@ export class OpenRouterClient {
                         clearTimeout(fetchTimeoutId);
                         fetchTimeoutId = undefined;
 
-                        console.log(`[OpenRouter] Response status: ${response.status}`);
+                        console.log(`[AI] Response status: ${response.status}`);
                         lastStatusCode = response.status;
 
                         if (!response.ok) {
                             const errorText = await response.text();
-                            console.error(`[OpenRouter] API Error: ${response.status} - ${errorText}`);
+                            console.error(`[AI] API Error: ${response.status} - ${errorText}`);
 
                             // Fatal errors - don't retry
                             if (response.status === 401 || response.status === 400) {
@@ -153,7 +167,7 @@ export class OpenRouterClient {
                             if (response.status === 429) {
                                 rateLimitHits += 1;
                                 const waitTime = this.isFreeModel ? 8000 + attempt * 5000 : 3000 + attempt * 2000;
-                                console.log(`[OpenRouter] Rate limited (429). Waiting ${waitTime / 1000}s before retry...`);
+                                console.log(`[AI] Rate limited (429). Waiting ${waitTime / 1000}s before retry...`);
                                 await new Promise(r => setTimeout(r, waitTime));
                             }
 
@@ -162,7 +176,7 @@ export class OpenRouterClient {
                         }
 
                         // Stream reading using ReadableStream
-                        console.log(`[OpenRouter] Reading streaming response...`);
+                        console.log(`[AI] Reading streaming response...`);
 
                         const reader = response.body?.getReader();
                         if (!reader) {
@@ -178,7 +192,7 @@ export class OpenRouterClient {
                             const { done, value } = await reader.read();
 
                             if (done) {
-                                console.log(`[OpenRouter] Stream complete. Total chunks: ${chunkCount}`);
+                                console.log(`[AI] Stream complete. Total chunks: ${chunkCount}`);
                                 break;
                             }
 
@@ -202,7 +216,7 @@ export class OpenRouterClient {
 
                                             // Log progress every 10 chunks
                                             if (chunkCount % 10 === 0) {
-                                                console.log(`[OpenRouter] Received ${chunkCount} chunks, ${fullContent.length} chars...`);
+                                                console.log(`[AI] Received ${chunkCount} chunks, ${fullContent.length} chars...`);
                                             }
                                         }
                                     } catch {
@@ -213,12 +227,12 @@ export class OpenRouterClient {
                         }
 
                         if (!fullContent) {
-                            console.warn(`[OpenRouter] Empty response received`);
+                            console.warn(`[AI] Empty response received`);
                             lastError = new Error('OpenRouter returned empty response');
                             continue;
                         }
 
-                        console.log(`[OpenRouter] Success! Total: ${fullContent.length} chars`);
+                        console.log(`[AI] Success! Total: ${fullContent.length} chars`);
                         void logOpenRouterMetric({
                             model: this.model,
                             isFreeModel: this.isFreeModel,
@@ -236,7 +250,7 @@ export class OpenRouterClient {
                         if (err.name === 'AbortError') {
                             lastError = new Error(`Request aborted (fetch timeout). The model may be overloaded.`);
                         } else {
-                            console.error(`[OpenRouter] Error:`, err.message);
+                            console.error(`[AI] Error:`, err.message);
                             lastError = err;
                             // 400/401 are credential/request issues and should not be retried.
                             if (/OpenRouter API Error:\s*(400|401)\b/.test(err.message)) {

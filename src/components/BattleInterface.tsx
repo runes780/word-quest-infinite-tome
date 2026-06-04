@@ -55,7 +55,7 @@ export function BattleInterface() {
 
 
 
-    const { apiKey, model, language, soundEnabled, ttsEnabled } = useSettingsStore();
+    const { apiKey, apiProvider, model, language, soundEnabled, ttsEnabled } = useSettingsStore();
     const t = translations[language];
     const speechLang = language === 'zh' ? 'zh-CN' : 'en-US';
     const fragmentsRemainder = rootFragments % CRAFT_THRESHOLD;
@@ -83,6 +83,7 @@ export function BattleInterface() {
     const currentQuestion = questions[currentIndex];
     const { isGeneratingMore } = useEndlessWave({
         apiKey,
+        apiProvider,
         model,
         context,
         currentIndex,

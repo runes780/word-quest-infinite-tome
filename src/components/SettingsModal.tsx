@@ -3,20 +3,25 @@
 import { useSettingsStore } from '@/store/settingsStore';
 import { Settings, X, RefreshCw, ToggleLeft, ToggleRight, Volume2, VolumeX, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { translations } from '@/lib/translations';
 import { buildModelOptions, RouterModelOption } from '@/lib/ai/modelOptions';
 
 export function SettingsModal() {
-    const { apiKey, setApiKey, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, theme, setTheme, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
+    const { apiKey, setApiKey, apiProvider, setApiProvider, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, theme, setTheme, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
     const [availableModels, setAvailableModels] = useState<RouterModelOption[]>([]);
     const [isLoadingModels, setIsLoadingModels] = useState(false);
     const [showFreeOnly, setShowFreeOnly] = useState(false);
 
     const t = translations[language];
-    const isFreeModel = model.endsWith(':free');
+    const isOpenRouter = apiProvider === 'openrouter';
+    const isFreeModel = isOpenRouter && model.endsWith(':free');
+    const apiKeyLabel = apiProvider === 'deepseek'
+        ? (language === 'zh' ? 'DeepSeek 官方 API Key' : 'DeepSeek Official API Key')
+        : t.settings.apiKey;
 
-    const fetchModels = async () => {
+    const fetchModels = useCallback(async () => {
+        if (!isOpenRouter) return;
         setIsLoadingModels(true);
         try {
             // Although public, we fetch after key input to simulate "connecting"
@@ -30,16 +35,20 @@ export function SettingsModal() {
         } finally {
             setIsLoadingModels(false);
         }
-    };
+    }, [isOpenRouter]);
 
     // Auto-fetch if key exists and we haven't fetched yet
     useEffect(() => {
-        if (isSettingsOpen && apiKey && availableModels.length === 0) {
+        if (isSettingsOpen && isOpenRouter && apiKey && availableModels.length === 0) {
             fetchModels();
         }
-    }, [isSettingsOpen, apiKey, availableModels.length]);
+    }, [isSettingsOpen, isOpenRouter, apiKey, availableModels.length, fetchModels]);
 
-    const displayModels = buildModelOptions(availableModels, showFreeOnly);
+    const displayModels = buildModelOptions({
+        provider: apiProvider,
+        remoteModels: availableModels,
+        freeOnly: showFreeOnly
+    });
 
     return (
         <>
@@ -144,29 +153,59 @@ export function SettingsModal() {
 
                                 <div>
                                     <label className="block text-sm font-medium mb-2 text-muted-foreground">
-                                        {t.settings.apiKey}
+                                        {language === 'zh' ? 'API 服务' : 'API Provider'}
+                                    </label>
+                                    <div className="flex gap-2 p-1 bg-secondary/50 rounded-lg border border-input w-fit">
+                                        <button
+                                            onClick={() => setApiProvider('deepseek')}
+                                            className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${apiProvider === 'deepseek' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            DeepSeek
+                                        </button>
+                                        <button
+                                            onClick={() => setApiProvider('openrouter')}
+                                            className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${apiProvider === 'openrouter' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            OpenRouter
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium mb-2 text-muted-foreground">
+                                        {apiKeyLabel}
                                     </label>
                                     <div className="flex gap-2">
                                         <input
                                             type="password"
                                             value={apiKey}
                                             onChange={(e) => setApiKey(e.target.value)}
-                                            placeholder="sk-or-..."
+                                            placeholder={apiProvider === 'deepseek' ? 'sk-...' : 'sk-or-...'}
                                             className="flex-1 bg-secondary/50 border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-primary outline-none"
                                         />
-                                        <button
-                                            onClick={fetchModels}
-                                            disabled={isLoadingModels || !apiKey}
-                                            className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg font-medium transition-colors disabled:opacity-50"
-                                        >
-                                            {isLoadingModels ? <RefreshCw className="w-4 h-4 animate-spin" /> : t.settings.connect}
-                                        </button>
+                                        {isOpenRouter && (
+                                            <button
+                                                onClick={fetchModels}
+                                                disabled={isLoadingModels || !apiKey}
+                                                className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg font-medium transition-colors disabled:opacity-50"
+                                            >
+                                                {isLoadingModels ? <RefreshCw className="w-4 h-4 animate-spin" /> : t.settings.connect}
+                                            </button>
+                                        )}
                                     </div>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        Enter key to load available models.
+                                        {apiProvider === 'deepseek'
+                                            ? (language === 'zh'
+                                                ? '使用 DeepSeek 官方 OpenAI 兼容接口。'
+                                                : 'Uses the official DeepSeek OpenAI-compatible endpoint.')
+                                            : 'Enter key to load available models.'}
                                     </p>
                                     <div className="mt-3 text-xs text-muted-foreground bg-secondary/40 border border-secondary/60 rounded-lg p-3">
-                                        {isFreeModel ? t.settings.rateLimitFree : t.settings.rateLimitPaid}
+                                        {apiProvider === 'deepseek'
+                                            ? (language === 'zh'
+                                                ? '默认使用 deepseek-v4-flash。'
+                                                : 'Defaults to deepseek-v4-flash.')
+                                            : isFreeModel ? t.settings.rateLimitFree : t.settings.rateLimitPaid}
                                     </div>
                                 </div>
 
@@ -175,17 +214,19 @@ export function SettingsModal() {
                                         <label className="block text-sm font-medium text-muted-foreground">
                                             {t.settings.model}
                                         </label>
-                                        <button
-                                            onClick={() => setShowFreeOnly(!showFreeOnly)}
-                                            className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                                        >
-                                            {showFreeOnly ? (
-                                                <ToggleRight className="w-4 h-4" />
-                                            ) : (
-                                                <ToggleLeft className="w-4 h-4" />
-                                            )}
-                                            Free Models Only
-                                        </button>
+                                        {isOpenRouter && (
+                                            <button
+                                                onClick={() => setShowFreeOnly(!showFreeOnly)}
+                                                className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                                            >
+                                                {showFreeOnly ? (
+                                                    <ToggleRight className="w-4 h-4" />
+                                                ) : (
+                                                    <ToggleLeft className="w-4 h-4" />
+                                                )}
+                                                Free Models Only
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="relative">
                                         <select
@@ -209,7 +250,11 @@ export function SettingsModal() {
                                         </div>
                                     </div>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        {showFreeOnly
+                                        {apiProvider === 'deepseek'
+                                            ? (language === 'zh'
+                                                ? 'DeepSeek 官方模型，直接请求 api.deepseek.com。'
+                                                : 'Official DeepSeek models, sent directly to api.deepseek.com.')
+                                            : showFreeOnly
                                             ? "Showing only free models (ending in :free)"
                                             : "Select a neural model for mission generation."}
                                     </p>

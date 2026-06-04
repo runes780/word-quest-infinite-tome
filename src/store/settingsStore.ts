@@ -1,11 +1,17 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import {
+    AIProvider,
+    getDefaultModelForProvider,
+    isModelAvailableForProvider
+} from '@/lib/ai/modelOptions';
 
 export type Theme = 'light' | 'dark';
 
 interface SettingsState {
     apiKey: string;
+    apiProvider: AIProvider;
     model: string;
     language: 'en' | 'zh';
     theme: Theme;
@@ -13,6 +19,7 @@ interface SettingsState {
     ttsEnabled: boolean;
     isSettingsOpen: boolean;
     setApiKey: (key: string) => void;
+    setApiProvider: (provider: AIProvider) => void;
     setModel: (model: string) => void;
     setLanguage: (lang: 'en' | 'zh') => void;
     setTheme: (theme: Theme) => void;
@@ -20,6 +27,11 @@ interface SettingsState {
     setTtsEnabled: (enabled: boolean) => void;
     setSettingsOpen: (isOpen: boolean) => void;
 }
+
+type PersistedSettingsState = Pick<
+    SettingsState,
+    'apiKey' | 'apiProvider' | 'model' | 'language' | 'theme' | 'soundEnabled' | 'ttsEnabled'
+>;
 
 // Apply theme to document
 function applyTheme(theme: Theme) {
@@ -32,13 +44,20 @@ export const useSettingsStore = create<SettingsState>()(
     persist(
         (set) => ({
             apiKey: '',
-            model: 'google/gemini-flash-1.5',
+            apiProvider: 'deepseek',
+            model: 'deepseek-v4-flash',
             language: 'en',
             theme: 'light',
             soundEnabled: true,
             ttsEnabled: false,
             isSettingsOpen: false,
             setApiKey: (apiKey) => set({ apiKey }),
+            setApiProvider: (apiProvider) => set((state) => ({
+                apiProvider,
+                model: isModelAvailableForProvider(apiProvider, state.model)
+                    ? state.model
+                    : getDefaultModelForProvider(apiProvider)
+            })),
             setModel: (model) => set({ model }),
             setLanguage: (language) => set({ language }),
             setTheme: (theme) => {
@@ -51,8 +70,26 @@ export const useSettingsStore = create<SettingsState>()(
         }),
         {
             name: 'word-quest-settings',
+            version: 1,
+            migrate: (persistedState): PersistedSettingsState => {
+                const state = persistedState as Partial<PersistedSettingsState>;
+                const apiProvider = state.apiProvider || 'openrouter';
+
+                return {
+                    apiKey: state.apiKey || '',
+                    apiProvider,
+                    model: state.model && isModelAvailableForProvider(apiProvider, state.model)
+                        ? state.model
+                        : getDefaultModelForProvider(apiProvider),
+                    language: state.language || 'en',
+                    theme: state.theme || 'light',
+                    soundEnabled: state.soundEnabled ?? true,
+                    ttsEnabled: state.ttsEnabled ?? false
+                };
+            },
             partialize: (state) => ({
                 apiKey: state.apiKey,
+                apiProvider: state.apiProvider,
                 model: state.model,
                 language: state.language,
                 theme: state.theme,

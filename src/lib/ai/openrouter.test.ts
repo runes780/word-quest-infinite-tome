@@ -88,4 +88,25 @@ describe('OpenRouterClient shared scheduler', () => {
         await expectation;
         expect(global.fetch).toHaveBeenCalledTimes(1);
     });
+
+    test('routes official DeepSeek requests to the DeepSeek chat completions endpoint', async () => {
+        const client = new OpenRouterClient('deepseek-key', 'deepseek-v4-flash', 'deepseek');
+        const response = client.generate('prompt-d', 'system-d');
+
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(global.fetch).toHaveBeenCalled();
+        await expect(response).resolves.toContain('ok');
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            'https://api.deepseek.com/chat/completions',
+            expect.objectContaining({
+                method: 'POST',
+                headers: expect.objectContaining({
+                    Authorization: 'Bearer deepseek-key',
+                    'Content-Type': 'application/json'
+                }),
+                body: expect.stringContaining('"model":"deepseek-v4-flash"')
+            })
+        );
+    });
 });

@@ -24,7 +24,7 @@ interface MentorOverlayProps {
 const COOLDOWN_MS = 6000;
 
 export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onRevenge }: MentorOverlayProps) {
-    const { apiKey, model, language } = useSettingsStore();
+    const { apiKey, apiProvider, model, language } = useSettingsStore();
     const t = translations[language];
     const [analysis, setAnalysis] = useState('');
     const [causeTag, setCauseTag] = useState('');
@@ -105,7 +105,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
             }
 
             try {
-                const client = new OpenRouterClient(apiKey, model);
+                const client = new OpenRouterClient(apiKey, model, apiProvider);
                 const prompt = generateMentorPrompt(
                     question.question,
                     wrongAnswer,
@@ -190,7 +190,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
         return () => {
             cancelled = true;
         };
-    }, [isOpen, question, wrongAnswer, apiKey, model, language, t]);
+    }, [isOpen, question, wrongAnswer, apiKey, apiProvider, model, language, t]);
 
     const handleChallenge = () => {
         if (revengeQuestion) {

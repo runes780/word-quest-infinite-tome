@@ -25,6 +25,7 @@ import {
     loadPracticePlanStepLaunch
 } from '@/lib/data/practicePlanRunner';
 import { DailyFlameCard } from './DailyFlameCard';
+import type { AIProvider } from '@/lib/ai/modelOptions';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -68,7 +69,7 @@ export function InputSection() {
     const [planError, setPlanError] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { startGame } = useGameStore();
-    const { apiKey, model, setSettingsOpen, language } = useSettingsStore();
+    const { apiKey, apiProvider, model, setSettingsOpen, language } = useSettingsStore();
     const t = translations[language];
 
     const refreshPracticePlan = useCallback(async () => {
@@ -142,7 +143,7 @@ export function InputSection() {
         setFallbackLevel(null);
 
         try {
-            const data = await fetchMissionWithRetry(input, apiKey, model);
+            const data = await fetchMissionWithRetry(input, apiKey, model, apiProvider);
             if (!data.monsters || !Array.isArray(data.monsters)) {
                 throw new Error('Invalid data format received from AI');
             }
@@ -608,8 +609,8 @@ const extractJsonBlock = (input: string) => {
     return input.slice(start, end + 1);
 };
 
-const fetchMissionWithRetry = async (text: string, apiKey: string, model: string) => {
-    const client = new OpenRouterClient(apiKey, model);
+const fetchMissionWithRetry = async (text: string, apiKey: string, model: string, apiProvider: AIProvider) => {
+    const client = new OpenRouterClient(apiKey, model, apiProvider);
     const parseRetryLimit = 1;
     let lastError: Error | null = null;
 

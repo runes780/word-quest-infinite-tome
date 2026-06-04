@@ -35,7 +35,7 @@ export function MissionReport() {
         activePracticePlanRun,
         startGame
     } = useGameStore();
-    const { apiKey, model, language, setSettingsOpen } = useSettingsStore();
+    const { apiKey, apiProvider, model, language, setSettingsOpen } = useSettingsStore();
     const t = translations[language];
     const hasApiKey = Boolean(apiKey?.trim());
     const [analysis, setAnalysis] = useState<{ mvp_skill: string; weakness: string; advice: string; mistake_analysis?: string } | null>(null);
@@ -113,7 +113,7 @@ export function MissionReport() {
         setIsLoading(true);
         setAnalysisError(null);
         try {
-            const client = new OpenRouterClient(apiKey, model);
+            const client = new OpenRouterClient(apiKey, model, apiProvider);
             const prompt = generateReportPrompt(score, questions.length, userAnswers);
             const jsonStr = await client.generate(prompt, REPORT_SYSTEM_PROMPT);
             const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
