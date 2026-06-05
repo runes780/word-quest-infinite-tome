@@ -165,9 +165,29 @@ export function ParentDashboard() {
     const scrollToSection = useCallback((id: DashboardSectionId) => {
         setActiveSection(id);
         const node = sectionRefs.current[id];
+        const container = reportRef.current;
         if (!node) return;
-        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        node.focus({ preventScroll: true });
+        if (!container) {
+            node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            node.focus({ preventScroll: true });
+            return;
+        }
+
+        const containerRect = container.getBoundingClientRect();
+        const nodeRect = node.getBoundingClientRect();
+        const targetTop = Math.max(0, container.scrollTop + nodeRect.top - containerRect.top - 8);
+        if (typeof container.scrollTo === 'function') {
+            container.scrollTo({ top: targetTop, behavior: 'smooth' });
+        } else {
+            container.scrollTop = targetTop;
+        }
+
+        const focusNode = () => node.focus({ preventScroll: true });
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(focusNode);
+        } else {
+            focusNode();
+        }
     }, []);
 
     const dashboardNavItems = useMemo<DashboardNavItem[]>(() => [
@@ -649,7 +669,7 @@ export function ParentDashboard() {
                                     </div>
                                 </header>
 
-                                <div ref={reportRef} className="min-h-0 flex-1 overflow-y-auto p-4 md:p-7">
+                                <div ref={reportRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-7">
                                     {error && (
                                         <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
                                             {error}
@@ -660,7 +680,7 @@ export function ParentDashboard() {
                                         ref={registerSection('overview')}
                                         tabIndex={-1}
                                         aria-label={isZh ? '仪表盘总览' : 'Dashboard overview'}
-                                        className="grid gap-4 outline-none sm:grid-cols-2 xl:grid-cols-5"
+                                        className="grid gap-4 outline-none sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
                                     >
                                         <KpiCard
                                             title={isZh ? '平均掌握度' : 'Mastery Score (Avg.)'}
@@ -710,7 +730,7 @@ export function ParentDashboard() {
                                         />
                                     </section>
 
-                                    <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
+                                    <section className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_minmax(0,0.9fr)]">
                                         <Panel title={isZh ? '掌握进度' : 'Mastery Progress'} subtitle={isZh ? '按技能域查看平均掌握度' : 'Average mastery by domain'} icon={LineChart} sectionRef={registerSection('mastery')}>
                                             {skillRows.length > 0 ? (
                                                 <div className="space-y-4">
@@ -748,7 +768,7 @@ export function ParentDashboard() {
                                         </Panel>
                                     </section>
 
-                                    <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
+                                    <section className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
                                         <Panel title={isZh ? '每周趋势' : 'Weekly Trend'} subtitle={isZh ? '正确率与任务量走势' : 'Accuracy and mission volume'} icon={BarChart3} sectionRef={registerSection('trend')}>
                                             <WeeklyTrend rows={dailyRows} />
                                         </Panel>
@@ -810,7 +830,7 @@ export function ParentDashboard() {
                                         </Panel>
                                     </section>
 
-                                    <section className="mt-4 grid gap-4 xl:grid-cols-3">
+                                    <section className="mt-4 grid gap-4 xl:grid-cols-[repeat(3,minmax(0,1fr))]">
                                         <Panel title={isZh ? '计划执行' : 'Plan vs Completion'} subtitle={isZh ? '今晚建议执行回写' : 'Guardian action follow-through'} icon={CheckCircle2} sectionRef={registerSection('plan')}>
                                             <div className="grid grid-cols-3 gap-3">
                                                 <MiniMetric label={isZh ? '计划' : 'Planned'} value={planSnapshot.totalActions} />
@@ -913,8 +933,8 @@ function SidebarItem({
             aria-current={active ? 'true' : undefined}
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
         >
-            <Icon className="h-5 w-5" />
-            {label}
+            <Icon className="h-5 w-5 shrink-0" />
+            <span className="truncate">{label}</span>
         </button>
     );
 }
@@ -962,7 +982,7 @@ function KpiCard({
                 type="button"
                 onClick={onClick}
                 aria-label={ariaLabel}
-                className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                className="min-h-[124px] min-w-0 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
                 {content}
             </button>
@@ -970,7 +990,7 @@ function KpiCard({
     }
 
     return (
-        <div className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="min-h-[124px] min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             {content}
         </div>
     );
@@ -996,16 +1016,16 @@ function Panel({
             ref={sectionRef}
             tabIndex={sectionRef ? -1 : undefined}
             aria-label={title}
-            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         >
             <header className="mb-4 flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
                         <Icon className="h-5 w-5" />
                     </span>
-                    <div>
-                        <h3 className="font-black tracking-tight text-slate-950">{title}</h3>
-                        <p className="text-sm text-slate-500">{subtitle}</p>
+                    <div className="min-w-0">
+                        <h3 className="break-words font-black leading-tight tracking-tight text-slate-950">{title}</h3>
+                        <p className="break-words text-sm leading-snug text-slate-500">{subtitle}</p>
                     </div>
                 </div>
                 {badge && (
@@ -1054,7 +1074,7 @@ function ReviewQueueRow({ card, index }: { card: FSRSCard; index: number; }) {
                 <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review')}</p>
                 <p className="truncate text-xs text-slate-500">{card.question}</p>
             </div>
-            <div className="text-right">
+            <div className="shrink-0 text-right">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priority}</span>
                 <p className="mt-1 text-xs text-slate-500">{status.statusText.en}</p>
             </div>
@@ -1103,7 +1123,7 @@ function TimelineRow({
             <div className="min-w-0 flex-1 border-b border-slate-100 pb-3 last:border-0">
                 <div className="flex items-start justify-between gap-3">
                     <p className="text-sm font-black text-slate-900">{title}</p>
-                    <span className="text-xs font-semibold text-slate-500">{meta}</span>
+                    <span className="shrink-0 text-xs font-semibold text-slate-500">{meta}</span>
                 </div>
                 <p className="mt-1 truncate text-xs text-slate-500">{detail}</p>
             </div>

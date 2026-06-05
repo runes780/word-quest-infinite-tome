@@ -11,6 +11,8 @@ const DEFAULT_MODE_SEQUENCE: QuestionMode[] = [
 const CJK_REGEX = /[\u3400-\u9FFF]/;
 const OPTION_PREFIX_REGEX = /^\s*[(\[]?[A-Da-d][\)\].:-]\s*/;
 const PLACEHOLDER_OPTION_REGEX = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|\d+)$/i;
+const META_CONTENT_REGEX = /\b(?:api|api key|api provider|provider|model|model name|openrouter|deepseek|gemini|claude|dashboard|guardian dashboard|settings|system status|json|schema|field name|question mode|skill tag|correct index|source context|support level|attempt kind|learning objective|context hash)\b/i;
+const INTERNAL_FIELD_REGEX = /\b(?:questionMode|skillTag|correct_index|correctIndex|correctAnswer|sourceContextSpan|learningObjectiveId|supportLevel|attemptKind|apiProvider|apiKey|contextHash|level_title)\b/i;
 
 const ADVANCED_WORDS = new Set([
     'meticulous',
@@ -131,8 +133,21 @@ function pickFallback(index: number, preferredType: Monster['type'] | null): Mon
 
 function isValidQuestionPayload(question: string, options: string[]): boolean {
     if (!isEnglishOnly(question) || !isA1A2Friendly(question)) return false;
+    if (isMetaContentPayload(question, options)) return false;
     if (options.length !== 4) return false;
     return options.every((option) => isEnglishOnly(option) && isA1A2Friendly(option));
+}
+
+function isMetaContentPayload(question: string, options: string[]): boolean {
+    const combined = [question, ...options].join(' ');
+    if (INTERNAL_FIELD_REGEX.test(combined)) return true;
+    if (!META_CONTENT_REGEX.test(combined)) return false;
+
+    const lowerQuestion = question.toLowerCase();
+    return (
+        /\b(api|provider|model|dashboard|settings|json|schema|field|question mode|skill tag|source context|support level|attempt kind|learning objective)\b/.test(lowerQuestion) ||
+        options.some((option) => /\b(openrouter|deepseek|gemini|claude)\b/i.test(option))
+    );
 }
 
 export function normalizeMissionMonsters(input: unknown[]): Monster[] {

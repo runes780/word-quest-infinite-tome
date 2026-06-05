@@ -9,6 +9,36 @@ describe('Prompt Generators', () => {
         expect(prompt).toContain('JSON Only');
     });
 
+    test('generateLevelPrompt removes app schema and generator instructions from source material', () => {
+        const input = `
+Open Guardian Dashboard
+questionMode: choice
+skillTag: reading_detail
+correct_index: 0
+sourceContextSpan: daily_plan
+The fox runs under the pine tree.
+(Player is Level 5. Generate a new wave of challengers!)
+`;
+
+        const prompt = generateLevelPrompt(input);
+
+        expect(prompt).toContain('The fox runs under the pine tree.');
+        expect(prompt).not.toContain('Open Guardian Dashboard');
+        expect(prompt).not.toContain('questionMode');
+        expect(prompt).not.toContain('skillTag');
+        expect(prompt).not.toContain('correct_index');
+        expect(prompt).not.toContain('sourceContextSpan');
+        expect(prompt).not.toContain('Player is Level');
+        expect(prompt).not.toContain('Generate a new wave');
+    });
+
+    test('generateLevelPrompt includes learner level guidance outside the reading material', () => {
+        const prompt = generateLevelPrompt('The fox runs under the pine tree.', { learnerLevel: 5 });
+
+        expect(prompt).toContain('Learner level: 5');
+        expect(prompt).toContain('Keep difficulty aligned to this learner level');
+    });
+
     test('LEVEL_GENERATOR_SYSTEM_PROMPT includes new requirements', () => {
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Grammar (50%)');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Hint');
@@ -17,6 +47,7 @@ describe('Prompt Generators', () => {
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('difficulty');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('questionMode');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('correctAnswer');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never ask about JSON keys, app labels, provider names, model names, or internal field names');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never output all questions in "choice" mode');
     });
 

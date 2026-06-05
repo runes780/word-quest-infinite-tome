@@ -62,4 +62,39 @@ describe('normalizeMissionMonsters', () => {
         expect(normalized[0].correct_index).toBe(0);
         expect(normalized[0].correctAnswer).toBe('classroom');
     });
+
+    test('replaces schema or app-field questions with safe fallback content', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 4,
+                type: 'reading',
+                question: 'What does sourceContextSpan mean?',
+                options: ['source text', 'player score', 'model name', 'api key'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'source text',
+                explanation: 'sourceContextSpan is a field.',
+                hint: 'Look at the field name.',
+                skillTag: 'schema_field'
+            },
+            {
+                id: 5,
+                type: 'vocab',
+                question: 'Which API provider is used?',
+                options: ['DeepSeek', 'OpenRouter', 'Gemini', 'Claude'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'DeepSeek',
+                explanation: 'DeepSeek is the selected provider.',
+                hint: 'It is in settings.',
+                skillTag: 'api_provider'
+            }
+        ]);
+
+        expect(normalized).toHaveLength(2);
+        expect(normalized[0].question).not.toContain('sourceContextSpan');
+        expect(normalized[0].sourceContextSpan).toBe('sanitized_fallback');
+        expect(normalized[1].question).not.toContain('API provider');
+        expect(normalized[1].sourceContextSpan).toBe('sanitized_fallback');
+    });
 });

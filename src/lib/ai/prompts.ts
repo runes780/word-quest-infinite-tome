@@ -24,9 +24,12 @@ Generate **6-8** questions. Each must test a skill, not a random detail. Distrib
 - **Question Stem**: short (<15 words), simple A1/A2 vocabulary.
 - **Options**: 4 options. 1 correct, 3 plausible distractors. Never output speaker names or labels (e.g., "Tom:", "Mike") as the correct option.
 - **No placeholder options**: Never output bare placeholders like "A", "B", "C", "D", "Option A", or "Choice 1".
+- **Source Grounding**: Every question must be answerable from the Input Text. Do not use app UI, schemas, settings, logs, or model configuration as learning content.
+- Never ask about JSON keys, app labels, provider names, model names, or internal field names.
 - **Hint**: One short English clue in simple words.
 - **Explanation**: One short English explanation in simple words (not just restating the answer).
 - **Language**: Question, options, hint, explanation, and correctAnswer must be English-only text (no Chinese characters).
+- **Level Fit**: Match vocabulary and grammar difficulty to the provided learner level. Lower levels need shorter stems, easier words, and clearer distractors.
 - **Question Mode Mix (mandatory)**:
   - 50% "choice"
   - 30% "typing"
@@ -92,6 +95,10 @@ Generate a brief "Mission Debrief" in Chinese for a Grade 4-6 student.
 }
 `;
 
+export interface GenerateLevelPromptOptions {
+  learnerLevel?: number;
+}
+
 /**
  * Sanitize context text to remove any game instructions, explanations, or meta content
  * that might pollute the learning material prompt
@@ -122,26 +129,49 @@ function sanitizeContext(text: string): string {
     cleaned = cleaned.replace(pattern, '');
   }
 
-  // Remove excessive whitespace/newlines
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+  const internalFieldPattern = /^\s*["']?(?:id|type|skillTag|difficulty|questionMode|question|options|correct_index|correctIndex|correctAnswer|hint|explanation|learningObjectiveId|sourceContextSpan|supportLevel|attemptKind|causeTag|contextHash|level_title|monsters|apiProvider|apiKey|model|modelName|provider)["']?\s*[:=]/i;
+  const uiLabelPattern = /^\s*(?:open guardian dashboard|guardian dashboard|ai learning companion|quick actions|system status|settings|open system status|open recommendations|open report trends|open mission follow-through|word quest|battle configuration|json only)\s*$/i;
+  const jsonSyntaxPattern = /^\s*[{}\[\],]+\s*$/;
+  const providerConfigPattern = /\b(?:openrouter|deepseek|gemini|claude|api provider|model name|api key)\b/i;
 
-  // If cleaned text is too short (< 20 chars), return original to avoid empty prompts
-  if (cleaned.length < 20) {
-    return text.trim();
-  }
+  const keptLines = cleaned
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (internalFieldPattern.test(line)) return false;
+      if (uiLabelPattern.test(line)) return false;
+      if (jsonSyntaxPattern.test(line)) return false;
+      if (providerConfigPattern.test(line) && /^[\w\s:."'/-]+$/.test(line) && line.length < 90) return false;
+      return true;
+    });
 
-  return cleaned;
+  cleaned = keptLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return cleaned || 'A student reads a short story at school and practices simple English words.';
 }
 
-export function generateLevelPrompt(text: string): string {
+export function generateLevelPrompt(text: string, options: GenerateLevelPromptOptions = {}): string {
   const cleanText = sanitizeContext(text);
+  const levelGuidance = Number.isFinite(options.learnerLevel)
+    ? `
+# Learner Guidance
+Learner level: ${options.learnerLevel}
+- Keep difficulty aligned to this learner level.
+- Use easier stems and clearer distractors for lower levels; add only one tricky step for higher levels.
+`
+    : '';
   return `
 # Input Text (English Reading Material)
+"""
 ${cleanText}
+"""
+${levelGuidance}
 
 # Important Notes
 - Generate questions ONLY based on the reading material above
+- Every question must be answerable from the Input Text
 - DO NOT include any game instructions, explanations, or meta content in your questions
+- DO NOT use dashboard labels, JSON fields, API settings, provider names, or model names as question content
 - Focus on vocabulary and grammar from the actual text
 
 # Response (JSON Only)

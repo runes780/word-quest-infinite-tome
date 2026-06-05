@@ -3,6 +3,7 @@ import { ParentDashboard } from './ParentDashboard';
 
 const startGame = jest.fn();
 const scrollIntoView = jest.fn();
+const scrollTo = jest.fn();
 
 const mockMetric = {
     currentRate: 0.72,
@@ -299,7 +300,9 @@ jest.mock('@/db/db', () => ({
 describe('ParentDashboard visual information architecture', () => {
     beforeEach(() => {
         scrollIntoView.mockClear();
+        scrollTo.mockClear();
         Element.prototype.scrollIntoView = scrollIntoView;
+        HTMLElement.prototype.scrollTo = scrollTo;
     });
 
     test('renders the README-style dashboard sections from the guardian dashboard view model', async () => {
@@ -357,19 +360,20 @@ describe('ParentDashboard visual information architecture', () => {
         });
 
         fireEvent.click(screen.getByLabelText('Open Mission follow-through'));
-        expect(scrollIntoView).toHaveBeenCalled();
+        expect(scrollTo).toHaveBeenCalled();
+        expect(scrollIntoView).not.toHaveBeenCalled();
 
-        scrollIntoView.mockClear();
+        scrollTo.mockClear();
         fireEvent.click(screen.getByLabelText('View dashboard alerts'));
-        expect(scrollIntoView).toHaveBeenCalled();
+        expect(scrollTo).toHaveBeenCalled();
 
-        scrollIntoView.mockClear();
+        scrollTo.mockClear();
         fireEvent.click(screen.getByLabelText('Open mastery evidence'));
-        expect(scrollIntoView).toHaveBeenCalled();
+        expect(scrollTo).toHaveBeenCalled();
 
-        scrollIntoView.mockClear();
+        scrollTo.mockClear();
         fireEvent.click(screen.getByLabelText('Open streak evidence'));
-        expect(scrollIntoView).toHaveBeenCalled();
+        expect(scrollTo).toHaveBeenCalled();
     });
 
     test('keeps the original compact sidebar layout while preserving actionable navigation', async () => {
@@ -395,10 +399,29 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.queryByText('System')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByLabelText('Open System status'));
-        expect(scrollIntoView).toHaveBeenCalled();
+        expect(scrollTo).toHaveBeenCalled();
 
-        scrollIntoView.mockClear();
+        scrollTo.mockClear();
         fireEvent.click(screen.getByLabelText('Open Help and support guidance'));
-        expect(scrollIntoView).toHaveBeenCalled();
+        expect(scrollTo).toHaveBeenCalled();
+    });
+
+    test('uses responsive min-width-safe dashboard grids so long evidence text cannot collapse sibling panels', async () => {
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Good morning, Guardian!')).toBeInTheDocument();
+        });
+
+        const overview = screen.getByLabelText('Dashboard overview');
+        expect(overview.className).toContain('xl:grid-cols-3');
+        expect(overview.className).toContain('2xl:grid-cols-5');
+
+        const masteryPanel = screen.getByLabelText('Mastery Progress');
+        expect(masteryPanel).toHaveClass('min-w-0');
+        expect(masteryPanel.parentElement?.className).toContain('xl:grid-cols-2');
+        expect(masteryPanel.parentElement?.className).toContain('2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_minmax(0,0.9fr)]');
     });
 });

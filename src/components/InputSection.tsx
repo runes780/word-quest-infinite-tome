@@ -143,7 +143,8 @@ export function InputSection() {
         setFallbackLevel(null);
 
         try {
-            const data = await fetchMissionWithRetry(input, apiKey, model, apiProvider);
+            const profile = await getPlayerProfile();
+            const data = await fetchMissionWithRetry(input, apiKey, model, apiProvider, profile.globalLevel);
             if (!data.monsters || !Array.isArray(data.monsters)) {
                 throw new Error('Invalid data format received from AI');
             }
@@ -609,7 +610,7 @@ const extractJsonBlock = (input: string) => {
     return input.slice(start, end + 1);
 };
 
-const fetchMissionWithRetry = async (text: string, apiKey: string, model: string, apiProvider: AIProvider) => {
+const fetchMissionWithRetry = async (text: string, apiKey: string, model: string, apiProvider: AIProvider, learnerLevel?: number) => {
     const client = new OpenRouterClient(apiKey, model, apiProvider);
     const parseRetryLimit = 1;
     let lastError: Error | null = null;
@@ -618,7 +619,7 @@ const fetchMissionWithRetry = async (text: string, apiKey: string, model: string
     // Keep only a lightweight retry here for parse-only failures.
     for (let attempt = 0; attempt <= parseRetryLimit; attempt++) {
         try {
-            const prompt = generateLevelPrompt(text);
+            const prompt = generateLevelPrompt(text, { learnerLevel });
             const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
             const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
             return safeParseMission(cleanJson);

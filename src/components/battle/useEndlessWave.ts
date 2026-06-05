@@ -117,9 +117,7 @@ export function useEndlessWave({
 
             try {
                 const client = new OpenRouterClient(apiKey, model, apiProvider);
-                const prompt = generateLevelPrompt(
-                    `${context}\n\n(Player is Level ${playerLevel}. Generate a new wave of challengers!)`
-                );
+                const prompt = generateLevelPrompt(context, { learnerLevel: playerLevel });
                 const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
                 const data = extractJsonObject(jsonStr);
 
