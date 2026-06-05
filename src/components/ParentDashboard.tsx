@@ -56,6 +56,7 @@ import type {
     EngagementMetricRow,
     EngagementSnapshot,
     FSRSCard,
+    GlobalPlayerProfile,
     GuardianAcceptanceSnapshot,
     StudyActionExecution,
     StudyActionExecutionGoalSnapshot,
@@ -70,6 +71,7 @@ import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import type { Monster } from '@/store/gameStore';
 import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
+import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
@@ -110,6 +112,8 @@ export function ParentDashboard() {
     const [isOpen, setIsOpen] = useState(false);
     const [range, setRange] = useState<RangeOption>(14);
     const [snapshot, setSnapshot] = useState<DashboardSummary | null>(null);
+    const [playerProfile, setPlayerProfile] = useState<GlobalPlayerProfile | null>(null);
+    const [dailyFlameStatus, setDailyFlameStatus] = useState<DailyFlameStatus | null>(null);
     const [mistakes, setMistakes] = useState<MistakeRecord[]>([]);
     const [dueCards, setDueCards] = useState<FSRSCard[]>([]);
     const [srsDueCount, setSrsDueCount] = useState(0);
@@ -141,6 +145,8 @@ export function ParentDashboard() {
         try {
             const dashboard = await getGuardianDashboardViewModel(range);
             setSnapshot(dashboard.history);
+            setPlayerProfile(dashboard.playerProfile);
+            setDailyFlameStatus(dashboard.dailyFlameStatus);
             setMistakes(dashboard.mistakes);
             setDueCards(dashboard.dueCards);
             setSrsDueCount(dashboard.srsStats.due);
@@ -192,10 +198,25 @@ export function ParentDashboard() {
     const dueStatus = primaryDueCard ? getMemoryStatus(primaryDueCard) : null;
 
     const averageAccuracy = Math.round((snapshot?.totals.accuracy || 0) * 100);
-    const masteryAverage = masterySnapshot && masterySnapshot.totalAttempts > 0
-        ? Math.round((masterySnapshot.totalCorrect / masterySnapshot.totalAttempts) * 100)
-        : averageAccuracy;
-    const currentStreak = computeActivityStreak(dailyRows);
+    const profileMasteryAverage = playerProfile
+        ? Math.round((playerProfile.vocabMastery + playerProfile.grammarMastery + playerProfile.readingMastery) / 3)
+        : null;
+    const masteryAverage = profileMasteryAverage ??
+        (masterySnapshot && masterySnapshot.totalAttempts > 0
+            ? Math.round((masterySnapshot.totalCorrect / masterySnapshot.totalAttempts) * 100)
+            : averageAccuracy);
+    const currentStreak = dailyFlameStatus?.streakDays ?? playerProfile?.dailyStreak ?? computeActivityStreak(dailyRows);
+    const completedMissions = playerProfile?.lessonsCompleted ?? snapshot?.totals.missions ?? 0;
+    const profileLevelHelper = playerProfile
+        ? (isZh
+            ? `等级 ${playerProfile.globalLevel} · ${playerProfile.totalXp} XP`
+            : `Level ${playerProfile.globalLevel} · ${playerProfile.totalXp} XP`)
+        : (isZh ? `窗口 ${range} 天` : `From last ${range} days`);
+    const dailyFlameHelper = dailyFlameStatus
+        ? (isZh
+            ? `今日 ${dailyFlameStatus.dailyXpEarned}/${dailyFlameStatus.dailyXpGoal} XP`
+            : `${dailyFlameStatus.dailyXpEarned}/${dailyFlameStatus.dailyXpGoal} XP today`)
+        : (isZh ? '天连续活跃' : 'days in a row');
     const latestMission = snapshot?.records[0]?.levelTitle || (isZh ? '暂无任务' : 'No mission yet');
     const lastActiveLabel = snapshot?.totals.lastActive
         ? new Date(snapshot.totals.lastActive).toLocaleDateString()
@@ -550,14 +571,14 @@ export function ParentDashboard() {
                                         <KpiCard
                                             title={isZh ? '平均掌握度' : 'Mastery Score (Avg.)'}
                                             value={`${masteryAverage}%`}
-                                            helper={isZh ? `窗口 ${range} 天` : `From last ${range} days`}
+                                            helper={profileLevelHelper}
                                             tone="blue"
                                             icon={LineChart}
                                             ringValue={masteryAverage}
                                         />
                                         <KpiCard
                                             title={isZh ? '完成任务' : 'Missions Completed'}
-                                            value={formatNumber(snapshot?.totals.missions || 0)}
+                                            value={formatNumber(completedMissions)}
                                             helper={latestMission}
                                             tone="amber"
                                             icon={Trophy}
@@ -579,7 +600,7 @@ export function ParentDashboard() {
                                         <KpiCard
                                             title={isZh ? '连续学习' : 'Streak'}
                                             value={currentStreak}
-                                            helper={isZh ? '天连续活跃' : 'days in a row'}
+                                            helper={dailyFlameHelper}
                                             tone="red"
                                             icon={Flame}
                                         />

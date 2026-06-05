@@ -3,6 +3,7 @@ import {
     EngagementSnapshot,
     FSRSCard,
     GuardianAcceptanceSnapshot,
+    GlobalPlayerProfile,
     LearningEvent,
     LearningTask,
     MasteryAggregateSnapshot,
@@ -17,6 +18,7 @@ import {
     getEngagementSnapshot,
     getGuardianAcceptanceSnapshot,
     getMasteryAggregateSnapshot,
+    getPlayerProfile,
     getSRSStats,
     getSessionRecoverySnapshot,
     getStudyActionExecutionGoalSnapshot,
@@ -44,6 +46,7 @@ import {
 import type { HistoryRecord } from '@/db/db';
 import { buildDailyPracticePlan, PracticePlan } from '@/lib/data/dailyPracticePlan';
 import { objectiveTitle } from '@/lib/data/learningObjectives';
+import { buildDailyFlameStatus, DailyFlameStatus } from '@/lib/data/dailyFlame';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -62,6 +65,8 @@ export interface GuardianActivityFeedItem {
 
 export interface GuardianDashboardViewModel {
     history: DashboardSummary;
+    playerProfile: GlobalPlayerProfile;
+    dailyFlameStatus: DailyFlameStatus;
     mistakes: MistakeRecord[];
     dueCards: FSRSCard[];
     srsStats: { total: number; due: number; new: number; learning: number; review: number; };
@@ -266,6 +271,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         consistencyAudit,
         aiMonitor,
         sessionRecovery,
+        playerProfile,
         learningEvents,
         masteryRecords
     ] = await Promise.all([
@@ -286,6 +292,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         getDataConsistencyAuditSnapshot(),
         getAIRequestMonitorSnapshot(7),
         getSessionRecoverySnapshot(14),
+        getPlayerProfile(),
         db.learningEvents
             .where('timestamp')
             .aboveOrEqual(now - Math.max(range, 30) * DAY_MS)
@@ -317,11 +324,15 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dueCards,
         recentMistakes: mistakes,
         learningTasks,
+        profile: playerProfile,
         now
     });
+    const dailyFlameStatus = buildDailyFlameStatus({ profile: playerProfile, now });
 
     return {
         history,
+        playerProfile,
+        dailyFlameStatus,
         mistakes,
         dueCards,
         srsStats,

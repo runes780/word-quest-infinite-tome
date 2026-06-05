@@ -57,6 +57,36 @@ const mockGetGuardianDashboardViewModel = jest.fn(async () => ({
             lastActive: Date.now()
         }
     },
+    playerProfile: {
+        id: 1,
+        totalXp: 432,
+        globalLevel: 5,
+        totalGold: 90,
+        dailyStreak: 9,
+        lastActiveDate: new Date().toISOString().slice(0, 10),
+        dailyXpGoal: 50,
+        dailyXpEarned: 35,
+        wordsLearned: 42,
+        lessonsCompleted: 17,
+        totalStudyMinutes: 86,
+        perfectLessons: 3,
+        vocabMastery: 74,
+        grammarMastery: 61,
+        readingMastery: 82,
+        ownedRelics: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    },
+    dailyFlameStatus: {
+        state: 'needs-practice',
+        streakDays: 9,
+        dailyXpGoal: 50,
+        dailyXpEarned: 35,
+        remainingXp: 15,
+        progressPercent: 70,
+        canUseFreeze: false,
+        lastActiveDate: new Date().toISOString().slice(0, 10)
+    },
     mistakes: [{
         id: 1,
         questionId: 10,
@@ -282,5 +312,19 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Guardian Recommendations')).toBeInTheDocument();
         expect(screen.getByText('Why This Plan')).toBeInTheDocument();
         expect(screen.getByText('Stability Monitor')).toBeInTheDocument();
+    });
+
+    test('binds top KPI cards to the persisted player profile and daily flame state', async () => {
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('17')).toBeInTheDocument();
+        });
+
+        expect(screen.getByText('Level 5 · 432 XP')).toBeInTheDocument();
+        expect(screen.getByText('35/50 XP today')).toBeInTheDocument();
+        expect(screen.getByText('9')).toBeInTheDocument();
     });
 });
