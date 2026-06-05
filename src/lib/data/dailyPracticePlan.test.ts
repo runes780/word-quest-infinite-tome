@@ -108,4 +108,32 @@ describe('daily practice planner', () => {
         expect(plan.steps[0].supportLevel).toBe(3);
         expect(plan.rationale).toContain('starter');
     });
+
+    test('does not create duplicate practice step ids when mistakes and mastery target the same skill', () => {
+        const plan = buildDailyPracticePlan({
+            now,
+            dueCards: [],
+            recentMistakes: [
+                mistake({
+                    skillTag: 'preposition:under',
+                    mentorCauseTag: 'context_understanding',
+                    type: 'grammar'
+                })
+            ],
+            masteryRecords: [
+                mastery({
+                    skillTag: 'preposition:under',
+                    state: 'learning',
+                    score: 45,
+                    attempts: 4,
+                    correct: 2
+                })
+            ],
+            learningTasks: []
+        });
+
+        const stepIds = plan.steps.map((step) => step.id);
+        expect(stepIds).toHaveLength(new Set(stepIds).size);
+        expect(stepIds.filter((id) => id === 'practice_preposition_place_time_preposition_under')).toHaveLength(1);
+    });
 });

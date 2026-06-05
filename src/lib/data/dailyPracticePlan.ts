@@ -181,6 +181,23 @@ function buildStarterPlan(now: number): PracticePlan {
     };
 }
 
+function pushUniqueStep(steps: PracticePlanStep[], step: PracticePlanStep) {
+    const existing = steps.find((candidate) => candidate.id === step.id);
+    if (!existing) {
+        steps.push(step);
+        return true;
+    }
+
+    const seenEvidence = new Set(existing.evidence.map((row) => `${row.source}:${row.label}:${row.value}`));
+    step.evidence.forEach((row) => {
+        const key = `${row.source}:${row.label}:${row.value}`;
+        if (seenEvidence.has(key)) return;
+        seenEvidence.add(key);
+        existing.evidence.push(row);
+    });
+    return false;
+}
+
 export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): PracticePlan {
     const now = input.now ?? Date.now();
     const evidence: PracticePlanEvidence[] = [];
@@ -200,7 +217,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             source: 'srs' as const
         };
         evidence.push(stepEvidence);
-        steps.push({
+        pushUniqueStep(steps, {
             id: stepId('review', objectiveId, data.skillTag),
             type: 'review',
             title: `Review ${objectiveTitle(objectiveId)}`,
@@ -224,7 +241,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             source: 'mistake' as const
         };
         evidence.push(stepEvidence);
-        steps.push({
+        pushUniqueStep(steps, {
             id: stepId('practice', objectiveId, data.skillTag || data.causeTag),
             type: 'practice',
             title: `Fix ${objectiveTitle(objectiveId)}`,
@@ -250,7 +267,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             source: 'mastery' as const
         };
         evidence.push(stepEvidence);
-        steps.push({
+        pushUniqueStep(steps, {
             id: stepId('practice', objectiveId, learningMastery.skillTag),
             type: 'practice',
             title: `Consolidate ${objectiveTitle(objectiveId)}`,
@@ -276,7 +293,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             source: 'mastery' as const
         };
         evidence.push(stepEvidence);
-        steps.push({
+        pushUniqueStep(steps, {
             id: stepId('transfer', objectiveId, transferMastery.skillTag),
             type: 'transfer',
             title: `Transfer ${objectiveTitle(objectiveId)}`,
