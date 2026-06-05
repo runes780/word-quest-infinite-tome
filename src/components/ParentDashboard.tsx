@@ -9,7 +9,6 @@ import {
     BookOpen,
     CalendarDays,
     CheckCircle2,
-    ChevronRight,
     Download,
     Flame,
     GraduationCap,
@@ -20,7 +19,6 @@ import {
     Loader2,
     Printer,
     RefreshCw,
-    Settings,
     ShieldCheck,
     Sparkles,
     Target,
@@ -75,6 +73,24 @@ import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 type RangeOption = typeof RANGE_OPTIONS[number];
+type DashboardSectionId =
+    | 'overview'
+    | 'mastery'
+    | 'review'
+    | 'events'
+    | 'trend'
+    | 'recommendations'
+    | 'stability'
+    | 'plan'
+    | 'repeatedCause'
+    | 'acceptance';
+
+interface DashboardNavItem {
+    id: DashboardSectionId;
+    icon: typeof Home;
+    label: string;
+    ariaLabel: string;
+}
 
 interface TonightActionItem {
     id: string;
@@ -138,6 +154,71 @@ export function ParentDashboard() {
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
     const reportRef = useRef<HTMLDivElement | null>(null);
+    const sectionRefs = useRef<Partial<Record<DashboardSectionId, HTMLElement | null>>>({});
+    const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
+
+    const registerSection = useCallback((id: DashboardSectionId) => (node: HTMLElement | null) => {
+        sectionRefs.current[id] = node;
+    }, []);
+
+    const scrollToSection = useCallback((id: DashboardSectionId) => {
+        setActiveSection(id);
+        const node = sectionRefs.current[id];
+        if (!node) return;
+        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        node.focus({ preventScroll: true });
+    }, []);
+
+    const dashboardNavItems = useMemo<DashboardNavItem[]>(() => [
+        {
+            id: 'overview',
+            icon: Home,
+            label: isZh ? '总览' : 'Overview',
+            ariaLabel: isZh ? '打开总览证据' : 'Open Overview insights'
+        },
+        {
+            id: 'acceptance',
+            icon: Users,
+            label: isZh ? '学习者证据' : 'Learner Signals',
+            ariaLabel: isZh ? '打开学习者证据' : 'Open Learner engagement insights'
+        },
+        {
+            id: 'plan',
+            icon: Layers,
+            label: isZh ? '任务执行' : 'Missions',
+            ariaLabel: isZh ? '打开任务执行' : 'Open Mission follow-through'
+        },
+        {
+            id: 'mastery',
+            icon: BookOpen,
+            label: isZh ? '知识掌握' : 'Knowledge',
+            ariaLabel: isZh ? '打开知识复习证据' : 'Open Knowledge review insights'
+        },
+        {
+            id: 'trend',
+            icon: BarChart3,
+            label: isZh ? '报告趋势' : 'Reports',
+            ariaLabel: isZh ? '打开报告趋势' : 'Open Report trends'
+        },
+        {
+            id: 'recommendations',
+            icon: Sparkles,
+            label: isZh ? '建议' : 'Recommendations',
+            ariaLabel: isZh ? '打开建议' : 'Open Recommendations'
+        },
+        {
+            id: 'events',
+            icon: Activity,
+            label: isZh ? '学习事件' : 'Activity',
+            ariaLabel: isZh ? '打开活动证据' : 'Open Activity evidence'
+        },
+        {
+            id: 'stability',
+            icon: ShieldCheck,
+            label: isZh ? '系统状态' : 'System',
+            ariaLabel: isZh ? '打开系统状态' : 'Open System status'
+        }
+    ], [isZh]);
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
@@ -457,14 +538,16 @@ export function ParentDashboard() {
                                 </div>
 
                                 <nav className="space-y-1">
-                                    <SidebarItem icon={Home} label={isZh ? '总览' : 'Overview'} active />
-                                    <SidebarItem icon={Users} label={isZh ? '学习者' : 'Learners'} />
-                                    <SidebarItem icon={Layers} label={isZh ? '任务' : 'Missions'} />
-                                    <SidebarItem icon={BookOpen} label={isZh ? '知识库' : 'Knowledge'} />
-                                    <SidebarItem icon={BarChart3} label={isZh ? '报告' : 'Reports'} />
-                                    <SidebarItem icon={Sparkles} label={isZh ? '建议' : 'Recommendations'} />
-                                    <SidebarItem icon={Settings} label={isZh ? '设置' : 'Settings'} />
-                                    <SidebarItem icon={HelpCircle} label={isZh ? '帮助' : 'Help & Support'} />
+                                    {dashboardNavItems.map((item) => (
+                                        <SidebarItem
+                                            key={item.id}
+                                            icon={item.icon}
+                                            label={item.label}
+                                            ariaLabel={item.ariaLabel}
+                                            active={activeSection === item.id}
+                                            onClick={() => scrollToSection(item.id)}
+                                        />
+                                    ))}
                                 </nav>
 
                                 <div className="mt-auto space-y-4">
@@ -531,6 +614,7 @@ export function ParentDashboard() {
                                                     <button
                                                         key={option}
                                                         onClick={() => setRange(option)}
+                                                        aria-label={isZh ? `显示 ${option} 天数据` : `Show ${option} day range`}
                                                         className={`rounded-lg px-2 py-1 text-xs ${range === option ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-200'}`}
                                                     >
                                                         {option}
@@ -538,7 +622,11 @@ export function ParentDashboard() {
                                                 ))}
                                             </div>
                                         </div>
-                                        <button className="relative grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white">
+                                        <button
+                                            onClick={() => scrollToSection(repeatedAlert?.active ? 'repeatedCause' : 'stability')}
+                                            aria-label={isZh ? '查看仪表盘提醒' : 'View dashboard alerts'}
+                                            className="relative grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white hover:bg-slate-50"
+                                        >
                                             <Bell className="h-5 w-5 text-slate-600" />
                                             {repeatedAlert?.active && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500" />}
                                         </button>
@@ -567,7 +655,12 @@ export function ParentDashboard() {
                                         </div>
                                     )}
 
-                                    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                                    <section
+                                        ref={registerSection('overview')}
+                                        tabIndex={-1}
+                                        aria-label={isZh ? '仪表盘总览' : 'Dashboard overview'}
+                                        className="grid gap-4 outline-none sm:grid-cols-2 xl:grid-cols-5"
+                                    >
                                         <KpiCard
                                             title={isZh ? '平均掌握度' : 'Mastery Score (Avg.)'}
                                             value={`${masteryAverage}%`}
@@ -575,6 +668,8 @@ export function ParentDashboard() {
                                             tone="blue"
                                             icon={LineChart}
                                             ringValue={masteryAverage}
+                                            ariaLabel={isZh ? '打开掌握度证据' : 'Open mastery evidence'}
+                                            onClick={() => scrollToSection('mastery')}
                                         />
                                         <KpiCard
                                             title={isZh ? '完成任务' : 'Missions Completed'}
@@ -582,6 +677,8 @@ export function ParentDashboard() {
                                             helper={latestMission}
                                             tone="amber"
                                             icon={Trophy}
+                                            ariaLabel={isZh ? '打开任务证据' : 'Open mission evidence'}
+                                            onClick={() => scrollToSection('plan')}
                                         />
                                         <KpiCard
                                             title={isZh ? '已回答题目' : 'Questions Answered'}
@@ -589,6 +686,8 @@ export function ParentDashboard() {
                                             helper={isZh ? `正确 ${snapshot?.totals.correct || 0}` : `${snapshot?.totals.correct || 0} correct`}
                                             tone="green"
                                             icon={HelpCircle}
+                                            ariaLabel={isZh ? '打开答题证据' : 'Open question evidence'}
+                                            onClick={() => scrollToSection('events')}
                                         />
                                         <KpiCard
                                             title={isZh ? '平均正确率' : 'Avg. Accuracy'}
@@ -596,6 +695,8 @@ export function ParentDashboard() {
                                             helper={engagementSnapshot ? statusCopy(engagementSnapshot.dailyChallengeParticipation.status, isZh) : lastActiveLabel}
                                             tone="purple"
                                             icon={Target}
+                                            ariaLabel={isZh ? '打开正确率证据' : 'Open accuracy evidence'}
+                                            onClick={() => scrollToSection('trend')}
                                         />
                                         <KpiCard
                                             title={isZh ? '连续学习' : 'Streak'}
@@ -603,11 +704,13 @@ export function ParentDashboard() {
                                             helper={dailyFlameHelper}
                                             tone="red"
                                             icon={Flame}
+                                            ariaLabel={isZh ? '打开连续学习证据' : 'Open streak evidence'}
+                                            onClick={() => scrollToSection('recommendations')}
                                         />
                                     </section>
 
                                     <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
-                                        <Panel title={isZh ? '掌握进度' : 'Mastery Progress'} subtitle={isZh ? '按技能域查看平均掌握度' : 'Average mastery by domain'} icon={LineChart}>
+                                        <Panel title={isZh ? '掌握进度' : 'Mastery Progress'} subtitle={isZh ? '按技能域查看平均掌握度' : 'Average mastery by domain'} icon={LineChart} sectionRef={registerSection('mastery')}>
                                             {skillRows.length > 0 ? (
                                                 <div className="space-y-4">
                                                     {skillRows.map((skill, index) => (
@@ -619,7 +722,7 @@ export function ParentDashboard() {
                                             )}
                                         </Panel>
 
-                                        <Panel title="Review Queue" subtitle={isZh ? '需要优先关注的复习项目' : 'Items that need attention'} icon={ShieldCheck} badge={String(srsDueCount)}>
+                                        <Panel title="Review Queue" subtitle={isZh ? '需要优先关注的复习项目' : 'Items that need attention'} icon={ShieldCheck} badge={String(srsDueCount)} sectionRef={registerSection('review')}>
                                             {dueCards.length > 0 ? (
                                                 <div className="space-y-3">
                                                     {dueCards.slice(0, 4).map((card, index) => (
@@ -631,7 +734,7 @@ export function ParentDashboard() {
                                             )}
                                         </Panel>
 
-                                        <Panel title="Learning Events" subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity}>
+                                        <Panel title="Learning Events" subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
                                             {learningEvents.length > 0 ? (
                                                 <div className="space-y-4">
                                                     {learningEvents.map((event) => (
@@ -645,11 +748,11 @@ export function ParentDashboard() {
                                     </section>
 
                                     <section className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
-                                        <Panel title={isZh ? '每周趋势' : 'Weekly Trend'} subtitle={isZh ? '正确率与任务量走势' : 'Accuracy and mission volume'} icon={BarChart3}>
+                                        <Panel title={isZh ? '每周趋势' : 'Weekly Trend'} subtitle={isZh ? '正确率与任务量走势' : 'Accuracy and mission volume'} icon={BarChart3} sectionRef={registerSection('trend')}>
                                             <WeeklyTrend rows={dailyRows} />
                                         </Panel>
 
-                                        <Panel title="Guardian Recommendations" subtitle={isZh ? '基于证据的今晚行动' : 'Personalized tips to help learners grow'} icon={Sparkles}>
+                                        <Panel title="Guardian Recommendations" subtitle={isZh ? '基于证据的今晚行动' : 'Personalized tips to help learners grow'} icon={Sparkles} sectionRef={registerSection('recommendations')}>
                                             {dailyPracticePlan && (
                                                 <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -684,7 +787,7 @@ export function ParentDashboard() {
                                             </div>
                                         </Panel>
 
-                                        <Panel title="Stability Monitor" subtitle={isZh ? '系统性能与可靠性' : 'System performance and reliability'} icon={ShieldCheck}>
+                                        <Panel title="Stability Monitor" subtitle={isZh ? '系统性能与可靠性' : 'System performance and reliability'} icon={ShieldCheck} sectionRef={registerSection('stability')}>
                                             <div className="grid grid-cols-3 gap-2">
                                                 <StabilityMetric label={isZh ? '成功率' : 'Success'} value={aiMonitor ? formatPercent(aiMonitor.successRate.currentRate) : '--'} />
                                                 <StabilityMetric label={isZh ? '响应' : 'Avg. Response'} value={aiMonitor ? `${Math.round(aiMonitor.avgLatencyMs)}ms` : '--'} />
@@ -707,7 +810,7 @@ export function ParentDashboard() {
                                     </section>
 
                                     <section className="mt-4 grid gap-4 xl:grid-cols-3">
-                                        <Panel title={isZh ? '计划执行' : 'Plan vs Completion'} subtitle={isZh ? '今晚建议执行回写' : 'Guardian action follow-through'} icon={CheckCircle2}>
+                                        <Panel title={isZh ? '计划执行' : 'Plan vs Completion'} subtitle={isZh ? '今晚建议执行回写' : 'Guardian action follow-through'} icon={CheckCircle2} sectionRef={registerSection('plan')}>
                                             <div className="grid grid-cols-3 gap-3">
                                                 <MiniMetric label={isZh ? '计划' : 'Planned'} value={planSnapshot.totalActions} />
                                                 <MiniMetric label={isZh ? '完成' : 'Done'} value={planSnapshot.completedActions} />
@@ -719,7 +822,7 @@ export function ParentDashboard() {
                                             </p>
                                         </Panel>
 
-                                        <Panel title={isZh ? '重复错因目标' : 'Repeated-Cause Goal'} subtitle={isZh ? '对比基线是否下降 20%' : 'Baseline comparison for 20% reduction'} icon={Target}>
+                                        <Panel title={isZh ? '重复错因目标' : 'Repeated-Cause Goal'} subtitle={isZh ? '对比基线是否下降 20%' : 'Baseline comparison for 20% reduction'} icon={Target} sectionRef={registerSection('repeatedCause')}>
                                             <div className="flex items-center justify-between gap-4">
                                                 <div>
                                                     <p className="text-3xl font-black">{formatPercent(repeatedCauseSnapshot?.repeatRate || 0)}</p>
@@ -746,7 +849,7 @@ export function ParentDashboard() {
                                             )}
                                         </Panel>
 
-                                        <Panel title={isZh ? '监护人采纳' : 'Guardian Acceptance'} subtitle={isZh ? '面板周活与建议追踪' : 'Weekly usage and recommendation loop'} icon={Users}>
+                                        <Panel title={isZh ? '监护人采纳' : 'Guardian Acceptance'} subtitle={isZh ? '面板周活与建议追踪' : 'Weekly usage and recommendation loop'} icon={Users} sectionRef={registerSection('acceptance')}>
                                             <MetricTile metric={guardianAcceptance?.weeklyActiveRate} label={isZh ? '周活跃率' : 'Weekly active'} isZh={isZh} />
                                             <MetricTile metric={engagementSnapshot?.nextDayRetention} label={isZh ? '次日留存' : 'Next-day retention'} isZh={isZh} />
                                         </Panel>
@@ -788,10 +891,26 @@ export function ParentDashboard() {
     );
 }
 
-function SidebarItem({ icon: Icon, label, active = false }: { icon: typeof Home; label: string; active?: boolean; }) {
+function SidebarItem({
+    icon: Icon,
+    label,
+    ariaLabel,
+    active = false,
+    onClick
+}: {
+    icon: typeof Home;
+    label: string;
+    ariaLabel: string;
+    active?: boolean;
+    onClick: () => void;
+}) {
     return (
         <button
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+            type="button"
+            onClick={onClick}
+            aria-label={ariaLabel}
+            aria-current={active ? 'true' : undefined}
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold transition-colors ${active ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
         >
             <Icon className="h-5 w-5" />
             {label}
@@ -805,7 +924,9 @@ function KpiCard({
     helper,
     icon: Icon,
     tone,
-    ringValue
+    ringValue,
+    ariaLabel,
+    onClick
 }: {
     title: string;
     value: string | number;
@@ -813,24 +934,43 @@ function KpiCard({
     icon: typeof LineChart;
     tone: Tone;
     ringValue?: number;
+    ariaLabel?: string;
+    onClick?: () => void;
 }) {
     const toneClass = iconToneClass(tone);
+    const content = (
+        <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-700">{title}</p>
+                <p className="mt-3 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+                <p className="mt-2 text-xs font-medium leading-snug text-slate-500">{helper}</p>
+            </div>
+            {typeof ringValue === 'number' ? (
+                <MasteryRing value={ringValue} />
+            ) : (
+                <div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${toneClass.bg} ${toneClass.text}`}>
+                    <Icon className="h-7 w-7" />
+                </div>
+            )}
+        </div>
+    );
+
+    if (onClick) {
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                aria-label={ariaLabel}
+                className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            >
+                {content}
+            </button>
+        );
+    }
+
     return (
         <div className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-700">{title}</p>
-                    <p className="mt-3 text-3xl font-black tracking-tight text-slate-950">{value}</p>
-                    <p className="mt-2 text-xs font-medium leading-snug text-slate-500">{helper}</p>
-                </div>
-                {typeof ringValue === 'number' ? (
-                    <MasteryRing value={ringValue} />
-                ) : (
-                    <div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${toneClass.bg} ${toneClass.text}`}>
-                        <Icon className="h-7 w-7" />
-                    </div>
-                )}
-            </div>
+            {content}
         </div>
     );
 }
@@ -840,16 +980,23 @@ function Panel({
     subtitle,
     icon: Icon,
     badge,
+    sectionRef,
     children
 }: {
     title: string;
     subtitle: string;
     icon: typeof LineChart;
     badge?: string;
+    sectionRef?: (node: HTMLElement | null) => void;
     children: React.ReactNode;
 }) {
     return (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <section
+            ref={sectionRef}
+            tabIndex={sectionRef ? -1 : undefined}
+            aria-label={title}
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        >
             <header className="mb-4 flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                     <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600">
@@ -1022,25 +1169,30 @@ function RecommendationRow({
                     <p className="mt-2 text-xs font-semibold text-slate-600">{action.evidence}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                         {action.ctaLabel && action.onCta && (
-                            <button onClick={action.onCta} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-black text-white">
+                            <button
+                                onClick={action.onCta}
+                                aria-label={`Start ${action.title}`}
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-black text-white hover:bg-blue-700"
+                            >
                                 {action.ctaLabel}
                             </button>
                         )}
                         <button
                             onClick={() => onSetStatus(action.id, 'completed', action.priority, action.estimatedMinutes)}
+                            aria-label={`Mark ${action.title} done`}
                             className={`rounded-lg px-3 py-1.5 text-xs font-black ${status === 'completed' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
                         >
                             Done
                         </button>
                         <button
                             onClick={() => onSetStatus(action.id, 'skipped', action.priority, action.estimatedMinutes)}
+                            aria-label={`Skip ${action.title}`}
                             className={`rounded-lg px-3 py-1.5 text-xs font-black ${status === 'skipped' ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
                         >
                             Skip
                         </button>
                     </div>
                 </div>
-                <ChevronRight className="mt-3 h-4 w-4 shrink-0 text-slate-400" />
             </div>
         </div>
     );

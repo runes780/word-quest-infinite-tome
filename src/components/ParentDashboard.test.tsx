@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ParentDashboard } from './ParentDashboard';
 
 const startGame = jest.fn();
+const scrollIntoView = jest.fn();
 
 const mockMetric = {
     currentRate: 0.72,
@@ -296,6 +297,11 @@ jest.mock('@/db/db', () => ({
 }));
 
 describe('ParentDashboard visual information architecture', () => {
+    beforeEach(() => {
+        scrollIntoView.mockClear();
+        Element.prototype.scrollIntoView = scrollIntoView;
+    });
+
     test('renders the README-style dashboard sections from the guardian dashboard view model', async () => {
         render(<ParentDashboard />);
 
@@ -326,5 +332,43 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Level 5 · 432 XP')).toBeInTheDocument();
         expect(screen.getByText('35/50 XP today')).toBeInTheDocument();
         expect(screen.getByText('9')).toBeInTheDocument();
+    });
+
+    test('turns dashboard navigation, alert, and KPI surfaces into meaningful evidence links', async () => {
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Good morning, Guardian!')).toBeInTheDocument();
+        });
+
+        [
+            'Open Overview insights',
+            'Open Learner engagement insights',
+            'Open Mission follow-through',
+            'Open Knowledge review insights',
+            'Open Report trends',
+            'Open Recommendations',
+            'Open Activity evidence',
+            'Open System status'
+        ].forEach((label) => {
+            expect(screen.getByLabelText(label)).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByLabelText('Open Mission follow-through'));
+        expect(scrollIntoView).toHaveBeenCalled();
+
+        scrollIntoView.mockClear();
+        fireEvent.click(screen.getByLabelText('View dashboard alerts'));
+        expect(scrollIntoView).toHaveBeenCalled();
+
+        scrollIntoView.mockClear();
+        fireEvent.click(screen.getByLabelText('Open mastery evidence'));
+        expect(scrollIntoView).toHaveBeenCalled();
+
+        scrollIntoView.mockClear();
+        fireEvent.click(screen.getByLabelText('Open streak evidence'));
+        expect(scrollIntoView).toHaveBeenCalled();
     });
 });
