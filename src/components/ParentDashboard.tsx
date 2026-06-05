@@ -19,6 +19,7 @@ import {
     Loader2,
     Printer,
     RefreshCw,
+    Settings,
     ShieldCheck,
     Sparkles,
     Target,
@@ -179,7 +180,7 @@ export function ParentDashboard() {
         {
             id: 'acceptance',
             icon: Users,
-            label: isZh ? '学习者证据' : 'Learner Signals',
+            label: isZh ? '学习者' : 'Learners',
             ariaLabel: isZh ? '打开学习者证据' : 'Open Learner engagement insights'
         },
         {
@@ -191,13 +192,13 @@ export function ParentDashboard() {
         {
             id: 'mastery',
             icon: BookOpen,
-            label: isZh ? '知识掌握' : 'Knowledge',
+            label: isZh ? '知识库' : 'Knowledge',
             ariaLabel: isZh ? '打开知识复习证据' : 'Open Knowledge review insights'
         },
         {
             id: 'trend',
             icon: BarChart3,
-            label: isZh ? '报告趋势' : 'Reports',
+            label: isZh ? '报告' : 'Reports',
             ariaLabel: isZh ? '打开报告趋势' : 'Open Report trends'
         },
         {
@@ -207,16 +208,16 @@ export function ParentDashboard() {
             ariaLabel: isZh ? '打开建议' : 'Open Recommendations'
         },
         {
-            id: 'events',
-            icon: Activity,
-            label: isZh ? '学习事件' : 'Activity',
-            ariaLabel: isZh ? '打开活动证据' : 'Open Activity evidence'
+            id: 'stability',
+            icon: Settings,
+            label: isZh ? '设置' : 'Settings',
+            ariaLabel: isZh ? '打开系统状态' : 'Open System status'
         },
         {
-            id: 'stability',
-            icon: ShieldCheck,
-            label: isZh ? '系统状态' : 'System',
-            ariaLabel: isZh ? '打开系统状态' : 'Open System status'
+            id: 'repeatedCause',
+            icon: HelpCircle,
+            label: isZh ? '帮助' : 'Help & Support',
+            ariaLabel: isZh ? '打开帮助建议' : 'Open Help and support guidance'
         }
     ], [isZh]);
 
@@ -961,7 +962,7 @@ function KpiCard({
                 type="button"
                 onClick={onClick}
                 aria-label={ariaLabel}
-                className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
             >
                 {content}
             </button>

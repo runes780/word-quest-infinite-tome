@@ -350,8 +350,8 @@ describe('ParentDashboard visual information architecture', () => {
             'Open Knowledge review insights',
             'Open Report trends',
             'Open Recommendations',
-            'Open Activity evidence',
-            'Open System status'
+            'Open System status',
+            'Open Help and support guidance'
         ].forEach((label) => {
             expect(screen.getByLabelText(label)).toBeInTheDocument();
         });
@@ -369,6 +369,36 @@ describe('ParentDashboard visual information architecture', () => {
 
         scrollIntoView.mockClear();
         fireEvent.click(screen.getByLabelText('Open streak evidence'));
+        expect(scrollIntoView).toHaveBeenCalled();
+    });
+
+    test('keeps the original compact sidebar layout while preserving actionable navigation', async () => {
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Good morning, Guardian!')).toBeInTheDocument();
+        });
+
+        expect(screen.getByLabelText('Open Overview insights')).toHaveTextContent('Overview');
+        expect(screen.getByLabelText('Open Learner engagement insights')).toHaveTextContent('Learners');
+        expect(screen.getByLabelText('Open Mission follow-through')).toHaveTextContent('Missions');
+        expect(screen.getByLabelText('Open Knowledge review insights')).toHaveTextContent('Knowledge');
+        expect(screen.getByLabelText('Open Report trends')).toHaveTextContent('Reports');
+        expect(screen.getByLabelText('Open Recommendations')).toHaveTextContent('Recommendations');
+        expect(screen.getByLabelText('Open System status')).toHaveTextContent('Settings');
+        expect(screen.getByLabelText('Open Help and support guidance')).toHaveTextContent('Help & Support');
+
+        expect(screen.queryByText('Learner Signals')).not.toBeInTheDocument();
+        expect(screen.queryByText('Activity')).not.toBeInTheDocument();
+        expect(screen.queryByText('System')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByLabelText('Open System status'));
+        expect(scrollIntoView).toHaveBeenCalled();
+
+        scrollIntoView.mockClear();
+        fireEvent.click(screen.getByLabelText('Open Help and support guidance'));
         expect(scrollIntoView).toHaveBeenCalled();
     });
 });
