@@ -64,6 +64,29 @@ describe('BattleScene art assets', () => {
         expectImageSrc(screen.getByAltText(/fireball/i), '/assets/battle/effect-fireball.png');
     });
 
+    test('places attack impact effects on the monster instead of the hero', () => {
+        render(
+            <BattleScene
+                currentQuestion={question}
+                showResult
+                isCorrect
+                attackType="lightning"
+                particles={[]}
+                damageText={[]}
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                playerStreak={0}
+                comboScale={1}
+                bossComboThreshold={2}
+                t={translations.en}
+            />
+        );
+
+        const attackEffect = screen.getByTestId('attack-impact-effect');
+        expect(screen.getByTestId('monster-combatant')).toContainElement(attackEffect);
+        expect(screen.getByTestId('hero-combatant')).not.toContainElement(attackEffect);
+    });
+
     test('renders boss stage progress for multi-stage boss gates', () => {
         render(
             <BattleScene

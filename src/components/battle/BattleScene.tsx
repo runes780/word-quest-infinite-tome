@@ -85,6 +85,7 @@ export function BattleScene({
                         }
                         transition={showResult ? { duration: 0.5 } : { repeat: Infinity, duration: 2, ease: "easeInOut" }}
                         className="relative group"
+                        data-testid="hero-combatant"
                     >
                         <div className="absolute inset-0 bg-blue-500/30 blur-xl rounded-full group-hover:bg-blue-500/50 transition-all duration-500" />
 
@@ -98,51 +99,6 @@ export function BattleScene({
                                 className="h-[118%] w-[118%] object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.35)]"
                                 draggable={false}
                             />
-
-                            <AnimatePresence>
-                                {showResult && isCorrect && (
-                                    <>
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.5 }}
-                                            animate={{ opacity: 1, scale: 1.5 }}
-                                            exit={{ opacity: 0 }}
-                                            className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
-                                        >
-                                            <motion.div
-                                                initial={{ scale: 0.7, opacity: 0, rotate: attackType === 'slash' ? -8 : 0 }}
-                                                animate={{ scale: 1.15, opacity: 1, rotate: attackType === 'slash' ? 4 : 0 }}
-                                                transition={{ duration: 0.22 }}
-                                                className={cn(
-                                                    'absolute h-32 w-32 object-contain drop-shadow-[0_0_16px_rgba(255,255,255,0.75)]',
-                                                    attackType === 'fireball' && 'animate-pulse',
-                                                    attackType === 'lightning' && 'animate-bounce'
-                                                )}
-                                            >
-                                                <Image
-                                                    src={attackEffectAsset.src}
-                                                    alt={attackEffectAsset.alt}
-                                                    width={128}
-                                                    height={128}
-                                                    sizes="128px"
-                                                    className="h-full w-full object-contain"
-                                                    draggable={false}
-                                                />
-                                            </motion.div>
-                                        </motion.div>
-
-                                        {particles.map((p) => (
-                                            <motion.div
-                                                key={p.id}
-                                                initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
-                                                animate={{ x: p.x, y: p.y, opacity: 0, scale: 0 }}
-                                                transition={{ duration: 0.6, ease: "easeOut" }}
-                                                className="absolute w-2 h-2 rounded-full pointer-events-none z-10"
-                                                style={{ backgroundColor: p.color, left: '50%', top: '50%' }}
-                                            />
-                                        ))}
-                                    </>
-                                )}
-                            </AnimatePresence>
                         </div>
 
                         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur px-4 py-1 rounded-full border border-blue-500/50 text-blue-200 text-xs font-bold tracking-widest uppercase">
@@ -186,6 +142,7 @@ export function BattleScene({
                                 : { repeat: Infinity, duration: 3, ease: "easeInOut" }
                         }
                         className="relative group"
+                        data-testid="monster-combatant"
                     >
                         <div className={cn(
                             "absolute inset-0 blur-xl rounded-full transition-all duration-500",
@@ -210,6 +167,52 @@ export function BattleScene({
                                 draggable={false}
                             />
                             <div className="absolute inset-0 rounded-full bg-gradient-to-t from-black/40 to-transparent" />
+
+                            <AnimatePresence>
+                                {showResult && isCorrect && (
+                                    <>
+                                        <motion.div
+                                            data-testid="attack-impact-effect"
+                                            initial={{ opacity: 0, scale: 0.5 }}
+                                            animate={{ opacity: 1, scale: 1.35 }}
+                                            exit={{ opacity: 0 }}
+                                            className="absolute inset-0 flex items-center justify-center pointer-events-none z-30"
+                                        >
+                                            <motion.div
+                                                initial={{ scale: 0.7, opacity: 0, rotate: attackType === 'slash' ? -8 : 0 }}
+                                                animate={{ scale: 1.15, opacity: 1, rotate: attackType === 'slash' ? 4 : 0 }}
+                                                transition={{ duration: 0.22 }}
+                                                className={cn(
+                                                    'absolute h-32 w-32 object-contain drop-shadow-[0_0_16px_rgba(255,255,255,0.75)]',
+                                                    attackType === 'fireball' && 'animate-pulse',
+                                                    attackType === 'lightning' && 'animate-bounce'
+                                                )}
+                                            >
+                                                <Image
+                                                    src={attackEffectAsset.src}
+                                                    alt={attackEffectAsset.alt}
+                                                    width={128}
+                                                    height={128}
+                                                    sizes="128px"
+                                                    className="h-full w-full object-contain"
+                                                    draggable={false}
+                                                />
+                                            </motion.div>
+                                        </motion.div>
+
+                                        {particles.map((p) => (
+                                            <motion.div
+                                                key={p.id}
+                                                initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+                                                animate={{ x: p.x, y: p.y, opacity: 0, scale: 0 }}
+                                                transition={{ duration: 0.6, ease: "easeOut" }}
+                                                className="absolute w-2 h-2 rounded-full pointer-events-none z-20"
+                                                style={{ backgroundColor: p.color, left: '50%', top: '50%' }}
+                                            />
+                                        ))}
+                                    </>
+                                )}
+                            </AnimatePresence>
                         </div>
 
                         <AnimatePresence>
