@@ -22,6 +22,12 @@ export interface FallbackQuestion {
     difficulty: 'easy' | 'medium' | 'hard';
 }
 
+const DIFFICULTY_RANK: Record<FallbackQuestion['difficulty'], number> = {
+    easy: 0,
+    medium: 1,
+    hard: 2
+};
+
 export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
     // === VOCABULARY - Easy ===
     {
@@ -64,8 +70,8 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         question: 'What does "enormous" mean?',
         options: ['Tiny', 'Average', 'Very large', 'Normal'],
         correct_index: 2,
-        explanation: '"Enormous" means extremely large or huge. Example: An elephant is enormous.',
-        hint: 'It is similar to "huge" or "gigantic".',
+        explanation: '"Enormous" means very large. Example: An elephant is enormous.',
+        hint: 'It means very big.',
         skillTag: 'vocab:enormous',
         difficulty: 'medium'
     },
@@ -86,7 +92,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         question: 'What does "ancient" mean?',
         options: ['New', 'Modern', 'Very old', 'Recent'],
         correct_index: 2,
-        explanation: '"Ancient" means belonging to the very distant past, especially before the fall of the Roman Empire.',
+        explanation: '"Ancient" means very old, from long ago.',
         hint: 'Think about pyramids and dinosaurs.',
         skillTag: 'vocab:ancient',
         difficulty: 'medium'
@@ -190,8 +196,8 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         question: 'Choose the correct conditional: "If I ___ rich, I would travel the world."',
         options: ['am', 'was', 'were', 'will be'],
         correct_index: 2,
-        explanation: 'In the second conditional (hypothetical), we use "were" for all subjects.',
-        hint: 'Hypothetical conditionals use "were".',
+        explanation: 'This talks about an imagined situation, so "were" fits here.',
+        hint: 'For an imagined "if" sentence, try "were".',
         skillTag: 'grammar:conditional',
         difficulty: 'hard'
     },
@@ -271,7 +277,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         question: 'Read: "The scientist\'s discovery revolutionized medicine." What does "revolutionized" suggest?',
         options: ['Made a small change', 'Caused complete transformation', 'Had no effect', 'Was ignored'],
         correct_index: 1,
-        explanation: '"Revolutionize" means to completely change something in a fundamental way.',
+        explanation: '"Revolutionized" means changed something in a very big way.',
         hint: 'Think about what "revolution" means.',
         skillTag: 'reading:vocabulary_in_context',
         difficulty: 'hard'
@@ -292,13 +298,19 @@ export function getRandomFallbackQuestions(count: number, difficulty?: 'easy' | 
 }
 
 // Get balanced questions (mix of types and difficulties)
-export function getBalancedFallbackQuestions(count: number): FallbackQuestion[] {
+export function getBalancedFallbackQuestions(
+    count: number,
+    maxDifficulty: FallbackQuestion['difficulty'] = 'medium'
+): FallbackQuestion[] {
     const types: ('vocab' | 'grammar' | 'reading')[] = ['vocab', 'grammar', 'reading'];
     const result: FallbackQuestion[] = [];
     const perType = Math.ceil(count / 3);
+    const pool = FALLBACK_QUESTIONS.filter((question) =>
+        DIFFICULTY_RANK[question.difficulty] <= DIFFICULTY_RANK[maxDifficulty]
+    );
 
     for (const type of types) {
-        const typeQuestions = FALLBACK_QUESTIONS.filter(q => q.type === type);
+        const typeQuestions = pool.filter(q => q.type === type);
         const shuffled = [...typeQuestions].sort(() => Math.random() - 0.5);
         result.push(...shuffled.slice(0, perType));
     }

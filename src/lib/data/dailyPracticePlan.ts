@@ -153,7 +153,7 @@ function buildStarterPlan(now: number): PracticePlan {
             supportLevel: 3,
             attemptKind: 'practice',
             rationale: 'Reading details create evidence for later inference work.',
-            evidence: [{ label: 'Starter path', value: 'Recommended Grade 5 baseline', source: 'starter' }]
+            evidence: [{ label: 'Starter path', value: 'Adaptive baseline before local evidence', source: 'starter' }]
         },
         {
             id: 'starter_transfer',

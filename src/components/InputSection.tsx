@@ -96,7 +96,9 @@ export function InputSection() {
 
     const startStarterPlan = useCallback((step?: PracticePlanStep) => {
         const sample = SAMPLE_LEVELS[0];
-        const monsters = normalizeMissionMonsters(sample.monsters).map((monster) => ({
+        const monsters = normalizeMissionMonsters(sample.monsters, {
+            sourceText: `${sample.title}\n${sample.context}`
+        }).map((monster) => ({
             ...monster,
             learningObjectiveId: step?.objectiveId || monster.learningObjectiveId,
             supportLevel: step?.supportLevel ?? monster.supportLevel,
@@ -150,7 +152,7 @@ export function InputSection() {
             }
 
             // Store questions and show blessing selection
-            const normalizedMonsters = normalizeMissionMonsters(data.monsters);
+            const normalizedMonsters = normalizeMissionMonsters(data.monsters, { sourceText: input });
             setPendingQuestions({ monsters: normalizedMonsters, context: input });
             setShowBlessingSelection(true);
             setFallbackLevel(null);
@@ -169,7 +171,9 @@ export function InputSection() {
 
     const handleUseSample = () => {
         if (!fallbackLevel) return;
-        const normalizedMonsters = normalizeMissionMonsters(fallbackLevel.monsters);
+        const normalizedMonsters = normalizeMissionMonsters(fallbackLevel.monsters, {
+            sourceText: `${fallbackLevel.title}\n${fallbackLevel.context}`
+        });
         // Store sample and show blessing selection
         setPendingQuestions({
             monsters: normalizedMonsters,

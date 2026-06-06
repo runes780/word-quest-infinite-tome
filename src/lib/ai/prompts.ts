@@ -1,12 +1,13 @@
 import type { UserAnswer } from '@/store/gameStore';
+import { analyzeMaterialProfile } from './materialProfile';
 export const LEVEL_GENERATOR_SYSTEM_PROMPT = `
 # Role
-You are an expert ESL teacher for Grade 5 students in China. Your goal is to create a "Battle Configuration" of 5 to 8 questions based on the provided text.
+You are an expert adaptive ESL teacher. Your goal is to create a "Battle Configuration" of 5 to 8 questions based on the provided text.
 
 # Target Audience
-- Grade 5 Chinese students (approx. 10-11 years old).
-- English Level: CEFR A1/A2 (Beginner/Elementary).
-- They struggle with complex sentence structures and abstract concepts.
+- English language learners using this app to practice the uploaded material.
+- Infer the appropriate language level from the source material and learner evidence.
+- Do not assume a fixed school grade, age, country, or CEFR band unless the source material clearly indicates it.
 
 # Question Requirements (Aim for Skill Transfer, not rote recall)
 Generate **6-8** questions. Each must test a skill, not a random detail. Distribute types:
@@ -21,7 +22,7 @@ Generate **6-8** questions. Each must test a skill, not a random detail. Distrib
    - Avoid trivial memory (colors/names) unless tied to an adjective/concept.
 
 # Constraints
-- **Question Stem**: short (<15 words), simple A1/A2 vocabulary.
+- **Question Stem**: concise and no harder than the source span being tested.
 - **Options**: 4 options. 1 correct, 3 plausible distractors. Never output speaker names or labels (e.g., "Tom:", "Mike") as the correct option.
 - **No placeholder options**: Never output bare placeholders like "A", "B", "C", "D", "Option A", or "Choice 1".
 - **Source Grounding**: Every question must be answerable from the Input Text. Do not use app UI, schemas, settings, logs, or model configuration as learning content.
@@ -29,7 +30,10 @@ Generate **6-8** questions. Each must test a skill, not a random detail. Distrib
 - **Hint**: One short English clue in simple words.
 - **Explanation**: One short English explanation in simple words (not just restating the answer).
 - **Language**: Question, options, hint, explanation, and correctAnswer must be English-only text (no Chinese characters).
-- **Level Fit**: Match vocabulary and grammar difficulty to the provided learner level. Lower levels need shorter stems, easier words, and clearer distractors.
+- **Adaptive Level Fit**: Match each question to the exact source sentence, word, grammar form, or inference it tests. Different questions may have different difficulty.
+- **Material Difficulty Ceiling**: Do not exceed the source material difficulty. Easier questions are allowed inside harder material.
+- Do not explain simple source words with harder synonyms. Example: explain "big" with "very big", not "enormous" or "gigantic".
+- If the source is English, never generate Chinese question text, options, hints, explanations, or answers.
 - **Question Mode Mix (mandatory)**:
   - 50% "choice"
   - 30% "typing"
@@ -57,13 +61,19 @@ Each "monster" represents a question and includes:
 
 export const MENTOR_SYSTEM_PROMPT = `
 # Role
-You are a tactical AI advisor in a game. A young player (Grade 4-6) is stuck on a battle.
+You are a tactical AI advisor in a game for an English learner.
 
 # Task
 1. Analyze why the player might have chosen the wrong answer.
-2. Explain the correct answer using a fun analogy or simple logic. DO NOT lecture. Talk like a supportive game guide.
+2. Explain the correct answer using simple logic based on the current question. DO NOT lecture. Talk like a supportive game guide.
 3. Add a concise error cause tag and one concrete next action.
 4. Create a BRAND NEW mini-question (a "Counter-Attack" move) testing the exact same logic to let the player practice immediately.
+5. Infer the right difficulty from the current question. Do not assume a fixed school grade, age, country, or CEFR band.
+
+# Counter-Attack Rules
+- revenge_question must be English-only. Do not output Chinese characters in question text or options.
+- revenge_question must be the same difficulty or easier than the original question.
+- Use words that are no harder than the original question unless the original question is testing that exact word.
 
 # Output Format (JSON)
 {
@@ -84,7 +94,8 @@ You are a senior commander in a game.
 
 # Task
 Analyze the battle report (list of questions and results).
-Generate a brief "Mission Debrief" in Chinese for a Grade 4-6 student.
+Generate a brief "Mission Debrief" in Chinese for this learner.
+Infer the learner's current needs from the battle report. Do not assume a fixed school grade, age, country, or CEFR band.
 
 # Output Format (JSON)
 {
@@ -152,26 +163,42 @@ function sanitizeContext(text: string): string {
 
 export function generateLevelPrompt(text: string, options: GenerateLevelPromptOptions = {}): string {
   const cleanText = sanitizeContext(text);
+  const profile = analyzeMaterialProfile(cleanText);
   const levelGuidance = Number.isFinite(options.learnerLevel)
     ? `
 # Learner Guidance
 Learner level: ${options.learnerLevel}
-- Keep difficulty aligned to this learner level.
-- Use easier stems and clearer distractors for lower levels; add only one tricky step for higher levels.
+- Use this as a soft signal only. Source material difficulty and the exact tested source span are the primary constraints.
+- If learner evidence conflicts with the material, prefer simpler wording without changing what the material tests.
 `
     : '';
+  const materialGuidance = `
+# Source Material Profile
+Source language: ${profile.language}
+Estimated material difficulty: ${profile.difficulty} (${profile.bandLabel})
+Allowed question difficulties: ${profile.allowedQuestionDifficulties.join(', ')}
+Maximum question difficulty: ${profile.maxQuestionDifficulty}
+- Do not exceed the source material difficulty.
+- Choose each monster difficulty from the allowed list based on its own sourceContextSpan.
+- Keep hints and explanations at or below that monster's difficulty; use shorter words than the target word when possible.
+- Do not explain simple source words with harder synonyms.
+- If the source is English, never generate Chinese question text, options, hints, explanations, or answers.
+`;
   return `
-# Input Text (English Reading Material)
+# Input Text (Learning Material)
 """
 ${cleanText}
 """
 ${levelGuidance}
+${materialGuidance}
 
 # Important Notes
 - Generate questions ONLY based on the reading material above
 - Every question must be answerable from the Input Text
 - DO NOT include any game instructions, explanations, or meta content in your questions
 - DO NOT use dashboard labels, JSON fields, API settings, provider names, or model names as question content
+- The "difficulty" field for every monster must be one of: ${profile.allowedQuestionDifficulties.join(', ')}
+- Hint and explanation must be no harder than the source span being tested
 - Focus on vocabulary and grammar from the actual text
 
 # Response (JSON Only)
@@ -194,6 +221,8 @@ Correct Answer: "${correctAnswer}"
 Skill Tag: "${skillTag || 'unknown'}"
 Difficulty: "${difficulty || 'unknown'}"
 Question Mode: "${mode || 'choice'}"
+Mini-question language: English only. Do not output Chinese in revenge_question.
+Mini-question difficulty: same or easier than "${difficulty || 'easy'}".
 `;
 }
 

@@ -5,7 +5,7 @@ import {
 } from './learningObjectives';
 
 describe('learning objective catalog', () => {
-    test('maps common skill tags into stable Grade 5 objectives', () => {
+    test('maps common skill tags into stable adaptive objectives', () => {
         expect(mapSkillTagToObjectiveId({ skillTag: 'past_tense' })).toBe('past_tense_basic');
         expect(mapSkillTagToObjectiveId({ skillTag: 'grammar:past_simple' })).toBe('past_tense_basic');
         expect(mapSkillTagToObjectiveId({ skillTag: 'reading:inference' })).toBe('reading_inference');

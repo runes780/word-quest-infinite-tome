@@ -122,7 +122,7 @@ export function useEndlessWave({
                 const data = extractJsonObject(jsonStr);
 
                 if (Array.isArray(data.monsters)) {
-                    const normalizedWave = normalizeMissionMonsters(data.monsters);
+                    const normalizedWave = normalizeMissionMonsters(data.monsters, { sourceText: context });
                     if (normalizedWave.length === 0) {
                         throw new Error('Generated mission has no valid questions');
                     }
@@ -154,12 +154,12 @@ export function useEndlessWave({
 
                 if (cached.length > 0) {
                     console.log(`[Cache] Using ${cached.length} cached questions`);
-                    const normalizedCached = normalizeMissionMonsters(cached.map(mapCachedQuestionToMonster));
+                    const normalizedCached = normalizeMissionMonsters(cached.map(mapCachedQuestionToMonster), { sourceText: context });
                     setTimeout(() => addQuestions(normalizedCached), 500);
                 } else {
                     console.log('[Fallback] Using local question bank');
                     const fallback = getRandomFallbackQuestions(5, 'easy');
-                    const normalizedFallback = normalizeMissionMonsters(fallback.map(mapFallbackQuestionToMonster));
+                    const normalizedFallback = normalizeMissionMonsters(fallback.map(mapFallbackQuestionToMonster), { sourceText: context });
                     setTimeout(() => addQuestions(normalizedFallback), 500);
                 }
             } finally {

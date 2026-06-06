@@ -97,4 +97,70 @@ describe('normalizeMissionMonsters', () => {
         expect(normalized[1].question).not.toContain('API provider');
         expect(normalized[1].sourceContextSpan).toBe('sanitized_fallback');
     });
+
+    test('replaces questions above the source material difficulty', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 6,
+                type: 'vocab',
+                question: 'What does enormous mean?',
+                options: ['small', 'red', 'very big', 'fast'],
+                correct_index: 2,
+                difficulty: 'hard',
+                questionMode: 'choice',
+                correctAnswer: 'very big',
+                explanation: 'Enormous means very big.',
+                hint: 'Think of a giant building.'
+            }
+        ], { sourceText: 'The cat is big.' });
+
+        expect(normalized[0].id).toBe(6);
+        expect(normalized[0].sourceContextSpan).toBe('sanitized_fallback');
+        expect(normalized[0].difficulty).toBe('easy');
+        expect(normalized[0].question).not.toContain('enormous');
+    });
+
+    test('keeps advanced vocabulary questions when the source material supports that level', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 8,
+                type: 'vocab',
+                question: 'What does revolutionized mean?',
+                options: ['changed greatly', 'stayed the same', 'moved slowly', 'looked small'],
+                correct_index: 0,
+                difficulty: 'hard',
+                questionMode: 'choice',
+                correctAnswer: 'changed greatly',
+                explanation: 'It means changed something in a big way.',
+                hint: 'Look at the result of the discovery.'
+            }
+        ], {
+            sourceText: 'The scientist discovered a new medicine. The discovery revolutionized how doctors helped sick people after many years of research.'
+        });
+
+        expect(normalized[0].id).toBe(8);
+        expect(normalized[0].question).toBe('What does revolutionized mean?');
+        expect(normalized[0].sourceContextSpan).not.toBe('sanitized_fallback');
+    });
+
+    test('simplifies hints and explanations that are harder than easy source material', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 7,
+                type: 'grammar',
+                question: 'Where is the cat?',
+                options: ['on the mat', 'under the bed', 'near the tree', 'in the box'],
+                correct_index: 0,
+                difficulty: 'easy',
+                questionMode: 'choice',
+                correctAnswer: 'on the mat',
+                hint: 'Analyze the spatial relationship.',
+                explanation: 'The prepositional phrase indicates the spatial relationship.'
+            }
+        ], { sourceText: 'The cat is on the mat.' });
+
+        expect(normalized[0].question).toBe('Where is the cat?');
+        expect(normalized[0].hint).not.toContain('spatial');
+        expect(normalized[0].explanation).not.toContain('prepositional');
+    });
 });

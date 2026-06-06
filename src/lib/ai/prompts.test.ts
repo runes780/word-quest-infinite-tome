@@ -1,5 +1,12 @@
 
-import { generateLevelPrompt, generateMentorPrompt, generateReportPrompt, LEVEL_GENERATOR_SYSTEM_PROMPT, MENTOR_SYSTEM_PROMPT } from '@/lib/ai/prompts';
+import {
+    generateLevelPrompt,
+    generateMentorPrompt,
+    generateReportPrompt,
+    LEVEL_GENERATOR_SYSTEM_PROMPT,
+    MENTOR_SYSTEM_PROMPT,
+    REPORT_SYSTEM_PROMPT
+} from '@/lib/ai/prompts';
 
 describe('Prompt Generators', () => {
     test('generateLevelPrompt includes input text', () => {
@@ -27,7 +34,7 @@ The fox runs under the pine tree.
         expect(prompt).not.toContain('questionMode');
         expect(prompt).not.toContain('skillTag');
         expect(prompt).not.toContain('correct_index');
-        expect(prompt).not.toContain('sourceContextSpan');
+        expect(prompt).not.toContain('sourceContextSpan: daily_plan');
         expect(prompt).not.toContain('Player is Level');
         expect(prompt).not.toContain('Generate a new wave');
     });
@@ -36,7 +43,21 @@ The fox runs under the pine tree.
         const prompt = generateLevelPrompt('The fox runs under the pine tree.', { learnerLevel: 5 });
 
         expect(prompt).toContain('Learner level: 5');
-        expect(prompt).toContain('Keep difficulty aligned to this learner level');
+        expect(prompt).toContain('Use this as a soft signal only');
+    });
+
+    test('generateLevelPrompt adapts to material profile without a fixed school grade', () => {
+        const prompt = generateLevelPrompt('The cat is on the mat. It is big.', { learnerLevel: 5 });
+
+        expect(prompt).toContain('Source language: english');
+        expect(prompt).toContain('Estimated material difficulty: easy (starter)');
+        expect(prompt).toContain('Allowed question difficulties: easy');
+        expect(prompt).toContain('Maximum question difficulty: easy');
+        expect(prompt).toContain('Do not explain simple source words with harder synonyms');
+        expect(prompt).toContain('If the source is English, never generate Chinese question text');
+        expect(prompt).toContain('soft signal only');
+        expect(prompt).not.toContain('Grade 5');
+        expect(prompt).not.toContain('A1/A2');
     });
 
     test('LEVEL_GENERATOR_SYSTEM_PROMPT includes new requirements', () => {
@@ -48,6 +69,10 @@ The fox runs under the pine tree.
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('questionMode');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('correctAnswer');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never ask about JSON keys, app labels, provider names, model names, or internal field names');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Do not exceed the source material difficulty');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Different questions may have different difficulty');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).not.toContain('Grade 5');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).not.toContain('A1/A2');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never output all questions in "choice" mode');
     });
 
@@ -65,6 +90,13 @@ The fox runs under the pine tree.
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('questionMode');
         expect(MENTOR_SYSTEM_PROMPT).toContain('cause_tag');
         expect(MENTOR_SYSTEM_PROMPT).toContain('next_action');
+        expect(MENTOR_SYSTEM_PROMPT).toContain('revenge_question must be English-only');
+        expect(MENTOR_SYSTEM_PROMPT).not.toContain('Grade 4-6');
+    });
+
+    test('report prompt does not assume a fixed school grade', () => {
+        expect(REPORT_SYSTEM_PROMPT).toContain('Do not assume a fixed school grade');
+        expect(REPORT_SYSTEM_PROMPT).not.toContain('Grade 4-6');
     });
 
     test('generateReportPrompt calculates score correctly', () => {

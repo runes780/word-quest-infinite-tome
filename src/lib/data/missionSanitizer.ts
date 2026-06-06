@@ -1,6 +1,12 @@
 import type { Monster, QuestionMode } from '@/store/gameStore';
 import { FALLBACK_QUESTIONS } from '@/lib/data/fallbackQuestions';
 import { rebalanceQuestionModes } from '@/lib/data/questionModes';
+import {
+    analyzeMaterialProfile,
+    difficultyAtOrBelow,
+    isTextAtOrBelowDifficulty
+} from '@/lib/ai/materialProfile';
+import type { MaterialDifficulty } from '@/lib/ai/materialProfile';
 
 const DEFAULT_MODE_SEQUENCE: QuestionMode[] = [
     'choice', 'choice', 'choice', 'choice', 'choice',
@@ -14,20 +20,18 @@ const PLACEHOLDER_OPTION_REGEX = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|\d+)
 const META_CONTENT_REGEX = /\b(?:api|api key|api provider|provider|model|model name|openrouter|deepseek|gemini|claude|dashboard|guardian dashboard|settings|system status|json|schema|field name|question mode|skill tag|correct index|source context|support level|attempt kind|learning objective|context hash)\b/i;
 const INTERNAL_FIELD_REGEX = /\b(?:questionMode|skillTag|correct_index|correctIndex|correctAnswer|sourceContextSpan|learningObjectiveId|supportLevel|attemptKind|apiProvider|apiKey|contextHash|level_title)\b/i;
 
-const ADVANCED_WORDS = new Set([
-    'meticulous',
-    'revolutionized',
-    'hypothetical',
-    'fundamental',
-    'consequently',
-    'approximately',
-    'architecture',
-    'photosynthesis',
-    'sophisticated',
-    'comprehensive'
-]);
+const TEXT_LIMITS_BY_DIFFICULTY: Record<MaterialDifficulty, { maxWords: number; maxWordLength: number }> = {
+    easy: { maxWords: 18, maxWordLength: 11 },
+    medium: { maxWords: 24, maxWordLength: 14 },
+    hard: { maxWords: 34, maxWordLength: 18 }
+};
 
 const EASY_FALLBACK_POOL = FALLBACK_QUESTIONS.filter((item) => item.difficulty === 'easy');
+
+interface MissionSanitizerOptions {
+    sourceText?: string;
+    maxDifficulty?: MaterialDifficulty;
+}
 
 function asMode(value: unknown): QuestionMode | null {
     if (value === 'choice' || value === 'typing' || value === 'fill-blank') {
@@ -79,12 +83,12 @@ function isEnglishOnly(value: string): boolean {
     return /[A-Za-z]/.test(value);
 }
 
-function isA1A2Friendly(value: string): boolean {
+function isLearningTextWithinDifficulty(value: string, maxDifficulty: MaterialDifficulty): boolean {
+    const limits = TEXT_LIMITS_BY_DIFFICULTY[maxDifficulty];
     const words = value.toLowerCase().match(/[a-z]+/g) || [];
-    if (words.length === 0 || words.length > 18) return false;
-    if (words.some((word) => word.length >= 12)) return false;
-    if (words.some((word) => ADVANCED_WORDS.has(word))) return false;
-    return true;
+    if (words.length === 0 || words.length > limits.maxWords) return false;
+    if (words.some((word) => word.length > limits.maxWordLength)) return false;
+    return isTextAtOrBelowDifficulty(value, maxDifficulty);
 }
 
 function sanitizeOptions(value: unknown): string[] {
@@ -131,11 +135,20 @@ function pickFallback(index: number, preferredType: Monster['type'] | null): Mon
     };
 }
 
-function isValidQuestionPayload(question: string, options: string[]): boolean {
-    if (!isEnglishOnly(question) || !isA1A2Friendly(question)) return false;
+function isValidQuestionPayload(
+    question: string,
+    options: string[],
+    difficulty: Monster['difficulty'] | null,
+    maxDifficulty?: MaterialDifficulty
+): boolean {
+    if (difficulty && maxDifficulty && !difficultyAtOrBelow(difficulty, maxDifficulty)) return false;
+    const effectiveDifficulty = difficulty || maxDifficulty || 'medium';
+    if (!isEnglishOnly(question) || !isLearningTextWithinDifficulty(question, effectiveDifficulty)) return false;
     if (isMetaContentPayload(question, options)) return false;
     if (options.length !== 4) return false;
-    return options.every((option) => isEnglishOnly(option) && isA1A2Friendly(option));
+    return options.every((option) =>
+        isEnglishOnly(option) && isLearningTextWithinDifficulty(option, effectiveDifficulty)
+    );
 }
 
 function isMetaContentPayload(question: string, options: string[]): boolean {
@@ -150,15 +163,34 @@ function isMetaContentPayload(question: string, options: string[]): boolean {
     );
 }
 
-export function normalizeMissionMonsters(input: unknown[]): Monster[] {
+function normalizeSupportText(
+    value: string,
+    supportDifficulty: MaterialDifficulty | undefined,
+    fallback: string
+): string {
+    if (!isEnglishOnly(value)) return fallback;
+    if (supportDifficulty && !isTextAtOrBelowDifficulty(value, supportDifficulty)) return fallback;
+    if (supportDifficulty && !isLearningTextWithinDifficulty(value, supportDifficulty)) return fallback;
+    return value;
+}
+
+function maxDifficultyFromOptions(options: MissionSanitizerOptions): MaterialDifficulty | undefined {
+    if (options.maxDifficulty) return options.maxDifficulty;
+    if (!options.sourceText) return undefined;
+    return analyzeMaterialProfile(options.sourceText).maxQuestionDifficulty;
+}
+
+export function normalizeMissionMonsters(input: unknown[], options: MissionSanitizerOptions = {}): Monster[] {
     if (!Array.isArray(input)) return [];
+    const maxDifficulty = maxDifficultyFromOptions(options);
     const normalized = input.map((raw, index) => {
         const source = (raw || {}) as Partial<Monster>;
         const fallback = pickFallback(index, asType(source.type));
 
         const question = cleanText(source.question);
         const options = sanitizeOptions(source.options);
-        if (!isValidQuestionPayload(question, options)) {
+        const sourceDifficulty = asDifficulty(source.difficulty);
+        if (!isValidQuestionPayload(question, options, sourceDifficulty, maxDifficulty)) {
             if (source.id !== undefined) {
                 fallback.id = source.id;
             }
@@ -179,6 +211,9 @@ export function normalizeMissionMonsters(input: unknown[]): Monster[] {
         const hintText = cleanText(source.hint);
         const explanationText = cleanText(source.explanation);
         const type = asType(source.type) || fallback.type;
+        const supportDifficulty = sourceDifficulty || maxDifficulty;
+        const fallbackHint = 'Use the words in the text.';
+        const fallbackExplanation = `The answer is "${options[safeCorrectIndex]}". The text gives this clue.`;
 
         return {
             id: source.id ?? fallback.id,
@@ -186,10 +221,10 @@ export function normalizeMissionMonsters(input: unknown[]): Monster[] {
             question,
             options,
             correct_index: safeCorrectIndex,
-            explanation: isEnglishOnly(explanationText) ? explanationText : `The correct answer is "${options[safeCorrectIndex]}".`,
-            hint: isEnglishOnly(hintText) ? hintText : 'Look for the key word in the sentence.',
+            explanation: normalizeSupportText(explanationText, supportDifficulty, fallbackExplanation),
+            hint: normalizeSupportText(hintText, supportDifficulty, fallbackHint),
             skillTag: source.skillTag || `${type}_core`,
-            difficulty: asDifficulty(source.difficulty) || fallback.difficulty,
+            difficulty: sourceDifficulty || fallback.difficulty,
             questionMode: asMode(source.questionMode) || fallback.questionMode,
             correctAnswer: options[safeCorrectIndex] || '',
             learningObjectiveId: cleanText(source.learningObjectiveId) || undefined,
