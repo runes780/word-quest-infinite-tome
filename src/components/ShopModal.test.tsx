@@ -26,4 +26,16 @@ describe('ShopModal battle item artwork', () => {
         expectImageSrc(screen.getByAltText(/vampire fangs/i), '/assets/battle/item-vampire-fangs.png');
         expect(screen.queryByText(/placeholder/i)).not.toBeInTheDocument();
     });
+
+    test('keeps shop contents inside a viewport-limited dialog', () => {
+        render(<ShopModal isOpen onClose={jest.fn()} />);
+
+        const dialog = screen.getByRole('dialog', { name: 'Merchant' });
+
+        expect(dialog.className).toContain('max-h-[calc(100dvh-2rem)]');
+        expect(dialog.className).toContain('overflow-hidden');
+        expect(dialog.className).toContain('flex-col');
+        expect(screen.getByTestId('shop-items').className).toContain('overflow-y-auto');
+        expect(screen.getByTestId('shop-items').className).toContain('min-h-0');
+    });
 });

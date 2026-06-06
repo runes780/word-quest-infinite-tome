@@ -18,12 +18,15 @@ export function RewardScreen() {
     return (
         <AnimatePresence>
             {showRewardScreen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:items-center sm:p-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="relative bg-slate-900 border-2 border-yellow-500/50 rounded-3xl w-full max-w-2xl shadow-[0_0_50px_rgba(234,179,8,0.2)] overflow-hidden"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={t.battle.rewards}
+                        className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border-2 border-yellow-500/50 bg-slate-900 shadow-[0_0_50px_rgba(234,179,8,0.2)]"
                     >
                         <button
                             type="button"
@@ -35,7 +38,7 @@ export function RewardScreen() {
                             <span className="hidden sm:inline">{language === 'zh' ? '稍后' : 'Later'}</span>
                         </button>
                         {/* Header */}
-                        <div className="p-8 text-center border-b border-white/10 bg-gradient-to-b from-yellow-500/10 to-transparent">
+                        <div className="shrink-0 p-8 text-center border-b border-white/10 bg-gradient-to-b from-yellow-500/10 to-transparent">
                             <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
@@ -50,7 +53,7 @@ export function RewardScreen() {
                         </div>
 
                         {/* Rewards Grid */}
-                        <div className="p-8 grid gap-4">
+                        <div className="min-h-0 flex-1 overflow-y-auto p-8 grid gap-4">
                             {pendingRewards.length === 0 ? (
                                 <div className="text-center text-muted-foreground py-8">
                                     {t.battle.inventoryEmpty}
@@ -90,7 +93,7 @@ export function RewardScreen() {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-6 bg-black/20 border-t border-white/10 flex justify-end">
+                        <div className="shrink-0 p-6 bg-black/20 border-t border-white/10 flex justify-end">
                             <button
                                 onClick={handleContinue}
                                 className="px-8 py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-yellow-500/20"

@@ -231,7 +231,7 @@ export function BlessingSelection({ onSelect, onSkip }: BlessingSelectionProps) 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-white/90 p-3 backdrop-blur-sm sm:items-center sm:p-4"
         >
             {onSkip && (
                 <button
@@ -248,7 +248,10 @@ export function BlessingSelection({ onSelect, onSkip }: BlessingSelectionProps) 
             <motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
-                className="w-full max-w-4xl"
+                role="dialog"
+                aria-modal="true"
+                aria-label={isZh ? '选择你的祝福' : 'Choose Your Blessing'}
+                className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-4xl overflow-y-auto p-1"
             >
                 {/* Header */}
                 <div className="text-center mb-8">

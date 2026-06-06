@@ -9,7 +9,24 @@ import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, BookOpen, AlertCircle, Settings, ImageIcon, RefreshCw, Trophy, Brain, PlayCircle, Route, Clock, Target } from 'lucide-react';
+import {
+    Sparkles,
+    BookOpen,
+    AlertCircle,
+    Settings,
+    ImageIcon,
+    RefreshCw,
+    Trophy,
+    Brain,
+    PlayCircle,
+    Route,
+    Clock,
+    Target,
+    Paperclip,
+    FileText,
+    CheckCircle2,
+    X
+} from 'lucide-react';
 import { SAMPLE_LEVELS, SampleLevel } from '@/lib/sampleLevels';
 import { BlessingSelection, Blessing, BlessingEffect } from './BlessingSelection';
 import { DailyChallenge } from './DailyChallenge';
@@ -26,10 +43,116 @@ import {
 } from '@/lib/data/practicePlanRunner';
 import { DailyFlameCard } from './DailyFlameCard';
 import type { AIProvider } from '@/lib/ai/modelOptions';
+import { recognizeImageText } from '@/lib/ocr/tesseractOcr';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
 export function getCurrentBlessingEffect() { return currentBlessingEffect; }
+
+type AttachmentSource = 'picker' | 'paste' | 'drop';
+type AttachmentStatus = 'extracting' | 'ready' | 'error' | 'unsupported';
+type AttachmentKind = 'image' | 'text' | 'document' | 'unsupported';
+
+interface MaterialAttachment {
+    id: string;
+    name: string;
+    size: number;
+    mimeType: string;
+    source: AttachmentSource;
+    kind: AttachmentKind;
+    status: AttachmentStatus;
+    previewUrl?: string;
+    extractedText?: string;
+    insertedText?: string;
+    error?: string;
+}
+
+const MATERIAL_ACCEPT = [
+    'image/*',
+    '.txt',
+    '.md',
+    '.markdown',
+    '.csv',
+    '.pdf',
+    '.doc',
+    '.docx',
+    'text/plain',
+    'text/markdown',
+    'text/csv',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+].join(',');
+
+const createAttachmentId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+        return crypto.randomUUID();
+    }
+    return `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+const extensionFor = (fileName: string) => {
+    const match = /\.([^.]+)$/.exec(fileName.toLowerCase());
+    return match?.[1] || '';
+};
+
+const materialKindFor = (file: File): AttachmentKind => {
+    const extension = extensionFor(file.name);
+    if (file.type.startsWith('image/')) return 'image';
+    if (file.type.startsWith('text/')) return 'text';
+    if (['txt', 'md', 'markdown', 'csv'].includes(extension)) return 'text';
+    if (file.type === 'application/pdf' || extension === 'pdf') return 'document';
+    if (
+        file.type === 'application/msword' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        ['doc', 'docx'].includes(extension)
+    ) {
+        return 'document';
+    }
+    return 'unsupported';
+};
+
+const formatAttachmentSize = (size: number) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const appendMaterialText = (current: string, inserted: string) => {
+    if (!inserted.trim()) return current;
+    return current.trim() ? `${current}\n\n${inserted}` : inserted;
+};
+
+const removeInsertedText = (current: string, inserted: string) => {
+    const variants = [
+        `\n\n${inserted}`,
+        `${inserted}\n\n`,
+        inserted
+    ];
+
+    for (const variant of variants) {
+        if (current.includes(variant)) {
+            return current.replace(variant, '').replace(/\n{3,}/g, '\n\n').trimStart();
+        }
+    }
+
+    return current;
+};
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const readFileAsText = (file: File) => {
+    if (typeof file.text === 'function') {
+        return file.text();
+    }
+
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+        reader.readAsText(file);
+    });
+};
 
 function cardsToMonsters(cards: FSRSCard[], step?: PracticePlanStep): Monster[] {
     return cards.map((card, idx) => ({
@@ -56,9 +179,7 @@ export function InputSection() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [fallbackLevel, setFallbackLevel] = useState<SampleLevel | null>(null);
-    const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [isOcrLoading, setIsOcrLoading] = useState(false);
-    const [ocrMessage, setOcrMessage] = useState('');
+    const [attachments, setAttachments] = useState<MaterialAttachment[]>([]);
     const [showBlessingSelection, setShowBlessingSelection] = useState(false);
     const [pendingQuestions, setPendingQuestions] = useState<{ monsters: Monster[]; context: string } | null>(null);
     const [showDailyChallenge, setShowDailyChallenge] = useState(false);
@@ -68,6 +189,7 @@ export function InputSection() {
     const [isPlanLoading, setIsPlanLoading] = useState(false);
     const [planError, setPlanError] = useState('');
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const previewUrlsRef = useRef<Set<string>>(new Set());
     const { startGame } = useGameStore();
     const { apiKey, apiProvider, model, setSettingsOpen, language } = useSettingsStore();
     const t = translations[language];
@@ -219,41 +341,134 @@ export function InputSection() {
 
 
     useEffect(() => {
+        const previewUrls = previewUrlsRef.current;
         return () => {
-            if (imagePreview) {
-                URL.revokeObjectURL(imagePreview);
-            }
+            previewUrls.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+            previewUrls.clear();
         };
-    }, [imagePreview]);
+    }, []);
 
-    const simulateOcr = async (file: File) => {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        return `${t.input.imageStubText}: ${file.name}\n${t.input.imageDemoNotice}`;
+    const extractAttachmentText = async (file: File, kind: AttachmentKind) => {
+        if (kind === 'text') {
+            const text = await readFileAsText(file);
+            return `${t.input.textFileImported}: ${file.name}\n${text}`;
+        }
+        if (kind === 'image') {
+            const text = await recognizeImageText(file);
+            return `${t.input.imageStubText}: ${file.name}\n${text}`;
+        }
+        if (kind === 'document') {
+            await delay(600);
+            return `${t.input.documentStubText}: ${file.name}\n${t.input.documentDemoNotice}`;
+        }
+        throw new Error(t.input.attachmentUnsupported);
     };
 
-    const handleImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        if (imagePreview) URL.revokeObjectURL(imagePreview);
-        setImagePreview(URL.createObjectURL(file));
-        setIsOcrLoading(true);
-        setOcrMessage('');
-        try {
-            const text = await simulateOcr(file);
-            setInput((prev) => (prev ? `${prev}\n\n${text}` : text));
-            setOcrMessage(t.input.imageDetected);
-        } catch (err) {
-            console.error(err);
-            setError(t.input.error);
-        } finally {
-            setIsOcrLoading(false);
+    const addFiles = (files: File[], source: AttachmentSource) => {
+        if (files.length === 0) return;
+
+        for (const file of files) {
+            const kind = materialKindFor(file);
+            const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined;
+            if (previewUrl) previewUrlsRef.current.add(previewUrl);
+
+            const attachment: MaterialAttachment = {
+                id: createAttachmentId(),
+                name: file.name,
+                size: file.size,
+                mimeType: file.type || 'unknown',
+                source,
+                kind,
+                status: kind === 'unsupported' ? 'unsupported' : 'extracting',
+                previewUrl,
+                error: kind === 'unsupported' ? t.input.attachmentUnsupported : undefined
+            };
+
+            setAttachments((prev) => [...prev, attachment]);
+
+            if (kind === 'unsupported') continue;
+
+            void extractAttachmentText(file, kind)
+                .then((text) => {
+                    const insertedText = text.trim();
+                    setInput((prev) => appendMaterialText(prev, insertedText));
+                    setAttachments((prev) => prev.map((item) => item.id === attachment.id
+                        ? {
+                            ...item,
+                            status: 'ready',
+                            extractedText: insertedText,
+                            insertedText
+                        }
+                        : item));
+                })
+                .catch(() => {
+                    setAttachments((prev) => prev.map((item) => item.id === attachment.id
+                        ? {
+                            ...item,
+                            status: 'error',
+                            error: t.input.attachmentError
+                        }
+                        : item));
+                });
         }
+    };
+
+    const filesFromClipboard = (clipboardData: DataTransfer) => {
+        const directFiles = Array.from(clipboardData.files || []);
+        if (directFiles.length > 0) return directFiles;
+
+        return Array.from(clipboardData.items || [])
+            .filter((item) => item.kind === 'file')
+            .map((item) => item.getAsFile())
+            .filter((file): file is File => Boolean(file));
+    };
+
+    const handlePaste = (event: React.ClipboardEvent<HTMLElement>) => {
+        const files = filesFromClipboard(event.clipboardData);
+        if (files.length === 0) return;
+        event.preventDefault();
+        addFiles(files, 'paste');
+    };
+
+    const handleDrop = (event: React.DragEvent<HTMLElement>) => {
+        event.preventDefault();
+        const files = Array.from(event.dataTransfer.files || []);
+        addFiles(files, 'drop');
+    };
+
+    const handleDragOver = (event: React.DragEvent<HTMLElement>) => {
+        event.preventDefault();
+    };
+
+    const handleFilesSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(event.target.files || []);
+        addFiles(files, 'picker');
+        event.target.value = '';
     };
 
     const handleOpenFilePicker = () => {
         fileInputRef.current?.click();
     };
 
+    const handleRemoveAttachment = (attachmentId: string) => {
+        const target = attachments.find((attachment) => attachment.id === attachmentId);
+        if (!target) return;
+        if (target.previewUrl) {
+            URL.revokeObjectURL(target.previewUrl);
+            previewUrlsRef.current.delete(target.previewUrl);
+        }
+        if (target.insertedText) {
+            setInput((prev) => removeInsertedText(prev, target.insertedText!));
+        }
+        setAttachments((prev) => prev.filter((attachment) => attachment.id !== attachmentId));
+    };
+
+    const attachmentStatusLabel = (attachment: MaterialAttachment) => {
+        if (attachment.status === 'extracting') return t.input.attachmentExtracting;
+        if (attachment.status === 'ready') return t.input.attachmentReady;
+        if (attachment.status === 'unsupported') return t.input.attachmentUnsupported;
+        return attachment.error || t.input.attachmentError;
+    };
 
     return (
         <>
@@ -317,61 +532,97 @@ export function InputSection() {
                         </div>
                     </div>
 
-                    <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder={t.input.placeholder}
-                        className="w-full h-48 bg-secondary/50 border border-input rounded-xl p-4 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary outline-none resize-none mb-6 transition-all"
-                    />
-
-                    <div className="mb-6 border border-dashed border-border rounded-2xl p-4 bg-secondary/30">
-                        <div className="flex items-center justify-between mb-3">
-                            <div>
-                                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
-                                    <ImageIcon className="w-4 h-4" /> {t.input.imageUpload}
+                    <section
+                        role="group"
+                        aria-label={t.input.materialComposerLabel}
+                        onPaste={handlePaste}
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        className="mb-6 rounded-2xl border border-dashed border-border bg-secondary/30 p-4 transition-colors focus-within:border-primary focus-within:bg-secondary/40"
+                    >
+                        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                                <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                    <Paperclip className="h-4 w-4" />
+                                    {t.input.materialComposerTitle}
                                 </p>
-                                <p className="text-xs text-muted-foreground">{t.input.imageHint}</p>
+                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t.input.materialHint}</p>
                             </div>
                             <button
                                 type="button"
                                 onClick={handleOpenFilePicker}
-                                disabled={isOcrLoading}
-                                className="px-3 py-1.5 text-xs rounded-lg border border-primary text-primary hover:bg-primary/10 disabled:opacity-60"
+                                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-primary px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/10"
                             >
-                                {imagePreview ? t.input.imageReplace : t.input.imageUploadButton}
+                                <FileText className="h-4 w-4" />
+                                {t.input.attachFiles}
                             </button>
                         </div>
+
+                        <textarea
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder={t.input.placeholder}
+                            className="h-52 w-full resize-none rounded-xl border border-input bg-background/70 p-4 text-foreground outline-none transition-all placeholder:text-muted-foreground focus:ring-2 focus:ring-primary"
+                        />
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/*"
+                            accept={MATERIAL_ACCEPT}
+                            multiple
                             className="hidden"
-                            onChange={handleImageSelected}
+                            onChange={handleFilesSelected}
                         />
-                        <div className="relative flex items-center justify-center h-32 bg-background/40 rounded-xl overflow-hidden">
-                            {imagePreview ? (
-                                <Image
-                                    src={imagePreview}
-                                    alt="Selected study material"
-                                    fill
-                                    sizes="128px"
-                                    className="object-contain"
-                                    unoptimized
-                                />
-                            ) : (
-                                <p className="text-xs text-muted-foreground">PNG/JPG, under 5MB recommended.</p>
-                            )}
-                            {isOcrLoading && (
-                                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white text-xs gap-2">
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
-                                    {t.input.imageProcessing}
-                                </div>
-                            )}
-                        </div>
-                        {ocrMessage && (
-                            <p className="text-xs text-green-500 mt-2">{ocrMessage}</p>
+
+                        {attachments.length > 0 ? (
+                            <ul className="mt-3 grid gap-2" aria-label={t.input.attachmentListLabel}>
+                                {attachments.map((attachment) => (
+                                    <li
+                                        key={attachment.id}
+                                        className="flex items-center gap-3 rounded-xl border border-border/70 bg-background/60 p-2"
+                                    >
+                                        <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary text-muted-foreground">
+                                            {attachment.previewUrl ? (
+                                                <Image
+                                                    src={attachment.previewUrl}
+                                                    alt={attachment.name}
+                                                    fill
+                                                    sizes="48px"
+                                                    className="object-cover"
+                                                    unoptimized
+                                                />
+                                            ) : attachment.kind === 'image' ? (
+                                                <ImageIcon className="h-5 w-5" />
+                                            ) : (
+                                                <FileText className="h-5 w-5" />
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-bold text-foreground">{attachment.name}</p>
+                                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-muted-foreground">
+                                                <span>{formatAttachmentSize(attachment.size)}</span>
+                                                <span className="inline-flex items-center gap-1">
+                                                    {attachment.status === 'extracting' && <RefreshCw className="h-3 w-3 animate-spin" />}
+                                                    {attachment.status === 'ready' && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                                    {attachment.status === 'unsupported' && <AlertCircle className="h-3 w-3 text-destructive" />}
+                                                    {attachmentStatusLabel(attachment)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveAttachment(attachment.id)}
+                                            aria-label={`${t.input.removeAttachment} ${attachment.name}`}
+                                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="mt-2 text-xs text-muted-foreground">{t.input.supportedFilesHint}</p>
                         )}
-                    </div>
+                    </section>
 
                     {error && (
                         <div className="space-y-3 mb-4">

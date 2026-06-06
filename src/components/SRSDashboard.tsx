@@ -74,18 +74,21 @@ export function SRSDashboard({ isOpen, onClose, onStartReview }: SRSDashboardPro
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:items-center sm:p-4"
                 onClick={onClose}
             >
                 <motion.div
                     initial={{ scale: 0.9, y: 20 }}
                     animate={{ scale: 1, y: 0 }}
                     exit={{ scale: 0.9, y: 20 }}
-                    className="w-full max-w-2xl bg-gradient-to-br from-card via-card to-card/90 border border-border rounded-3xl shadow-2xl overflow-hidden"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={isZh ? '复习看板' : 'Review Dashboard'}
+                    className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-card via-card to-card/90 shadow-2xl"
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header with gradient */}
-                    <div className="relative bg-gradient-to-r from-primary/20 via-purple-500/20 to-pink-500/20 p-6 border-b border-border/50">
+                    <div className="relative shrink-0 bg-gradient-to-r from-primary/20 via-purple-500/20 to-pink-500/20 p-6 border-b border-border/50">
                         <button
                             type="button"
                             onClick={onClose}
@@ -115,7 +118,7 @@ export function SRSDashboard({ isOpen, onClose, onStartReview }: SRSDashboardPro
                             <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                         </div>
                     ) : (
-                        <div className="p-6 space-y-6">
+                        <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6">
                             {/* Player Stats Bar */}
                             {profile && (
                                 <div className="grid grid-cols-4 gap-3">

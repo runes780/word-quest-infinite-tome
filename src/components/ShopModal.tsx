@@ -58,21 +58,24 @@ export function ShopModal({ isOpen, onClose }: ShopModalProps) {
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm sm:items-center sm:p-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
-                        className="bg-slate-900 border-2 border-yellow-500/50 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="shop-modal-title"
+                        className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border-2 border-yellow-500/50 bg-slate-900 shadow-2xl"
                     >
                         {/* Header */}
-                        <div className="p-6 bg-slate-950/50 border-b border-white/10">
+                        <div className="shrink-0 bg-slate-950/50 p-6 border-b border-white/10">
                             <div className="flex justify-between items-center mb-6">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-yellow-500/20 rounded-lg">
                                         <ShoppingBag className="w-6 h-6 text-yellow-500" />
                                     </div>
-                                    <h2 className="text-2xl font-bold text-primary">{t.shop.title}</h2>
+                                    <h2 id="shop-modal-title" className="text-2xl font-bold text-primary">{t.shop.title}</h2>
                                 </div>
                                 <button
                                     type="button"
@@ -99,7 +102,7 @@ export function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         </div>
 
                         {/* Items Grid */}
-                        <div className="p-6 grid gap-4">
+                        <div data-testid="shop-items" className="min-h-0 flex-1 overflow-y-auto p-6 grid gap-4">
                             {SHOP_ITEMS.map((item) => {
                                 const canAfford = playerStats.gold >= item.cost;
                                 const itemAsset = getItemAsset(item.type);
@@ -144,7 +147,7 @@ export function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-4 bg-slate-950/30 text-center text-xs text-muted-foreground border-t border-white/5">
+                        <div className="shrink-0 p-4 bg-slate-950/30 text-center text-xs text-muted-foreground border-t border-white/5">
                             {t.shop.footer}
                         </div>
                     </motion.div>

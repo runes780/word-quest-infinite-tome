@@ -65,28 +65,32 @@ export function SettingsModal() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50"
+                        className="fixed inset-0 z-50 overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:p-4"
                         onClick={() => setSettingsOpen(false)}
                     >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-card border border-border p-6 rounded-2xl w-full max-w-md m-4 shadow-2xl"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-primary">{t.settings.title}</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setSettingsOpen(false)}
-                                    aria-label={language === 'zh' ? '关闭设置' : 'Close settings'}
-                                >
-                                    <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
-                                </button>
-                            </div>
+                        <div className="flex min-h-full items-start justify-center py-3 sm:items-center sm:py-4">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                role="dialog"
+                                aria-modal="true"
+                                aria-labelledby="settings-modal-title"
+                                className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex shrink-0 items-center justify-between border-b border-border/60 p-4 sm:p-6">
+                                    <h2 id="settings-modal-title" className="text-2xl font-bold text-primary">{t.settings.title}</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettingsOpen(false)}
+                                        aria-label={language === 'zh' ? '关闭设置' : 'Close settings'}
+                                    >
+                                        <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
+                                    </button>
+                                </div>
 
-                            <div className="space-y-4">
+                                <div data-testid="settings-modal-body" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
                                 <div>
                                     <label className="block text-sm font-medium mb-2 text-muted-foreground">
                                         {t.settings.language}
@@ -263,17 +267,18 @@ export function SettingsModal() {
                                             : "Select a neural model for mission generation."}
                                     </p>
                                 </div>
-                            </div>
+                                </div>
 
-                            <div className="mt-8 flex justify-end">
-                                <button
-                                    onClick={() => setSettingsOpen(false)}
-                                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                                >
-                                    {t.settings.save}
-                                </button>
-                            </div>
-                        </motion.div>
+                                <div data-testid="settings-modal-footer" className="flex shrink-0 justify-end border-t border-border/60 p-4 sm:px-6">
+                                    <button
+                                        onClick={() => setSettingsOpen(false)}
+                                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                                    >
+                                        {t.settings.save}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
