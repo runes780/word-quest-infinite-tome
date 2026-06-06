@@ -2,6 +2,17 @@
 
 These issue drafts are ready to create on GitHub before or shortly after applying to Codex for Open Source. They make the maintenance queue public without claiming production adoption.
 
+Created public issues:
+
+- [#3 Add OpenAI Provider Option for Maintainer Experiments](https://github.com/runes780/word-quest-infinite-tome/issues/3)
+- [#4 Add Privacy Threat Model for Local Learning Data](https://github.com/runes780/word-quest-infinite-tome/issues/4)
+- [#5 Add Browser Smoke Test for Mission to Report Flow](https://github.com/runes780/word-quest-infinite-tome/issues/5)
+- [#6 Add Generated Content Evaluation Rubric](https://github.com/runes780/word-quest-infinite-tome/issues/6)
+- [#7 Add Synthetic Fixture Set for Prompt and Dashboard Tests](https://github.com/runes780/word-quest-infinite-tome/issues/7)
+- [#8 Split Game Store Into Domain Slices](https://github.com/runes780/word-quest-infinite-tome/issues/8)
+- [#9 Add Release Checklist and Versioning Notes](https://github.com/runes780/word-quest-infinite-tome/issues/9)
+- [#10 Audit Report Export Privacy](https://github.com/runes780/word-quest-infinite-tome/issues/10)
+
 ## 1. Add OpenAI Provider Option for Maintainer Experiments
 
 Labels: `enhancement`, `ai`, `maintenance`

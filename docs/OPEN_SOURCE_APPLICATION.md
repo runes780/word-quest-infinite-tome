@@ -96,6 +96,6 @@ The maintainer is a primary-school English teacher and independent developer. Th
 - [x] Codex maintainer workflow document
 - [x] Changelog/readiness baseline
 - [x] Release checklist
-- [ ] Public issues created from `docs/OPEN_SOURCE_ISSUE_BACKLOG.md`
+- [x] Public issues created from `docs/OPEN_SOURCE_ISSUE_BACKLOG.md`
 - [ ] First GitHub release published from `CHANGELOG.md`
 - [ ] Current feature branch reviewed, merged, and pushed before claiming its behavior in the application
