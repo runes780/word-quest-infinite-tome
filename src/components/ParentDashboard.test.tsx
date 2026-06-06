@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { downloadNodeAsImage } from '@/lib/exportReport';
 import { ParentDashboard } from './ParentDashboard';
 
 const startGame = jest.fn();
@@ -302,6 +303,7 @@ jest.mock('@/db/db', () => ({
 describe('ParentDashboard visual information architecture', () => {
     beforeEach(() => {
         mockGetGuardianDashboardViewModel.mockClear();
+        jest.mocked(downloadNodeAsImage).mockClear();
         scrollIntoView.mockClear();
         scrollTo.mockClear();
         Element.prototype.scrollIntoView = scrollIntoView;
@@ -465,5 +467,33 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.queryByText('0%')).not.toBeInTheDocument();
         expect(screen.queryByText('100%')).not.toBeInTheDocument();
         expect(screen.queryByText('No incidents reported')).not.toBeInTheDocument();
+    });
+
+    test('exports a print-ready report snapshot with generation time instead of the scrollable dashboard', async () => {
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Good morning, Guardian!')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Export Report' }));
+
+        await waitFor(() => {
+            expect(downloadNodeAsImage).toHaveBeenCalled();
+        });
+
+        const [node, filename, options] = jest.mocked(downloadNodeAsImage).mock.calls[0] as unknown as [
+            HTMLElement,
+            string,
+            { backgroundColor?: string }?
+        ];
+
+        expect(node).toHaveAttribute('data-testid', 'guardian-export-report');
+        expect(node.textContent).toContain('Generated');
+        expect(node.textContent).toContain('Last 14 days');
+        expect(filename).toMatch(/^word-quest-report-14d-\d{8}-\d{4}\.png$/);
+        expect(options).toMatchObject({ backgroundColor: '#f8fafc' });
     });
 });

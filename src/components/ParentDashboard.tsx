@@ -156,6 +156,9 @@ export function ParentDashboard() {
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
     const reportRef = useRef<HTMLDivElement | null>(null);
+    const exportReportRef = useRef<HTMLDivElement | null>(null);
+    const [exportGeneratedAt, setExportGeneratedAt] = useState(() => Date.now());
+    const [exportSnapshotMounted, setExportSnapshotMounted] = useState(false);
     const sectionRefs = useRef<Partial<Record<DashboardSectionId, HTMLElement | null>>>({});
     const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
 
@@ -288,6 +291,11 @@ export function ParentDashboard() {
         logGuardianDashboardEvent('panel_open').catch((err) => {
             console.error(err);
         });
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        setExportSnapshotMounted(false);
     }, [isOpen]);
 
     const hasHistory = Boolean(snapshot && snapshot.records.length > 0);
@@ -503,11 +511,29 @@ export function ParentDashboard() {
         }>;
     }, [activityFeed]);
 
+    const prepareExportSnapshot = useCallback(async () => {
+        const nextTimestamp = Date.now();
+        setExportGeneratedAt(nextTimestamp);
+        setExportSnapshotMounted(true);
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            await new Promise<void>((resolve) => {
+                window.requestAnimationFrame(() => resolve());
+            });
+        }
+        return nextTimestamp;
+    }, []);
+
     const handleExportImage = async () => {
-        if (!reportRef.current || !hasHistory) return;
+        if (!hasHistory) return;
         setExporting('image');
         try {
-            await downloadNodeAsImage(reportRef.current, `word-quest-report-${range}d.png`);
+            const generatedAt = await prepareExportSnapshot();
+            if (!exportReportRef.current) return;
+            await downloadNodeAsImage(
+                exportReportRef.current,
+                `word-quest-report-${range}d-${formatExportFileTimestamp(generatedAt)}.png`,
+                { backgroundColor: '#f8fafc' }
+            );
             await logGuardianDashboardEvent('report_export');
         } catch (err) {
             console.error(err);
@@ -517,10 +543,15 @@ export function ParentDashboard() {
     };
 
     const handleExportPdf = async () => {
-        if (!reportRef.current || !hasHistory) return;
+        if (!hasHistory) return;
         setExporting('pdf');
         try {
-            openNodePrintView(reportRef.current, 'Word Quest Progress Report');
+            const generatedAt = await prepareExportSnapshot();
+            if (!exportReportRef.current) return;
+            openNodePrintView(
+                exportReportRef.current,
+                `Word Quest Progress Report ${formatExportFileTimestamp(generatedAt)}`
+            );
             await logGuardianDashboardEvent('report_export');
         } finally {
             setExporting(null);
@@ -926,10 +957,482 @@ export function ParentDashboard() {
                                 </div>
                             </div>
                         </motion.div>
+                        {hasHistory && exportSnapshotMounted && (
+                            <div aria-hidden="true" className="pointer-events-none fixed left-[-12000px] top-0">
+                                <ExportReportSnapshot
+                                    reportRef={exportReportRef}
+                                    isZh={isZh}
+                                    range={range}
+                                    generatedAt={exportGeneratedAt}
+                                    masteryAverage={masteryAverage}
+                                    profileLevelHelper={profileLevelHelper}
+                                    completedMissions={completedMissions}
+                                    latestMission={latestMission}
+                                    totalQuestions={snapshot?.totals.total || 0}
+                                    correctQuestions={snapshot?.totals.correct || 0}
+                                    averageAccuracy={averageAccuracy}
+                                    currentStreak={currentStreak}
+                                    dailyFlameHelper={dailyFlameHelper}
+                                    skillRows={skillRows}
+                                    dueCards={dueCards}
+                                    srsDueCount={srsDueCount}
+                                    dailyRows={dailyRows}
+                                    dailyPracticePlan={dailyPracticePlan}
+                                    tonightActions={tonightActions}
+                                    planSnapshot={planSnapshot}
+                                    actionExecutionRate={actionSummary.executionRate}
+                                    aiMonitor={aiMonitor}
+                                    sessionRecovery={sessionRecovery}
+                                />
+                            </div>
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
         </>
+    );
+}
+
+function ExportReportSnapshot({
+    reportRef,
+    isZh,
+    range,
+    generatedAt,
+    masteryAverage,
+    profileLevelHelper,
+    completedMissions,
+    latestMission,
+    totalQuestions,
+    correctQuestions,
+    averageAccuracy,
+    currentStreak,
+    dailyFlameHelper,
+    skillRows,
+    dueCards,
+    srsDueCount,
+    dailyRows,
+    dailyPracticePlan,
+    tonightActions,
+    planSnapshot,
+    actionExecutionRate,
+    aiMonitor,
+    sessionRecovery
+}: {
+    reportRef: React.RefObject<HTMLDivElement | null>;
+    isZh: boolean;
+    range: RangeOption;
+    generatedAt: number;
+    masteryAverage: number;
+    profileLevelHelper: string;
+    completedMissions: number;
+    latestMission: string;
+    totalQuestions: number;
+    correctQuestions: number;
+    averageAccuracy: number;
+    currentStreak: number;
+    dailyFlameHelper: string;
+    skillRows: SkillAccuracyRow[];
+    dueCards: FSRSCard[];
+    srsDueCount: number;
+    dailyRows: DailyAccuracyRow[];
+    dailyPracticePlan: PracticePlan | null;
+    tonightActions: TonightActionItem[];
+    planSnapshot: {
+        totalActions: number;
+        completedActions: number;
+        plannedMinutes: number;
+        completedMinutes: number;
+    };
+    actionExecutionRate: number;
+    aiMonitor: AIRequestMonitorSnapshot | null;
+    sessionRecovery: SessionRecoverySnapshot | null;
+}) {
+    const rangeLabel = isZh ? `最近 ${range} 天` : `Last ${range} days`;
+    const generatedLabel = isZh
+        ? `生成时间：${formatReportTimestamp(generatedAt, isZh)}`
+        : `Generated: ${formatReportTimestamp(generatedAt, isZh)}`;
+    const timezoneLabel = getLocalTimeZoneLabel(isZh);
+    const visibleSkills = skillRows.slice(0, 5);
+    const visibleDueCards = dueCards.slice(0, 4);
+    const visibleActions = tonightActions.slice(0, 3);
+
+    return (
+        <div
+            ref={reportRef}
+            data-testid="guardian-export-report"
+            className="w-[1180px] bg-slate-50 p-8 text-slate-950"
+        >
+            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+                <header className="border-b border-slate-200 bg-white p-8">
+                    <div className="flex items-start justify-between gap-8">
+                        <div>
+                            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-blue-700">
+                                <ShieldCheck className="h-4 w-4" />
+                                {isZh ? '学习证据报告' : 'Learning Evidence Report'}
+                            </div>
+                            <h1 className="text-4xl font-black tracking-tight text-slate-950">
+                                {isZh ? 'Word Quest 学习报告' : 'Word Quest Progress Report'}
+                            </h1>
+                            <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
+                                {isZh
+                                    ? '基于本机学习记录、复习队列和任务执行情况生成，用于快速判断今天最需要关注的学习证据。'
+                                    : 'Generated from local learning records, review queue, and action follow-through so the report reflects current learner evidence.'}
+                            </p>
+                        </div>
+                        <div className="min-w-[260px] rounded-2xl border border-slate-200 bg-slate-50 p-4 text-right">
+                            <p className="text-sm font-black text-slate-900">{rangeLabel}</p>
+                            <p className="mt-2 text-xs font-semibold text-slate-500">{generatedLabel}</p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{timezoneLabel}</p>
+                        </div>
+                    </div>
+                </header>
+
+                <main className="space-y-6 p-8">
+                    <section className="grid grid-cols-5 gap-4">
+                        <ExportStatCard
+                            label={isZh ? '平均掌握度' : 'Avg. Mastery'}
+                            value={`${masteryAverage}%`}
+                            helper={profileLevelHelper}
+                            icon={LineChart}
+                            tone="blue"
+                        />
+                        <ExportStatCard
+                            label={isZh ? '完成任务' : 'Missions'}
+                            value={formatNumber(completedMissions)}
+                            helper={latestMission}
+                            icon={Trophy}
+                            tone="amber"
+                        />
+                        <ExportStatCard
+                            label={isZh ? '已答题目' : 'Questions'}
+                            value={formatNumber(totalQuestions)}
+                            helper={isZh ? `正确 ${correctQuestions}` : `${correctQuestions} correct`}
+                            icon={HelpCircle}
+                            tone="green"
+                        />
+                        <ExportStatCard
+                            label={isZh ? '平均正确率' : 'Avg. Accuracy'}
+                            value={`${averageAccuracy}%`}
+                            helper={totalQuestions > 0 ? `${correctQuestions}/${totalQuestions}` : (isZh ? '暂无样本' : 'No samples')}
+                            icon={Target}
+                            tone="purple"
+                        />
+                        <ExportStatCard
+                            label={isZh ? '连续学习' : 'Streak'}
+                            value={currentStreak}
+                            helper={dailyFlameHelper}
+                            icon={Flame}
+                            tone="red"
+                        />
+                    </section>
+
+                    <section className="grid grid-cols-[1fr_1fr] gap-6">
+                        <ExportSection
+                            title={isZh ? '掌握进度' : 'Mastery Progress'}
+                            subtitle={isZh ? '按技能域查看平均表现' : 'Average performance by skill area'}
+                            icon={LineChart}
+                        >
+                            {visibleSkills.length > 0 ? (
+                                <div className="space-y-3">
+                                    {visibleSkills.map((skill, index) => (
+                                        <ExportSkillRow
+                                            key={`${skill.skill}-${index}`}
+                                            row={skill}
+                                            tone={progressTones[index % progressTones.length]}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <ExportEmptyLine message={isZh ? '暂无技能数据' : 'No skill data yet'} />
+                            )}
+                        </ExportSection>
+
+                        <ExportSection
+                            title={isZh ? '复习队列' : 'Review Queue'}
+                            subtitle={isZh ? '优先复习项目' : 'Items that need attention first'}
+                            icon={ShieldCheck}
+                            badge={`${srsDueCount}`}
+                        >
+                            {visibleDueCards.length > 0 ? (
+                                <div className="space-y-3">
+                                    {visibleDueCards.map((card, index) => (
+                                        <ExportReviewRow
+                                            key={`${card.id || card.questionHash || card.question}-${index}`}
+                                            card={card}
+                                            index={index}
+                                            isZh={isZh}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <ExportEmptyLine message={isZh ? '暂无到期复习卡' : 'No due review cards'} />
+                            )}
+                        </ExportSection>
+                    </section>
+
+                    <section className="grid grid-cols-[1.05fr_0.95fr] gap-6">
+                        <ExportSection
+                            title={isZh ? '近期趋势' : 'Recent Trend'}
+                            subtitle={isZh ? '正确率与任务量' : 'Accuracy and mission volume'}
+                            icon={BarChart3}
+                        >
+                            <ExportDailyTrend rows={dailyRows} isZh={isZh} />
+                        </ExportSection>
+
+                        <ExportSection
+                            title={isZh ? '今晚建议' : 'Recommended Next Actions'}
+                            subtitle={dailyPracticePlan?.rationale || (isZh ? '基于近期证据生成' : 'Based on recent evidence')}
+                            icon={Sparkles}
+                            badge={dailyPracticePlan ? `${dailyPracticePlan.estimatedMinutes}m` : undefined}
+                        >
+                            {dailyPracticePlan && dailyPracticePlan.evidence.length > 0 && (
+                                <div className="mb-4 flex flex-wrap gap-2">
+                                    {dailyPracticePlan.evidence.slice(0, 3).map((row, index) => (
+                                        <span key={`${row.label}-${index}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                            {row.label}: {row.value}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="space-y-3">
+                                {visibleActions.map((action) => (
+                                    <ExportActionRow key={action.id} action={action} />
+                                ))}
+                            </div>
+                        </ExportSection>
+                    </section>
+
+                    <section className="grid grid-cols-3 gap-6">
+                        <ExportSection
+                            title={isZh ? '计划执行' : 'Plan Follow-through'}
+                            subtitle={isZh ? '建议任务完成情况' : 'Suggested action completion'}
+                            icon={CheckCircle2}
+                        >
+                            <div className="grid grid-cols-3 gap-3">
+                                <ExportMiniMetric label={isZh ? '计划' : 'Planned'} value={planSnapshot.totalActions} />
+                                <ExportMiniMetric label={isZh ? '完成' : 'Done'} value={planSnapshot.completedActions} />
+                                <ExportMiniMetric label={isZh ? '分钟' : 'Minutes'} value={`${planSnapshot.completedMinutes}/${planSnapshot.plannedMinutes}`} />
+                            </div>
+                            <p className="mt-4 text-sm font-semibold text-slate-600">
+                                {isZh ? '执行率' : 'Execution rate'}: {formatPercent(actionExecutionRate)}
+                            </p>
+                        </ExportSection>
+
+                        <ExportSection
+                            title={isZh ? 'AI 请求' : 'AI Requests'}
+                            subtitle={isZh ? '本机真实请求样本' : 'Real local request samples'}
+                            icon={Activity}
+                        >
+                            <div className="space-y-3">
+                                <ExportSignalRow label={isZh ? '成功率' : 'Success'} value={aiSuccessValue(aiMonitor)} detail={aiSuccessDetail(aiMonitor, isZh)} />
+                                <ExportSignalRow label={isZh ? '响应' : 'Latency'} value={aiLatencyValue(aiMonitor)} detail={aiLatencyDetail(aiMonitor, isZh)} />
+                            </div>
+                        </ExportSection>
+
+                        <ExportSection
+                            title={isZh ? '系统状态' : 'System Status'}
+                            subtitle={isZh ? '导出时刻的健康状态' : 'Health at export time'}
+                            icon={ShieldCheck}
+                        >
+                            <div className={`rounded-2xl p-4 ${statusPanelClass(aiMonitor?.status)}`}>
+                                <p className={`text-2xl font-black ${metricStatusClass(aiMonitor?.status)}`}>
+                                    {systemStatusLabel(aiMonitor?.status, isZh)}
+                                </p>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                    {systemStatusDetail(aiMonitor, isZh)}
+                                </p>
+                            </div>
+                            <p className="mt-3 text-xs font-semibold text-slate-500">
+                                {isZh ? '会话恢复' : 'Session recovery'}: {serviceStatusCopy(sessionRecovery?.status || 'insufficient', isZh)}
+                            </p>
+                        </ExportSection>
+                    </section>
+                </main>
+            </div>
+        </div>
+    );
+}
+
+function ExportStatCard({
+    label,
+    value,
+    helper,
+    icon: Icon,
+    tone
+}: {
+    label: string;
+    value: string | number;
+    helper: string;
+    icon: typeof LineChart;
+    tone: Tone;
+}) {
+    const toneClass = iconToneClass(tone);
+    return (
+        <div className="min-h-[124px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-600">{label}</p>
+                    <p className="mt-3 text-3xl font-black tracking-tight text-slate-950">{value}</p>
+                </div>
+                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${toneClass.bg} ${toneClass.text}`}>
+                    <Icon className="h-5 w-5" />
+                </span>
+            </div>
+            <p className="mt-3 line-clamp-2 text-xs font-semibold leading-snug text-slate-500">{helper}</p>
+        </div>
+    );
+}
+
+function ExportSection({
+    title,
+    subtitle,
+    icon: Icon,
+    badge,
+    children
+}: {
+    title: string;
+    subtitle: string;
+    icon: typeof LineChart;
+    badge?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <header className="mb-4 flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                        <Icon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                        <h2 className="text-lg font-black leading-tight tracking-tight text-slate-950">{title}</h2>
+                        <p className="mt-1 line-clamp-2 text-sm leading-snug text-slate-500">{subtitle}</p>
+                    </div>
+                </div>
+                {badge && (
+                    <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{badge}</span>
+                )}
+            </header>
+            {children}
+        </section>
+    );
+}
+
+function ExportSkillRow({ row, tone }: { row: SkillAccuracyRow; tone: Tone; }) {
+    const percentage = Math.round(row.accuracy * 100);
+    const toneClass = progressToneClass(tone);
+    return (
+        <div className="grid grid-cols-[minmax(0,1fr)_190px_48px] items-center gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+            <div className="min-w-0">
+                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(row.skill)}</p>
+                <p className="text-xs font-semibold text-slate-500">{row.correct}/{row.total} correct</p>
+            </div>
+            <div className="h-2.5 rounded-full bg-slate-100">
+                <div
+                    className={`h-full rounded-full ${toneClass.bar}`}
+                    style={{ width: `${percentage > 0 ? Math.max(4, percentage) : 0}%` }}
+                />
+            </div>
+            <p className="text-right text-sm font-black text-slate-700">{percentage}%</p>
+        </div>
+    );
+}
+
+function ExportReviewRow({ card, index, isZh }: { card: FSRSCard; index: number; isZh: boolean; }) {
+    const status = getMemoryStatus(card);
+    const priority = index === 0 ? 'High' : index < 3 ? 'Medium' : 'Low';
+    const tone = index === 0 ? 'red' : 'amber';
+    const toneClass = iconToneClass(tone);
+    return (
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${toneClass.bg} ${toneClass.text}`}>
+                <BookOpen className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review')}</p>
+                <p className="truncate text-xs font-semibold text-slate-500">{card.question}</p>
+            </div>
+            <div className="shrink-0 text-right">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priority}</span>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{isZh ? status.statusText.zh : status.statusText.en}</p>
+            </div>
+        </div>
+    );
+}
+
+function ExportDailyTrend({ rows, isZh }: { rows: DailyAccuracyRow[]; isZh: boolean; }) {
+    const visibleRows = rows.slice(-7);
+    if (visibleRows.length === 0) return <ExportEmptyLine message={isZh ? '暂无趋势数据' : 'No trend data yet'} />;
+    const maxMissions = Math.max(...visibleRows.map((row) => row.missions), 1);
+    return (
+        <div>
+            <div className="grid h-40 grid-cols-7 items-end gap-3 rounded-2xl bg-slate-50 px-4 pb-4 pt-5">
+                {visibleRows.map((row) => (
+                    <div key={row.date} className="flex h-full min-w-0 flex-col justify-end gap-2">
+                        <div className="flex flex-1 items-end gap-1.5">
+                            <div
+                                className="w-full rounded-t-lg bg-blue-500"
+                                style={{ height: `${Math.max(8, row.accuracy * 100)}%` }}
+                                aria-label={`${row.label} accuracy ${formatPercent(row.accuracy)}`}
+                            />
+                            <div
+                                className="w-full rounded-t-lg bg-emerald-500"
+                                style={{ height: `${Math.max(8, (row.missions / maxMissions) * 100)}%` }}
+                                aria-label={`${row.label} missions ${row.missions}`}
+                            />
+                        </div>
+                        <p className="truncate text-center text-[11px] font-bold text-slate-500">{row.label}</p>
+                    </div>
+                ))}
+            </div>
+            <div className="mt-3 flex items-center justify-end gap-4 text-xs font-bold">
+                <span className="inline-flex items-center gap-1 text-blue-700"><span className="h-2 w-2 rounded-full bg-blue-500" />{isZh ? '正确率' : 'Accuracy'}</span>
+                <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" />{isZh ? '任务' : 'Missions'}</span>
+            </div>
+        </div>
+    );
+}
+
+function ExportActionRow({ action }: { action: TonightActionItem; }) {
+    return (
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-900">{action.title}</p>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{action.description}</p>
+                </div>
+                <PriorityBadge priority={action.priority} />
+            </div>
+            <p className="mt-2 text-xs font-black text-slate-600">{action.evidence}</p>
+        </div>
+    );
+}
+
+function ExportMiniMetric({ label, value }: { label: string; value: string | number; }) {
+    return (
+        <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-xs font-black text-slate-500">{label}</p>
+            <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
+        </div>
+    );
+}
+
+function ExportSignalRow({ label, value, detail }: { label: string; value: string; detail: string; }) {
+    return (
+        <div className="rounded-xl bg-slate-50 p-3">
+            <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-black text-slate-700">{label}</p>
+                <p className="text-sm font-black text-slate-950">{value}</p>
+            </div>
+            <p className="mt-2 text-xs font-semibold leading-snug text-slate-500">{detail}</p>
+        </div>
+    );
+}
+
+function ExportEmptyLine({ message }: { message: string; }) {
+    return (
+        <div className="grid min-h-[92px] place-items-center rounded-2xl bg-slate-50 text-center text-sm font-bold text-slate-500">
+            {message}
+        </div>
     );
 }
 
@@ -1408,6 +1911,32 @@ function formatLatencyMs(value?: number) {
 
 function formatNumber(value: number) {
     return new Intl.NumberFormat().format(value);
+}
+
+function formatReportTimestamp(value: number, isZh: boolean) {
+    return new Intl.DateTimeFormat(isZh ? 'zh-CN' : 'en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    }).format(new Date(value));
+}
+
+function formatExportFileTimestamp(value: number) {
+    const date = new Date(value);
+    const pad = (part: number) => String(part).padStart(2, '0');
+    return [
+        date.getFullYear(),
+        pad(date.getMonth() + 1),
+        pad(date.getDate())
+    ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}`;
+}
+
+function getLocalTimeZoneLabel(isZh: boolean) {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || (isZh ? '本地时间' : 'Local time');
+    return isZh ? `时区：${timeZone}` : `Time zone: ${timeZone}`;
 }
 
 function statusCopy(status: string, isZh: boolean) {
