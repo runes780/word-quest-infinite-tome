@@ -73,6 +73,7 @@ import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
 import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
+const MIN_AI_MONITOR_REQUESTS = 5;
 type RangeOption = typeof RANGE_OPTIONS[number];
 type DashboardSectionId =
     | 'overview'
@@ -334,6 +335,11 @@ export function ParentDashboard() {
     const actionSummary = studyActionSummary ?? computeStudyActionExecutionSummaryFromRows(studyActionExecutions, 14);
     const repeatedGoal = repeatedCauseBaselineGoal ?? FALLBACK_REPEATED_GOAL;
     const repeatedAction = repeatedActionData ?? FALLBACK_REPEATED_ACTION;
+    const dashboardDataStatus = !consistencyAudit
+        ? 'insufficient'
+        : consistencyAudit.overallStatus === 'warning'
+            ? 'warning'
+            : 'healthy';
 
     const handleStartTargetedReview = useCallback(() => {
         const pack = buildTargetedReviewPack({
@@ -579,7 +585,7 @@ export function ParentDashboard() {
                                             </span>
                                             <div>
                                                 <p className="text-sm font-bold">{isZh ? '系统状态' : 'System Status'}</p>
-                                                <p className="text-xs text-emerald-600">{systemStatusLabel(aiMonitor?.status)}</p>
+                                                <p className={statusTextClass(aiMonitor?.status)}>{systemStatusLabel(aiMonitor?.status, isZh)}</p>
                                             </div>
                                         </div>
                                         <p className="text-xs text-slate-500">
@@ -808,23 +814,38 @@ export function ParentDashboard() {
                                             </div>
                                         </Panel>
 
-                                        <Panel title="Stability Monitor" subtitle={isZh ? '系统性能与可靠性' : 'System performance and reliability'} icon={ShieldCheck} sectionRef={registerSection('stability')}>
+                                        <Panel title={isZh ? 'AI 请求监控' : 'AI Request Monitor'} subtitle={isZh ? '来自本机的近期真实请求记录' : 'Recent local request telemetry'} icon={ShieldCheck} sectionRef={registerSection('stability')}>
                                             <div className="grid grid-cols-3 gap-2">
-                                                <StabilityMetric label={isZh ? '成功率' : 'Success'} value={aiMonitor ? formatPercent(aiMonitor.successRate.currentRate) : '--'} />
-                                                <StabilityMetric label={isZh ? '响应' : 'Avg. Response'} value={aiMonitor ? `${Math.round(aiMonitor.avgLatencyMs)}ms` : '--'} />
-                                                <StabilityMetric label={isZh ? '重试压力' : 'Retry Rate'} value={aiMonitor ? formatPercent(aiMonitor.retryPressureRate) : '--'} />
+                                                <StabilityMetric
+                                                    label={isZh ? 'AI 成功率' : 'AI Success'}
+                                                    value={aiSuccessValue(aiMonitor)}
+                                                    detail={aiSuccessDetail(aiMonitor, isZh)}
+                                                    status={aiMonitor?.successRate.status || 'insufficient'}
+                                                />
+                                                <StabilityMetric
+                                                    label={isZh ? '响应时间' : 'Response Time'}
+                                                    value={aiLatencyValue(aiMonitor)}
+                                                    detail={aiLatencyDetail(aiMonitor, isZh)}
+                                                    status={aiMonitor?.status || 'insufficient'}
+                                                />
+                                                <StabilityMetric
+                                                    label={isZh ? '重试压力' : 'Retry Pressure'}
+                                                    value={aiRetryValue(aiMonitor)}
+                                                    detail={aiRetryDetail(aiMonitor, isZh)}
+                                                    status={aiRetryStatus(aiMonitor)}
+                                                />
                                             </div>
                                             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_160px]">
                                                 <div className="space-y-2 text-sm">
-                                                    <ServiceRow label="Content Service" status="operational" />
-                                                    <ServiceRow label="AI Inference" status={aiMonitor?.status || 'insufficient'} />
-                                                    <ServiceRow label="Analytics Service" status={consistencyAudit?.overallStatus === 'warning' ? 'warning' : 'operational'} />
-                                                    <ServiceRow label="Session Recovery" status={sessionRecovery?.status || 'insufficient'} />
+                                                    <ServiceRow label={isZh ? '本地题库' : 'Local question bank'} status="operational" isZh={isZh} />
+                                                    <ServiceRow label={isZh ? 'AI 生成请求' : 'AI generation requests'} status={aiMonitor?.status || 'insufficient'} isZh={isZh} />
+                                                    <ServiceRow label={isZh ? '数据一致性' : 'Dashboard data consistency'} status={dashboardDataStatus} isZh={isZh} />
+                                                    <ServiceRow label={isZh ? '会话恢复' : 'Session recovery'} status={sessionRecovery?.status || 'insufficient'} isZh={isZh} />
                                                 </div>
-                                                <div className="grid place-items-center rounded-2xl bg-blue-50 p-4 text-center">
-                                                    <ShieldCheck className="mb-2 h-14 w-14 text-blue-600" />
-                                                    <p className="text-sm font-black text-slate-900">{systemStatusLabel(aiMonitor?.status)}</p>
-                                                    <p className="text-xs text-slate-500">{isZh ? '无重大事件' : 'No incidents reported'}</p>
+                                                <div className={`grid place-items-center rounded-2xl p-4 text-center ${statusPanelClass(aiMonitor?.status)}`}>
+                                                    <ShieldCheck className={`mb-2 h-14 w-14 ${statusIconClass(aiMonitor?.status)}`} />
+                                                    <p className="text-sm font-black text-slate-900">{systemStatusLabel(aiMonitor?.status, isZh)}</p>
+                                                    <p className="text-xs leading-relaxed text-slate-500">{systemStatusDetail(aiMonitor, isZh)}</p>
                                                 </div>
                                             </div>
                                         </Panel>
@@ -1219,31 +1240,53 @@ function RecommendationRow({
     );
 }
 
-function StabilityMetric({ label, value }: { label: string; value: string; }) {
+function StabilityMetric({
+    label,
+    value,
+    detail,
+    status
+}: {
+    label: string;
+    value: string;
+    detail: string;
+    status: string;
+}) {
+    const tone = metricStatusClass(status);
     return (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-bold text-slate-500">{label}</p>
-            <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
-            <div className="mt-2 h-6 overflow-hidden rounded bg-white">
-                <svg viewBox="0 0 120 24" className="h-full w-full">
-                    <path d="M0 18 L10 13 L20 16 L30 10 L40 14 L50 8 L60 13 L70 7 L80 12 L90 9 L100 14 L120 10" fill="none" stroke="#10b981" strokeWidth="3" />
-                </svg>
-            </div>
+            <p className={`mt-1 text-lg font-black ${tone}`}>{value}</p>
+            <p className="mt-2 min-h-8 text-[11px] font-semibold leading-snug text-slate-500">{detail}</p>
         </div>
     );
 }
 
-function ServiceRow({ label, status }: { label: string; status: string; }) {
+function ServiceRow({ label, status, isZh }: { label: string; status: string; isZh: boolean; }) {
     const healthy = status === 'healthy' || status === 'operational' || status === 'ok';
-    const warning = status === 'warning' || status === 'insufficient';
+    const collecting = status === 'insufficient';
+    const warning = status === 'warning';
+    const iconClass = healthy
+        ? 'text-emerald-600'
+        : collecting
+            ? 'text-slate-400'
+            : warning
+                ? 'text-amber-500'
+                : 'text-red-500';
+    const textClass = healthy
+        ? 'text-emerald-600'
+        : collecting
+            ? 'text-slate-500'
+            : warning
+                ? 'text-amber-600'
+                : 'text-red-600';
     return (
         <div className="flex items-center justify-between gap-3">
             <span className="inline-flex items-center gap-2 font-semibold text-slate-700">
-                <CheckCircle2 className={`h-4 w-4 ${healthy ? 'text-emerald-600' : warning ? 'text-amber-500' : 'text-red-500'}`} />
+                <CheckCircle2 className={`h-4 w-4 ${iconClass}`} />
                 {label}
             </span>
-            <span className={`text-xs font-black ${healthy ? 'text-emerald-600' : warning ? 'text-amber-600' : 'text-red-600'}`}>
-                {healthy ? 'Operational' : warning ? 'Watch' : 'Issue'}
+            <span className={`text-xs font-black ${textClass}`}>
+                {serviceStatusCopy(status, isZh)}
             </span>
         </div>
     );
@@ -1358,6 +1401,11 @@ function formatPercent(value: number) {
     return `${Math.round(value * 100)}%`;
 }
 
+function formatLatencyMs(value?: number) {
+    if (!value || value <= 0) return '--';
+    return `${Math.round(value)}ms`;
+}
+
 function formatNumber(value: number) {
     return new Intl.NumberFormat().format(value);
 }
@@ -1371,15 +1419,122 @@ function statusCopy(status: string, isZh: boolean) {
     return isZh ? '样本不足' : 'Insufficient';
 }
 
-function systemStatusLabel(status?: string) {
-    if (status === 'critical') return 'Needs Attention';
-    if (status === 'warning') return 'Monitoring';
-    if (status === 'insufficient') return 'Collecting Data';
-    return 'All Systems Operational';
+function hasEnoughAiSamples(aiMonitor?: AIRequestMonitorSnapshot | null) {
+    return Boolean(aiMonitor && aiMonitor.totalRequests >= MIN_AI_MONITOR_REQUESTS && aiMonitor.successRate.status !== 'insufficient');
+}
+
+function aiSuccessValue(aiMonitor?: AIRequestMonitorSnapshot | null) {
+    return hasEnoughAiSamples(aiMonitor) ? formatPercent(aiMonitor!.successRate.currentRate) : '--';
+}
+
+function aiSuccessDetail(aiMonitor: AIRequestMonitorSnapshot | null, isZh: boolean) {
+    if (!aiMonitor || aiMonitor.totalRequests === 0) {
+        return isZh ? '暂无 AI 请求记录' : 'No AI requests logged';
+    }
+    if (!hasEnoughAiSamples(aiMonitor)) {
+        return isZh
+            ? `${aiMonitor.totalRequests}/${MIN_AI_MONITOR_REQUESTS} 次请求已记录`
+            : `${aiMonitor.totalRequests}/${MIN_AI_MONITOR_REQUESTS} requests collected`;
+    }
+    return isZh
+        ? `${aiMonitor.successRate.numerator}/${aiMonitor.successRate.denominator} 次成功`
+        : `${aiMonitor.successRate.numerator}/${aiMonitor.successRate.denominator} successful`;
+}
+
+function aiLatencyValue(aiMonitor?: AIRequestMonitorSnapshot | null) {
+    if (!aiMonitor || aiMonitor.totalRequests === 0) return '--';
+    return formatLatencyMs(aiMonitor.avgLatencyMs);
+}
+
+function aiLatencyDetail(aiMonitor: AIRequestMonitorSnapshot | null, isZh: boolean) {
+    if (!aiMonitor || aiMonitor.totalRequests === 0) {
+        return isZh ? '等待真实请求样本' : 'Waiting for real samples';
+    }
+    const sampleLabel = aiMonitor.totalRequests === 1 ? 'sample' : 'samples';
+    return isZh
+        ? `${aiMonitor.totalRequests} 个样本 · P95 ${formatLatencyMs(aiMonitor.p95LatencyMs)}`
+        : `${aiMonitor.totalRequests} ${sampleLabel} · p95 ${formatLatencyMs(aiMonitor.p95LatencyMs)}`;
+}
+
+function aiRetryStatus(aiMonitor?: AIRequestMonitorSnapshot | null) {
+    if (!hasEnoughAiSamples(aiMonitor)) return 'insufficient';
+    if (aiMonitor!.retryPressureRate >= 0.6) return 'critical';
+    if (aiMonitor!.retryPressureRate >= 0.35) return 'warning';
+    return 'healthy';
+}
+
+function aiRetryValue(aiMonitor?: AIRequestMonitorSnapshot | null) {
+    return hasEnoughAiSamples(aiMonitor) ? formatPercent(aiMonitor!.retryPressureRate) : '--';
+}
+
+function aiRetryDetail(aiMonitor: AIRequestMonitorSnapshot | null, isZh: boolean) {
+    if (!aiMonitor || aiMonitor.totalRequests === 0) {
+        return isZh ? '暂无重试记录' : 'No retry data yet';
+    }
+    if (!hasEnoughAiSamples(aiMonitor)) {
+        return isZh ? `满 ${MIN_AI_MONITOR_REQUESTS} 次请求后显示` : `Shown after ${MIN_AI_MONITOR_REQUESTS} requests`;
+    }
+    return isZh ? `${aiMonitor.windowDays} 天窗口` : `${aiMonitor.windowDays}d window`;
+}
+
+function systemStatusLabel(status: string | undefined, isZh = false) {
+    if (status === 'critical') return isZh ? '需要处理' : 'Needs Attention';
+    if (status === 'warning') return isZh ? '观察中' : 'Monitoring';
+    if (status === 'insufficient') return isZh ? '正在收集数据' : 'Collecting Data';
+    return isZh ? '运行稳定' : 'Stable';
+}
+
+function systemStatusDetail(aiMonitor: AIRequestMonitorSnapshot | null, isZh: boolean) {
+    if (!aiMonitor || aiMonitor.totalRequests === 0) {
+        return isZh ? '本机还没有 AI 请求记录。' : 'No AI requests have been logged on this device yet.';
+    }
+    if (aiMonitor.status === 'insufficient') {
+        return isZh
+            ? `已记录 ${aiMonitor.totalRequests}/${MIN_AI_MONITOR_REQUESTS} 次请求，样本足够后再判断可靠性。`
+            : `${aiMonitor.totalRequests}/${MIN_AI_MONITOR_REQUESTS} requests logged. Reliability will be scored after enough samples.`;
+    }
+    if (aiMonitor.status === 'critical') {
+        return isZh
+            ? `近 ${aiMonitor.windowDays} 天成功率 ${formatPercent(aiMonitor.successRate.currentRate)}，重试压力 ${formatPercent(aiMonitor.retryPressureRate)}。`
+            : `Last ${aiMonitor.windowDays} days: ${formatPercent(aiMonitor.successRate.currentRate)} success, ${formatPercent(aiMonitor.retryPressureRate)} retry pressure.`;
+    }
+    if (aiMonitor.status === 'warning') {
+        return isZh
+            ? `近 ${aiMonitor.windowDays} 天请求有波动，建议继续观察。`
+            : `Recent AI requests are uneven. Keep monitoring this window.`;
+    }
+    return isZh
+        ? `近 ${aiMonitor.windowDays} 天 ${aiMonitor.totalRequests} 次 AI 请求，未发现可靠性异常。`
+        : `${aiMonitor.totalRequests} AI requests in the last ${aiMonitor.windowDays} days with no reliability issues.`;
+}
+
+function serviceStatusCopy(status: string, isZh: boolean) {
+    if (status === 'healthy' || status === 'operational' || status === 'ok') return isZh ? '正常' : 'Operational';
+    if (status === 'insufficient') return isZh ? '收集中' : 'Collecting';
+    if (status === 'warning') return isZh ? '观察' : 'Watch';
+    return isZh ? '异常' : 'Issue';
+}
+
+function statusTextClass(status?: string) {
+    return `text-xs ${metricStatusClass(status)}`;
+}
+
+function statusPanelClass(status?: string) {
+    if (status === 'critical') return 'bg-red-50';
+    if (status === 'warning') return 'bg-amber-50';
+    if (status === 'insufficient') return 'bg-slate-50';
+    return 'bg-emerald-50';
+}
+
+function statusIconClass(status?: string) {
+    if (status === 'critical') return 'text-red-600';
+    if (status === 'warning') return 'text-amber-600';
+    if (status === 'insufficient') return 'text-slate-500';
+    return 'text-emerald-600';
 }
 
 function metricStatusClass(status?: string) {
-    if (status === 'met' || status === 'passed') return 'text-emerald-600';
+    if (status === 'met' || status === 'passed' || status === 'healthy' || status === 'operational' || status === 'ok') return 'text-emerald-600';
     if (status === 'not_met' || status === 'critical') return 'text-red-600';
     if (status === 'warning') return 'text-amber-600';
     return 'text-slate-500';

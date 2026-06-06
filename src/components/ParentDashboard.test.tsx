@@ -19,7 +19,7 @@ const mockMetric = {
     status: 'met' as const
 };
 
-const mockGetGuardianDashboardViewModel = jest.fn(async () => ({
+const buildMockDashboardViewModel = () => ({
     history: {
         records: [{
             id: 1,
@@ -250,7 +250,9 @@ const mockGetGuardianDashboardViewModel = jest.fn(async () => ({
         meta: '80% accuracy',
         timestamp: Date.now() - 1000
     }]
-}));
+});
+
+const mockGetGuardianDashboardViewModel = jest.fn(async () => buildMockDashboardViewModel());
 
 jest.mock('@/store/settingsStore', () => ({
     useSettingsStore: () => ({ language: 'en' })
@@ -299,6 +301,7 @@ jest.mock('@/db/db', () => ({
 
 describe('ParentDashboard visual information architecture', () => {
     beforeEach(() => {
+        mockGetGuardianDashboardViewModel.mockClear();
         scrollIntoView.mockClear();
         scrollTo.mockClear();
         Element.prototype.scrollIntoView = scrollIntoView;
@@ -320,7 +323,7 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Wrong battle answer')).toBeInTheDocument();
         expect(screen.getByText('Guardian Recommendations')).toBeInTheDocument();
         expect(screen.getByText('Why This Plan')).toBeInTheDocument();
-        expect(screen.getByText('Stability Monitor')).toBeInTheDocument();
+        expect(screen.getByText('AI Request Monitor')).toBeInTheDocument();
     });
 
     test('binds top KPI cards to the persisted player profile and daily flame state', async () => {
@@ -423,5 +426,44 @@ describe('ParentDashboard visual information architecture', () => {
         expect(masteryPanel).toHaveClass('min-w-0');
         expect(masteryPanel.parentElement?.className).toContain('xl:grid-cols-2');
         expect(masteryPanel.parentElement?.className).toContain('2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_minmax(0,0.9fr)]');
+    });
+
+    test('does not present insufficient AI request telemetry as hard reliability percentages', async () => {
+        const insufficientMetric = {
+            ...mockMetric,
+            currentRate: 0,
+            numerator: 0,
+            denominator: 1,
+            status: 'insufficient' as const
+        };
+        mockGetGuardianDashboardViewModel.mockResolvedValueOnce({
+            ...buildMockDashboardViewModel(),
+            aiMonitor: {
+                windowDays: 7,
+                generatedAt: Date.now(),
+                totalRequests: 1,
+                avgLatencyMs: 2963,
+                p95LatencyMs: 2963,
+                successRate: insufficientMetric,
+                nonRateLimitedRate: insufficientMetric,
+                retryPressureRate: 1,
+                status: 'insufficient' as const
+            }
+        });
+
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getAllByText('Collecting Data').length).toBeGreaterThan(0);
+        });
+
+        expect(screen.getByText('1/5 requests collected')).toBeInTheDocument();
+        expect(screen.getByText('Shown after 5 requests')).toBeInTheDocument();
+        expect(screen.getByText('1 sample · p95 2963ms')).toBeInTheDocument();
+        expect(screen.queryByText('0%')).not.toBeInTheDocument();
+        expect(screen.queryByText('100%')).not.toBeInTheDocument();
+        expect(screen.queryByText('No incidents reported')).not.toBeInTheDocument();
     });
 });
