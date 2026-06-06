@@ -28,6 +28,19 @@ This repository is not a generic Next.js demo. It is a working prototype of reus
 
 The project is serious but early-stage. It does not claim school deployment, production users, downloads, or measured learning impact.
 
+## Open Source Maintainer Support
+
+This repository is prepared for open-source maintainer support and Codex-assisted maintenance workflows:
+
+- [Codex for OSS application notes](docs/OPEN_SOURCE_APPLICATION.md) summarize the maintainer role, project qualification argument, API-credit use cases, and Codex Security review areas.
+- [Privacy and AI safety](docs/PRIVACY_AND_AI_SAFETY.md) documents local learning-data boundaries, AI provider expectations, prompt-injection risks, API key handling, and report-export privacy.
+- [Codex workflows](docs/CODEX_WORKFLOWS.md) defines review, triage, release, and test-expansion prompts for safe maintainer automation.
+- [Open-source issue backlog](docs/OPEN_SOURCE_ISSUE_BACKLOG.md) lists ready-to-create public issues for privacy hardening, tests, generated-content evaluation, release process, and refactoring.
+- [Release checklist](docs/RELEASE_CHECKLIST.md) defines the verification, privacy, screenshot, and changelog gate before publishing a release.
+- [Agent guidance](AGENTS.md) gives repo-specific rules for Codex and other coding agents.
+
+These materials are intended to make maintenance work visible without claiming adoption metrics the project does not yet have.
+
 ## Core Features
 
 | Feature | Current status | Notes |
@@ -156,7 +169,13 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 ├── src/store/                  # Zustand game/settings stores and domain modules
 ├── src/e2e/                    # Learning main-flow regression test
 ├── docs/assets/                # README visuals and screenshots
+├── docs/PRIVACY_AND_AI_SAFETY.md
+├── docs/CODEX_WORKFLOWS.md
+├── docs/OPEN_SOURCE_APPLICATION.md
+├── docs/RELEASE_CHECKLIST.md
 ├── ROADMAP.md                  # Product and engineering roadmap
+├── CHANGELOG.md                # Public release and readiness notes
+├── AGENTS.md                   # Coding-agent and maintainer workflow rules
 └── TODO.md                     # Execution checklist
 ```
 
@@ -201,6 +220,8 @@ The detailed roadmap lives in [ROADMAP.md](ROADMAP.md). Current public-facing pr
 - Local-first development is encouraged. Store only what the learning loop needs.
 - API keys are entered locally for development and must never be committed.
 - Treat dashboard analytics as learning support evidence, not as a high-stakes assessment system.
+
+See [Privacy and AI safety](docs/PRIVACY_AND_AI_SAFETY.md) for the full contributor checklist.
 
 ## Contributing
 

@@ -2,6 +2,8 @@
 
 Word Quest: Infinite Tome is an early-stage local-first learning app. Security and privacy reports are welcome, especially around API keys, student data, AI prompts, local persistence, and exported reports.
 
+For the current project privacy and AI safety model, see [docs/PRIVACY_AND_AI_SAFETY.md](docs/PRIVACY_AND_AI_SAFETY.md).
+
 ## Reporting a Vulnerability
 
 If GitHub private vulnerability reporting is enabled for this repository, please use it. Otherwise, contact the maintainer through the GitHub profile for `runes780` and avoid posting exploitable details publicly until the issue is triaged.

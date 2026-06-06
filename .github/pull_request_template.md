@@ -18,6 +18,7 @@ What learning loop, dashboard evidence, AI behavior, or maintenance path does th
 - [ ] No API keys or secrets are included
 - [ ] No real student names, school data, screenshots, or private learning records are included
 - [ ] Fixtures and screenshots use synthetic/generic data only
+- [ ] AI provider, prompt, persistence, report, or privacy assumptions are documented if changed
 
 ## Notes for Reviewers
 
