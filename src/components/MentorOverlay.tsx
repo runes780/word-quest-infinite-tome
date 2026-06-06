@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Zap, ArrowRight } from 'lucide-react';
+import { Bot, Zap, ArrowRight, X } from 'lucide-react';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { MENTOR_SYSTEM_PROMPT, generateMentorPrompt } from '@/lib/ai/prompts';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -243,8 +243,17 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                     <motion.div
                         initial={{ scale: 0.8, y: 50 }}
                         animate={{ scale: 1, y: 0 }}
-                        className="max-w-2xl w-full bg-card border-2 border-primary/50 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(59,130,246,0.3)]"
+                        className="relative max-w-2xl w-full bg-card border-2 border-primary/50 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(59,130,246,0.3)]"
                     >
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            aria-label={language === 'zh' ? '关闭导师分析' : 'Close mentor analysis'}
+                            className="absolute right-4 top-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-background/90 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:bg-secondary hover:text-foreground"
+                        >
+                            <X className="h-4 w-4" />
+                            <span className="hidden sm:inline">{language === 'zh' ? '关闭' : 'Close'}</span>
+                        </button>
                         <div className="bg-primary/10 p-6 border-b border-primary/20 flex items-center gap-4">
                             <div className="p-3 bg-primary rounded-full animate-pulse">
                                 <Bot className="w-8 h-8 text-primary-foreground" />

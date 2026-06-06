@@ -74,7 +74,11 @@ export function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                     </div>
                                     <h2 className="text-2xl font-bold text-primary">{t.shop.title}</h2>
                                 </div>
-                                <button onClick={onClose}>
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    aria-label={language === 'zh' ? '关闭商店' : 'Close shop'}
+                                >
                                     <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
                                 </button>
                             </div>

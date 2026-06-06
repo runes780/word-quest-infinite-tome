@@ -87,7 +87,9 @@ export function SRSDashboard({ isOpen, onClose, onStartReview }: SRSDashboardPro
                     {/* Header with gradient */}
                     <div className="relative bg-gradient-to-r from-primary/20 via-purple-500/20 to-pink-500/20 p-6 border-b border-border/50">
                         <button
+                            type="button"
                             onClick={onClose}
+                            aria-label={isZh ? '关闭复习看板' : 'Close review dashboard'}
                             className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 transition-colors"
                         >
                             <X className="w-5 h-5 text-muted-foreground" />

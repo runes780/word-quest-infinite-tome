@@ -77,7 +77,11 @@ export function SettingsModal() {
                         >
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-2xl font-bold text-primary">{t.settings.title}</h2>
-                                <button onClick={() => setSettingsOpen(false)}>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettingsOpen(false)}
+                                    aria-label={language === 'zh' ? '关闭设置' : 'Close settings'}
+                                >
                                     <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
                                 </button>
                             </div>

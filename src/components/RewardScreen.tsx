@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
-import { Coins, ArrowRight } from 'lucide-react';
+import { Coins, ArrowRight, X } from 'lucide-react';
 import { playSound } from '@/lib/audio';
 
 export function RewardScreen() {
@@ -23,8 +23,17 @@ export function RewardScreen() {
                         initial={{ opacity: 0, scale: 0.9, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="bg-slate-900 border-2 border-yellow-500/50 rounded-3xl w-full max-w-2xl shadow-[0_0_50px_rgba(234,179,8,0.2)] overflow-hidden"
+                        className="relative bg-slate-900 border-2 border-yellow-500/50 rounded-3xl w-full max-w-2xl shadow-[0_0_50px_rgba(234,179,8,0.2)] overflow-hidden"
                     >
+                        <button
+                            type="button"
+                            onClick={handleContinue}
+                            aria-label={language === 'zh' ? '稍后领取并继续' : 'Skip rewards and continue'}
+                            className="absolute right-4 top-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs font-semibold text-white/70 shadow-sm backdrop-blur hover:bg-black/60 hover:text-white"
+                        >
+                            <X className="h-4 w-4" />
+                            <span className="hidden sm:inline">{language === 'zh' ? '稍后' : 'Later'}</span>
+                        </button>
                         {/* Header */}
                         <div className="p-8 text-center border-b border-white/10 bg-gradient-to-b from-yellow-500/10 to-transparent">
                             <motion.div

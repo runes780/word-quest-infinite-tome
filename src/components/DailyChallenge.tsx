@@ -482,18 +482,24 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
                         initial={{ scale: 0.9, y: 20 }}
                         animate={{ scale: 1, y: 0 }}
                         exit={{ scale: 0.9, y: 20 }}
-                        className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl"
+                        className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl"
                         onClick={e => e.stopPropagation()}
                     >
-                        {/* Close button */}
-                        {phase !== 'playing' && (
-                            <button
-                                onClick={onClose}
-                                className="absolute top-4 right-4 p-1 rounded-full hover:bg-secondary"
-                            >
-                                <X className="w-5 h-5 text-muted-foreground" />
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            aria-label={phase === 'playing'
+                                ? (language === 'zh' ? '退出每日挑战' : 'Exit Daily Challenge')
+                                : (language === 'zh' ? '关闭每日挑战' : 'Close Daily Challenge')}
+                            className="absolute top-4 right-4 inline-flex items-center gap-1.5 rounded-full border border-border bg-card/90 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:bg-secondary hover:text-foreground"
+                        >
+                            <X className="w-4 h-4" />
+                            <span className="hidden sm:inline">
+                                {phase === 'playing'
+                                    ? (language === 'zh' ? '退出' : 'Exit')
+                                    : (language === 'zh' ? '关闭' : 'Close')}
+                            </span>
+                        </button>
 
                         {phase === 'intro' && renderIntro()}
                         {phase === 'playing' && renderPlaying()}

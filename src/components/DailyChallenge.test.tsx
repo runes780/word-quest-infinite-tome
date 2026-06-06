@@ -83,4 +83,14 @@ describe('DailyChallenge learning pipeline regression', () => {
             totalStudyMinutes: 1
         }));
     });
+
+    test('keeps an explicit exit action visible while the challenge is active', () => {
+        const onClose = jest.fn();
+        render(<DailyChallenge isOpen onClose={onClose} />);
+
+        fireEvent.click(screen.getByText('Start Challenge'));
+        fireEvent.click(screen.getByLabelText('Exit Daily Challenge'));
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
 });

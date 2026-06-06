@@ -314,7 +314,9 @@ export function MistakeNotebook() {
                                     </p>
                                 </div>
                                 <button
+                                    type="button"
                                     onClick={() => setIsOpen(false)}
+                                    aria-label={isZh ? '关闭错题本' : 'Close mistake notebook'}
                                     className="p-2 rounded-lg hover:bg-secondary transition-colors flex-shrink-0"
                                 >
                                     <X className="w-5 h-5 sm:w-6 sm:h-6 text-muted-foreground" />

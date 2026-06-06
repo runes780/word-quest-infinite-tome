@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Shield, Zap, Heart, Coins, BookOpen, Target } from 'lucide-react';
+import { Sparkles, Shield, Zap, Heart, Coins, BookOpen, Target, X } from 'lucide-react';
 import { playSound } from '@/lib/audio';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -233,6 +233,18 @@ export function BlessingSelection({ onSelect, onSkip }: BlessingSelectionProps) 
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-sm p-4"
         >
+            {onSkip && (
+                <button
+                    type="button"
+                    onClick={onSkip}
+                    disabled={isConfirming}
+                    aria-label={isZh ? '返回任务设置' : 'Back to mission setup'}
+                    className="absolute right-4 top-4 z-10 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-slate-950 disabled:opacity-50"
+                >
+                    <X className="h-4 w-4" />
+                    <span className="hidden sm:inline">{isZh ? '返回任务' : 'Back'}</span>
+                </button>
+            )}
             <motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
