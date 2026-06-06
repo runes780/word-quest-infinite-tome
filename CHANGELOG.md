@@ -2,9 +2,9 @@
 
 All notable public-facing changes are tracked here. The project is early-stage; releases may still be marked alpha until the maintainer declares a stable school or production deployment path.
 
-## v0.1.0-alpha - OSS Readiness Baseline
+## v0.1.0-alpha - 2026-06-07
 
-This baseline describes the current open-source application state used for maintainer-support review.
+This OSS Readiness Baseline describes the current open-source application state used for maintainer-support review.
 
 ### Added
 

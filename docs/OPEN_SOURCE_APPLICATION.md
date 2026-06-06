@@ -2,6 +2,8 @@
 
 Source context checked: 2026-06-07. The Codex for Open Source form asks maintainers to explain project qualification, maintainer role, API-credit use, and any extra context in short fields. It highlights active maintenance, ecosystem importance, pull request review, issue triage, release management, security, and code quality.
 
+Public release baseline: [v0.1.0-alpha - OSS Readiness Baseline](https://github.com/runes780/word-quest-infinite-tome/releases/tag/v0.1.0-alpha).
+
 ## Project Summary
 
 Word Quest: Infinite Tome is an early-stage open-source AI+education project for English vocabulary learning. It combines game-based practice, SRS/FSRS review scheduling, mastery tracking, learning-event logging, teacher/guardian-facing evidence, offline recovery, and optional AI-assisted question generation.
@@ -97,5 +99,5 @@ The maintainer is a primary-school English teacher and independent developer. Th
 - [x] Changelog/readiness baseline
 - [x] Release checklist
 - [x] Public issues created from `docs/OPEN_SOURCE_ISSUE_BACKLOG.md`
-- [ ] First GitHub release published from `CHANGELOG.md`
+- [x] First GitHub release published from `CHANGELOG.md`
 - [ ] Current feature branch reviewed, merged, and pushed before claiming its behavior in the application
