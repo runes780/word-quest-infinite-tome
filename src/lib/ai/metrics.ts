@@ -1,4 +1,7 @@
+import type { AIProvider } from './modelOptions';
+
 export interface OpenRouterMetricInput {
+    provider: AIProvider;
     model: string;
     isFreeModel: boolean;
     outcome: 'success' | 'error' | 'timeout';
@@ -16,7 +19,7 @@ export async function logOpenRouterMetric(input: OpenRouterMetricInput): Promise
     try {
         const { logAIRequestMetric } = await import('@/db/db');
         await logAIRequestMetric({
-            provider: 'openrouter',
+            provider: input.provider,
             model: input.model,
             isFreeModel: input.isFreeModel,
             outcome: input.outcome,

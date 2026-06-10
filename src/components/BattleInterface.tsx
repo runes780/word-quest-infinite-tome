@@ -20,6 +20,7 @@ import { BattleQuestionPanel } from './battle/BattleQuestionPanel';
 import { useEndlessWave } from './battle/useEndlessWave';
 import { BattleHud } from './battle/BattleHud';
 import { getItemAsset } from '@/lib/battleAssets';
+import { formatLearningLabel } from '@/lib/data/learningObjectives';
 
 export function BattleInterface() {
     const {
@@ -155,6 +156,14 @@ export function BattleInterface() {
         });
     };
 
+    const resultExplanation = (result: { explanation: string; repairQueued?: boolean }) => {
+        if (!result.repairQueued) return result.explanation;
+        const repairMessage = language === 'zh'
+            ? '下一题已自动加入同一逻辑的修复练习，先补错因再继续。'
+            : 'A same-pattern repair question has been added next, so you can fix the mistake before moving on.';
+        return `${result.explanation}\n\n${repairMessage}`;
+    };
+
     const triggerCorrectCombatFeedback = (result: { damageDealt: number; isCritical: boolean; isSuperEffective: boolean; }) => {
         const types: ('slash' | 'fireball' | 'lightning')[] = ['slash', 'fireball', 'lightning'];
         const newAttackType = types[Math.floor(Math.random() * types.length)];
@@ -231,7 +240,7 @@ export function BattleInterface() {
         setSelectedOption(index);
         const result = answerQuestion(index);
         setIsCorrect(result.correct);
-        setResultMessage(result.explanation);
+        setResultMessage(resultExplanation(result));
         queueUnlockedAchievements();
 
         if (result.correct) {
@@ -252,7 +261,7 @@ export function BattleInterface() {
         setIsCorrect(correct);
         setShowResult(true);
         const result = answerQuestion(correct ? currentQuestion.correct_index : -1, { userResponse: input });
-        setResultMessage(result.explanation);
+        setResultMessage(resultExplanation(result));
         queueUnlockedAchievements();
         if (correct) {
             triggerCorrectCombatFeedback(result);
@@ -272,7 +281,7 @@ export function BattleInterface() {
         setIsCorrect(correct);
         setShowResult(true);
         const result = answerQuestion(idx, { userResponse: spokenText });
-        setResultMessage(result.explanation);
+        setResultMessage(resultExplanation(result));
         queueUnlockedAchievements();
         if (correct) {
             triggerCorrectCombatFeedback(result);
@@ -495,7 +504,7 @@ export function BattleInterface() {
                             {language === 'zh' ? '技能进阶' : 'Mastery Up'}
                         </p>
                         <p className="font-bold text-sm mt-1">
-                            {activeMasteryCelebration.skillTag.replace(/_/g, ' ')}
+                            {formatLearningLabel(activeMasteryCelebration.skillTag, language)}
                         </p>
                         <p className="text-xs mt-1">
                             {masteryStateLabel(activeMasteryCelebration.fromState)} -&gt; {masteryStateLabel(activeMasteryCelebration.toState)}

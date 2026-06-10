@@ -35,11 +35,18 @@ import { FSRSCard, getPlayerProfile } from '@/db/db';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import { getDailyPracticePlan, PracticePlan, PracticePlanStep } from '@/lib/data/dailyPracticePlan';
 import { buildDailyFlameStatus, DailyFlameStatus } from '@/lib/data/dailyFlame';
-import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
+import {
+    objectiveTitle,
+    practicePlanStepRationale,
+    practicePlanStepTitle,
+    supportLevelLabel
+} from '@/lib/data/learningObjectives';
 import {
     createPracticePlanRun,
     currentPracticePlanStep,
-    loadPracticePlanStepLaunch
+    loadPracticePlanStepLaunch,
+    savePracticePlanRunRecord,
+    createPracticePlanRunRecord
 } from '@/lib/data/practicePlanRunner';
 import { DailyFlameCard } from './DailyFlameCard';
 import type { AIProvider } from '@/lib/ai/modelOptions';
@@ -165,12 +172,12 @@ function cardsToMonsters(cards: FSRSCard[], step?: PracticePlanStep): Monster[] 
         hint: card.hint,
         skillTag: card.skillTag || `${card.type || 'vocab'}_review`,
         difficulty: 'medium' as const,
-        questionMode: 'choice' as const,
-        correctAnswer: card.options[card.correct_index] || '',
-        learningObjectiveId: step?.objectiveId,
+        questionMode: card.questionMode || 'choice' as const,
+        correctAnswer: card.correctAnswer || card.options[card.correct_index] || '',
+        learningObjectiveId: card.learningObjectiveId || step?.objectiveId,
         supportLevel: step?.supportLevel,
         attemptKind: step?.attemptKind,
-        sourceContextSpan: 'daily_plan'
+        sourceContextSpan: card.sourceContextSpan || 'daily_plan'
     }));
 }
 
@@ -216,6 +223,17 @@ export function InputSection() {
         refreshPracticePlan();
     }, [refreshPracticePlan]);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handleEvidenceUpdate = () => {
+            refreshPracticePlan();
+        };
+        window.addEventListener('wordquest:learning-evidence-updated', handleEvidenceUpdate);
+        return () => {
+            window.removeEventListener('wordquest:learning-evidence-updated', handleEvidenceUpdate);
+        };
+    }, [refreshPracticePlan]);
+
     const startStarterPlan = useCallback((step?: PracticePlanStep) => {
         const sample = SAMPLE_LEVELS[0];
         const monsters = normalizeMissionMonsters(sample.monsters, {
@@ -238,6 +256,7 @@ export function InputSection() {
             const freshPlan = await getDailyPracticePlan();
             setPracticePlan(freshPlan);
             const run = createPracticePlanRun(freshPlan);
+            await savePracticePlanRunRecord(createPracticePlanRunRecord(freshPlan));
             const primary = currentPracticePlanStep(run);
             if (!primary) {
                 startStarterPlan();
@@ -750,7 +769,7 @@ function PracticePlanPanel({
                             {primary && (
                                 <span className="inline-flex items-center gap-1">
                                     <Target className="h-3.5 w-3.5" />
-                                    {objectiveTitle(primary.objectiveId)}
+                                    {objectiveTitle(primary.objectiveId, language)}
                                 </span>
                             )}
                         </div>
@@ -793,12 +812,16 @@ function PracticePlanPanel({
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-bold text-foreground">{step.title}</p>
+                                <p className="text-sm font-bold text-foreground">
+                                    {practicePlanStepTitle(step.type, step.objectiveId, language)}
+                                </p>
                                 <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                                    {supportLevelLabel(step.supportLevel)}
+                                    {supportLevelLabel(step.supportLevel, language)}
                                 </span>
                             </div>
-                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{step.rationale}</p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                {practicePlanStepRationale(step.type, language)}
+                            </p>
                         </div>
                     </div>
                 ))}

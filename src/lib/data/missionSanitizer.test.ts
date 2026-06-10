@@ -63,6 +63,192 @@ describe('normalizeMissionMonsters', () => {
         expect(normalized[0].correctAnswer).toBe('classroom');
     });
 
+    test('replaces orphan pronoun reference questions without a source sentence', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 9,
+                type: 'reading',
+                question: 'What does "it" refer to?',
+                options: ['notebook', 'school', 'weather', 'time'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'notebook',
+                explanation: 'It refers to the notebook.',
+                hint: 'Look before the pronoun.',
+                skillTag: 'pronoun_reference',
+                learningObjectiveId: 'pronoun_reference'
+            }
+        ]);
+
+        expect(normalized[0].id).toBe(9);
+        expect(normalized[0].sourceContextSpan).toBe('sanitized_fallback');
+        expect(normalized[0].question).not.toBe('What does "it" refer to?');
+    });
+
+    test('embeds the source sentence for pronoun reference questions', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 10,
+                type: 'reading',
+                question: 'What does "it" refer to?',
+                options: ['notebook', 'school', 'weather', 'time'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'notebook',
+                explanation: 'It refers to the notebook.',
+                hint: 'Look before the pronoun.',
+                skillTag: 'pronoun_reference',
+                learningObjectiveId: 'pronoun_reference',
+                sourceContextSpan: 'Lily found her notebook and put it away.'
+            }
+        ]);
+
+        expect(normalized[0].id).toBe(10);
+        expect(normalized[0].sourceContextSpan).toBe('Lily found her notebook and put it away.');
+        expect(normalized[0].question).toContain('Read: "Lily found her notebook and put it away."');
+        expect(normalized[0].question).toContain('What does "it" refer to?');
+    });
+
+    test('infers the source sentence from source text when the model omits sourceContextSpan', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 12,
+                type: 'reading',
+                question: 'What does "it" refer to?',
+                options: ['notebook', 'school', 'weather', 'time'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'notebook',
+                explanation: 'It refers to the notebook.',
+                hint: 'Look before the pronoun.',
+                skillTag: 'pronoun_reference',
+                learningObjectiveId: 'pronoun_reference'
+            }
+        ], {
+            sourceText: 'Lily found her notebook and put it away. Then she went home.'
+        });
+
+        expect(normalized[0].id).toBe(12);
+        expect(normalized[0].sourceContextSpan).toBe('Lily found her notebook and put it away.');
+        expect(normalized[0].question).toContain('Read: "Lily found her notebook and put it away."');
+    });
+
+    test('corrects inconsistent pronoun objective on ordinary reading detail questions', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 13,
+                type: 'reading',
+                question: 'What is the weather like today?',
+                options: ['rainy and cold', 'summer and hot', 'spring and green', 'autumn and golden'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'rainy and cold',
+                explanation: 'The text says today is rainy and cold.',
+                hint: 'Look at the beginning of the text.',
+                skillTag: 'pronoun_reference',
+                learningObjectiveId: 'pronoun_reference',
+                sourceContextSpan: 'Today is rainy and cold.'
+            }
+        ]);
+
+        expect(normalized[0].learningObjectiveId).toBe('reading_detail');
+        expect(normalized[0].question).toContain('Read: "Today is rainy and cold."');
+        expect(normalized[0].question).toContain('What is the weather like today?');
+    });
+
+    test('repairs fill-blank questions by turning the source sentence into a cloze card', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 14,
+                type: 'reading',
+                question: 'What is the weather like today?',
+                options: ['rainy and cold', 'summer and hot', 'spring and green', 'autumn and golden'],
+                correct_index: 0,
+                questionMode: 'fill-blank',
+                correctAnswer: 'rainy and cold',
+                explanation: 'The text says today is rainy and cold.',
+                hint: 'Use the weather words.',
+                skillTag: 'reading_detail',
+                learningObjectiveId: 'reading_detail',
+                sourceContextSpan: 'Today is rainy and cold.'
+            }
+        ]);
+
+        expect(normalized[0].id).toBe(14);
+        expect(normalized[0].questionMode).toBe('fill-blank');
+        expect(normalized[0].question).toContain('Today is ___.');
+        expect(normalized[0].question).toContain('Complete the missing words');
+    });
+
+    test('rejects unsupported direct reading detail cards instead of inventing facts', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 15,
+                type: 'reading',
+                question: 'What color is the bag?',
+                options: ['blue', 'red', 'green', 'yellow'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'blue',
+                explanation: 'The bag is blue.',
+                hint: 'Look for the color.',
+                skillTag: 'reading_detail',
+                learningObjectiveId: 'reading_detail',
+                sourceContextSpan: 'Tom puts a book in the bag.'
+            }
+        ]);
+
+        expect(normalized[0].id).toBe(15);
+        expect(normalized[0].sourceContextSpan).toBe('sanitized_fallback');
+        expect(normalized[0].question).not.toContain('bag');
+    });
+
+    test('rejects speaker-label answer options generated from textbook dialogue labels', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 16,
+                type: 'reading',
+                question: 'Who says hello?',
+                options: ['Mike:', 'Sarah:', 'Tom:', 'Lily:'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'Mike:',
+                explanation: 'Mike says hello.',
+                hint: 'Look at the speaker.',
+                skillTag: 'reading_detail',
+                learningObjectiveId: 'reading_detail',
+                sourceContextSpan: 'Mike: Hello!'
+            }
+        ]);
+
+        expect(normalized[0].id).toBe(16);
+        expect(normalized[0].sourceContextSpan).toBe('sanitized_fallback');
+        expect(normalized[0].options.every((option) => !option.endsWith(':'))).toBe(true);
+    });
+
+    test('does not invent unrelated context when no source span can be matched', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 11,
+                type: 'reading',
+                question: 'Why did Mia go home?',
+                options: ['rain', 'lunch', 'game', 'bus'],
+                correct_index: 0,
+                questionMode: 'choice',
+                correctAnswer: 'rain',
+                explanation: 'The rain made Mia go home.',
+                hint: 'Find the reason.',
+                skillTag: 'reading_inference',
+                learningObjectiveId: 'reading_inference'
+            }
+        ], {
+            sourceText: 'Tom has a dog. The sky is blue.'
+        });
+
+        expect(normalized[0].id).toBe(11);
+        expect(normalized[0].sourceContextSpan).toBe('sanitized_fallback');
+    });
+
     test('replaces schema or app-field questions with safe fallback content', () => {
         const normalized = normalizeMissionMonsters([
             {

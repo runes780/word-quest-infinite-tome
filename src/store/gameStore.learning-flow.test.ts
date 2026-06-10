@@ -1,5 +1,5 @@
 import { useGameStore } from './gameStore';
-import { logLearningEvent, reviewCard, updatePlayerProfile, updateSkillMastery } from '@/db/db';
+import { logLearningEvent, reviewCard, updatePlayerProfile, updateSkillMastery, upsertStudyActionExecution } from '@/db/db';
 import { createPracticePlanRun, currentPracticePlanStep } from '@/lib/data/practicePlanRunner';
 import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
 
@@ -10,6 +10,14 @@ jest.mock('@/components/InputSection', () => ({
 jest.mock('@/lib/data/mistakes', () => ({
     logMistake: jest.fn()
 }));
+
+jest.mock('@/lib/data/practicePlanRunner', () => {
+    const actual = jest.requireActual('@/lib/data/practicePlanRunner');
+    return {
+        ...actual,
+        markPracticePlanRunStepComplete: jest.fn(async () => null)
+    };
+});
 
 jest.mock('@/components/AchievementSystem', () => ({
     loadPlayerStats: jest.fn(() => ({
@@ -52,6 +60,23 @@ jest.mock('@/db/db', () => ({
         lastReviewedAt: Date.now(),
         updatedAt: Date.now()
     })),
+    updateObjectiveMastery: jest.fn(async () => ({
+        objectiveId: 'vocab_context_meaning',
+        score: 28,
+        state: 'new',
+        attempts: 1,
+        correct: 1,
+        attemptsByMode: { choice: 1, 'fill-blank': 0, typing: 0 },
+        transferAttempts: 0,
+        transferCorrect: 0,
+        hintCount: 0,
+        hintRate: 0,
+        lastReviewedAt: Date.now(),
+        nextReviewAt: Date.now(),
+        confidence: 0.2,
+        updatedAt: Date.now()
+    })),
+    upsertStudyActionExecution: jest.fn(async () => undefined),
     seedSkillMasteryFromLearningEvents: jest.fn(async () => 0),
     getSkillMasteryMap: jest.fn(async () => ({})),
     getSkillReviewRiskMap: jest.fn(async () => ({})),
@@ -68,7 +93,12 @@ const baseQuestion = {
     skillTag: 'vocab_core',
     difficulty: 'medium' as const,
     questionMode: 'choice' as const,
-    correctAnswer: 'apple'
+    correctAnswer: 'apple',
+    learningObjectiveId: 'vocab_context_meaning',
+    objectiveConfidence: 0.92,
+    sourceContextSpan: 'The apple is red.',
+    supportLevel: 3 as const,
+    attemptKind: 'practice' as const
 };
 
 const practicePlan: PracticePlan = {
@@ -152,7 +182,13 @@ describe('learning pipeline regression (battle/srs)', () => {
         expect(reviewCard).toHaveBeenCalledWith(
             'hash_apple',
             expect.stringMatching(/good|easy/),
-            expect.objectContaining({ skillTag: 'vocab_core' })
+            expect.objectContaining({
+                skillTag: 'vocab_core',
+                learningObjectiveId: 'vocab_context_meaning',
+                sourceContextSpan: 'The apple is red.',
+                questionMode: 'choice',
+                correctAnswer: 'apple'
+            })
         );
     });
 
@@ -184,7 +220,13 @@ describe('learning pipeline regression (battle/srs)', () => {
         expect(reviewCard).toHaveBeenCalledWith(
             'hash_apple',
             'again',
-            expect.objectContaining({ skillTag: 'vocab_core' })
+            expect.objectContaining({
+                skillTag: 'vocab_core',
+                learningObjectiveId: 'vocab_context_meaning',
+                sourceContextSpan: 'The apple is red.',
+                questionMode: 'choice',
+                correctAnswer: 'apple'
+            })
         );
     });
 
@@ -200,5 +242,53 @@ describe('learning pipeline regression (battle/srs)', () => {
         expect(activeRun?.completedStepIds).toEqual(['daily_review_vocab']);
         expect(activeRun?.currentStepIndex).toBe(1);
         expect(currentPracticePlanStep(activeRun)?.id).toBe('daily_transfer_vocab');
+    });
+
+    test('guardian-launched sessions auto-mark the source action completed', async () => {
+        useGameStore.getState().startGame([{
+            ...baseQuestion,
+            sourceActionId: 'targeted_pack',
+            sourceActionPriority: 'urgent',
+            sourceActionEstimatedMinutes: 8
+        }], 'Targeted Review: cause_effect', 'battle');
+
+        useGameStore.getState().answerQuestion(0, { responseLatencyMs: 700 });
+        useGameStore.getState().recordRunCompletion();
+        await flush();
+
+        expect(upsertStudyActionExecution).toHaveBeenCalledWith(expect.objectContaining({
+            actionId: 'targeted_pack',
+            status: 'completed',
+            priority: 'urgent',
+            estimatedMinutes: 8
+        }));
+    });
+
+    test('wrong answers queue an immediate repair question for the same objective', async () => {
+        useGameStore.getState().startGame([{
+            ...baseQuestion,
+            learningObjectiveId: 'vocab_context_meaning',
+            supportLevel: 1,
+            attemptKind: 'transfer',
+            causeTag: 'context_clue'
+        }], 'Battle Mission', 'battle');
+
+        const result = useGameStore.getState().answerQuestion(1, { responseLatencyMs: 1100 });
+        const state = useGameStore.getState();
+        const repair = state.questions[state.currentIndex + 1];
+
+        expect(result.correct).toBe(false);
+        expect(result.repairQueued).toBe(true);
+        expect(repair).toEqual(expect.objectContaining({
+            skillTag: 'vocab_core',
+            learningObjectiveId: 'vocab_context_meaning',
+            causeTag: 'context_clue',
+            attemptKind: 'practice',
+            sourceContextSpan: 'The apple is red.',
+            isImmediateRepair: true
+        }));
+        expect(repair.supportLevel).toBeGreaterThanOrEqual(2);
+        expect(repair.question).toContain('Try again: apple');
+        expect(repair.question).not.toContain('Repair the same pattern');
     });
 });

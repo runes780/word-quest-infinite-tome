@@ -1,5 +1,10 @@
 import { OpenRouterClient } from './openrouter';
+import { logOpenRouterMetric } from './metrics';
 import { TextDecoder, TextEncoder } from 'util';
+
+jest.mock('./metrics', () => ({
+    logOpenRouterMetric: jest.fn(async () => undefined)
+}));
 
 global.fetch = jest.fn();
 (global as unknown as { TextDecoder: typeof TextDecoder; TextEncoder: typeof TextEncoder; }).TextDecoder = TextDecoder;
@@ -33,6 +38,7 @@ describe('OpenRouterClient shared scheduler', () => {
         jest.useFakeTimers();
         jest.setSystemTime(new Date('2026-01-01T00:00:00Z'));
         (global.fetch as jest.Mock).mockReset();
+        jest.mocked(logOpenRouterMetric).mockClear();
         (global.fetch as jest.Mock).mockImplementation(() => Promise.resolve(createStreamingResponse('ok')));
     });
 
@@ -108,5 +114,44 @@ describe('OpenRouterClient shared scheduler', () => {
                 body: expect.stringContaining('"model":"deepseek-v4-flash"')
             })
         );
+    });
+
+    test('records official DeepSeek metrics with the deepseek provider', async () => {
+        const client = new OpenRouterClient('deepseek-key', 'deepseek-v4-flash', 'deepseek');
+        const response = client.generate('prompt-d', 'system-d');
+
+        await jest.advanceTimersByTimeAsync(5000);
+        await expect(response).resolves.toContain('ok');
+
+        expect(logOpenRouterMetric).toHaveBeenCalledWith(expect.objectContaining({
+            provider: 'deepseek',
+            model: 'deepseek-v4-flash',
+            outcome: 'success'
+        }));
+    });
+
+    test('limits completion size for JSON mission generation requests', async () => {
+        const client = new OpenRouterClient('deepseek-key', 'deepseek-v4-flash', 'deepseek');
+        const response = client.generate('prompt-d', 'system-d');
+
+        await jest.advanceTimersByTimeAsync(5000);
+        await expect(response).resolves.toContain('ok');
+
+        const [, request] = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(request.body);
+        expect(body.max_tokens).toBe(4096);
+        expect(body.response_format).toEqual({ type: 'json_object' });
+    });
+
+    test('disables DeepSeek thinking mode for structured JSON generation latency', async () => {
+        const client = new OpenRouterClient('deepseek-key', 'deepseek-v4-flash', 'deepseek');
+        const response = client.generate('prompt-d', 'system-d');
+
+        await jest.advanceTimersByTimeAsync(5000);
+        await expect(response).resolves.toContain('ok');
+
+        const [, request] = (global.fetch as jest.Mock).mock.calls[0];
+        const body = JSON.parse(request.body);
+        expect(body.thinking).toEqual({ type: 'disabled' });
     });
 });

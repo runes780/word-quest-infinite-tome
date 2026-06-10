@@ -59,12 +59,15 @@ export function BattleQuestionPanel({
     onOpenMentor,
     onNext
 }: BattleQuestionPanelProps) {
+    const uiLanguage = language === 'zh' ? 'zh' : 'en';
     const bossGateLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
-        ? `Boss Gate ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`
+        ? (uiLanguage === 'zh'
+            ? `首领关卡 ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`
+            : `Boss Gate ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`)
         : null;
-    const objectiveLabel = objectiveTitle(currentQuestion.learningObjectiveId);
+    const objectiveLabel = objectiveTitle(currentQuestion.learningObjectiveId, uiLanguage);
     const supportLabel = typeof currentQuestion.supportLevel === 'number'
-        ? supportLevelLabel(currentQuestion.supportLevel)
+        ? supportLevelLabel(currentQuestion.supportLevel, uiLanguage)
         : null;
 
     return (

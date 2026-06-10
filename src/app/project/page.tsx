@@ -1,24 +1,10 @@
 import type { Metadata } from 'next';
-import { ThemeScript, StickyNav } from './components';
-import {
-  HeroSection,
-  ProblemSection,
-  SolutionSection,
-  LearningLoopSection,
-  ProductPreviewSection,
-  GuardianEvidenceSection,
-  ResponsibleAISection,
-  StatusSection,
-  AudienceSection,
-  DifferentiatorsSection,
-  FeedbackSection,
-  TechStackSection,
-  MaintainerSection,
-  FooterSection,
-} from './sections';
+import { LandingPage } from './LandingPage';
+
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://word-quest-infinite-tome.vercel.app').replace(/\/$/, '');
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://github.com/runes780/word-quest-infinite-tome'),
+  metadataBase: new URL(SITE_URL),
   title: 'Word Quest: Infinite Tome — Project Overview',
   description:
     'An early-stage open-source AI+education project for English vocabulary learning. Game-based battles, SRS/FSRS review scheduling, mastery tracking, and guardian-facing learning evidence — built by a teacher.',
@@ -27,7 +13,7 @@ export const metadata: Metadata = {
     description:
       'An open-source AI+education project combining game-based vocabulary battles, SRS/FSRS review scheduling, and transparent learning evidence.',
     type: 'website',
-    url: 'https://github.com/runes780/word-quest-infinite-tome',
+    url: `${SITE_URL}/project`,
     images: [
       {
         url: '/wordquest/hero.png',
@@ -46,26 +32,5 @@ export const metadata: Metadata = {
 };
 
 export default function ProjectPage() {
-  return (
-    <>
-      <ThemeScript />
-      <StickyNav />
-      <main className="min-h-screen bg-background text-foreground pt-14">
-        <HeroSection />
-        <ProblemSection />
-        <SolutionSection />
-        <LearningLoopSection />
-        <ProductPreviewSection />
-        <GuardianEvidenceSection />
-        <ResponsibleAISection />
-        <StatusSection />
-        <AudienceSection />
-        <DifferentiatorsSection />
-        <FeedbackSection />
-        <TechStackSection />
-        <MaintainerSection />
-        <FooterSection />
-      </main>
-    </>
-  );
+  return <LandingPage />;
 }

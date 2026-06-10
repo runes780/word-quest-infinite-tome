@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { Coins, ArrowRight, X } from 'lucide-react';
 import { playSound } from '@/lib/audio';
+import { formatLearningLabel } from '@/lib/data/learningObjectives';
 
 export function RewardScreen() {
     const { showRewardScreen, pendingRewards, claimReward, closeRewardScreen, nextQuestion } = useGameStore();
@@ -76,11 +77,11 @@ export function RewardScreen() {
                                         </div>
                                         <div className="flex-1">
                                             <h3 className="text-xl font-bold text-white group-hover:text-yellow-400 transition-colors whitespace-nowrap">
-                                                {reward.label}
+                                                {rewardLabel(reward, language)}
                                             </h3>
                                             {reward.description && (
                                                 <p className="text-sm text-muted-foreground group-hover:text-white/70 transition-colors text-balance">
-                                                    {reward.description}
+                                                    {rewardDescription(reward, language)}
                                                 </p>
                                             )}
                                         </div>
@@ -107,4 +108,30 @@ export function RewardScreen() {
             )}
         </AnimatePresence>
     );
+}
+
+function rewardLabel(
+    reward: { id: string; type: string; value: unknown; label: string },
+    language: 'en' | 'zh'
+) {
+    if (language !== 'zh') return reward.label;
+    if (reward.type === 'gold') return `${Number(reward.value || 0)} 金币`;
+    if (reward.type === 'fragment') return `根源碎片 x${Number(reward.value || 0)}`;
+    if (reward.type === 'card' && reward.value && typeof reward.value === 'object' && 'skillTag' in reward.value) {
+        return `知识卡：${formatLearningLabel(String(reward.value.skillTag), language)}`;
+    }
+    if (reward.id.startsWith('objective_breakthrough')) return '薄弱点突破';
+    return reward.label;
+}
+
+function rewardDescription(
+    reward: { id: string; type: string; value: unknown; description?: string },
+    language: 'en' | 'zh'
+) {
+    if (language !== 'zh') return reward.description || '';
+    if (reward.type === 'gold') return '任务保底奖励。';
+    if (reward.type === 'fragment') return '保底进度掉落，可用于合成。';
+    if (reward.type === 'card') return '针对当前薄弱点生成的练习奖励。';
+    if (reward.id.startsWith('objective_breakthrough')) return '当前薄弱点已经出现稳定进步。';
+    return reward.description || '';
 }

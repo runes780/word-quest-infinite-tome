@@ -5,6 +5,12 @@ import {
     DEFAULT_QUESTION_CACHE_POLICY,
     mergeQuestionCache
 } from '@/lib/data/questionCachePolicy';
+import {
+    getLearningObjective,
+    mapSkillTagToObjectiveId,
+    type LearningObjectiveDomain,
+    type LearningObjectiveId
+} from '@/lib/data/learningObjectives';
 
 export interface SkillStatSlice {
     correct: number;
@@ -60,6 +66,10 @@ export interface CachedQuestion {
     explanation: string;
     hint?: string;
     skillTag?: string;
+    learningObjectiveId?: string;
+    sourceContextSpan?: string;
+    questionMode?: 'choice' | 'typing' | 'fill-blank';
+    correctAnswer?: string;
     contextHash: string; // Hash of the source context
     timestamp: number;
     used: boolean;  // Whether this question has been used in a game
@@ -78,6 +88,10 @@ export interface FSRSCard {
     explanation?: string;
     hint?: string;
     skillTag?: string;
+    learningObjectiveId?: string;
+    sourceContextSpan?: string;
+    questionMode?: 'choice' | 'typing' | 'fill-blank';
+    correctAnswer?: string;
     // FSRS scheduling fields
     due: number;           // Next review timestamp
     stability: number;     // Memory stability
@@ -136,14 +150,31 @@ export interface LearningEvent {
     questionHash?: string;
     skillTag?: string;
     learningObjectiveId?: string;
+    objectiveConfidence?: number;
+    sourceContextSpan?: string;
     attemptKind?: LearningEventAttemptKind;
     supportLevel?: LearningEventSupportLevel;
     causeTag?: string;
     mode?: LearningEventMode;
     result?: LearningEventResult;
+    hintUsed?: boolean;
     latencyMs?: number;
     source: LearningEventSource;
     timestamp: number;
+}
+
+export interface LearningEvidence {
+    eventType: LearningEvent['eventType'];
+    objectiveId?: string;
+    skillTag?: string;
+    sourceSpan?: string;
+    confidence?: number;
+    mode?: LearningEventMode;
+    supportLevel?: LearningEventSupportLevel;
+    attemptKind?: LearningEventAttemptKind;
+    result?: LearningEventResult;
+    hintUsed?: boolean;
+    latencyMs?: number;
 }
 
 export type LearningTaskMetric = 'daily_sessions' | 'srs_answers' | 'battle_correct';
@@ -218,7 +249,7 @@ export type AIRequestOutcome = 'success' | 'error' | 'timeout';
 
 export interface AIRequestMetric {
     id?: number;
-    provider: 'openrouter';
+    provider: 'openrouter' | 'deepseek';
     model: string;
     isFreeModel: boolean;
     outcome: AIRequestOutcome;
@@ -311,6 +342,26 @@ export interface SkillMasteryRecord {
     updatedAt: number;
 }
 
+export type ObjectiveAttemptsByMode = Record<LearningEventMode, number>;
+
+export interface ObjectiveMasteryRecord {
+    id?: number;
+    objectiveId: LearningObjectiveId;
+    score: number;
+    state: MasteryState;
+    attempts: number;
+    correct: number;
+    attemptsByMode: ObjectiveAttemptsByMode;
+    transferAttempts: number;
+    transferCorrect: number;
+    hintCount: number;
+    hintRate: number;
+    lastReviewedAt: number;
+    nextReviewAt: number;
+    confidence: number;
+    updatedAt: number;
+}
+
 export interface MasteryAggregateSkillRow {
     skillTag: string;
     attempts: number;
@@ -328,6 +379,53 @@ export interface MasteryAggregateSnapshot {
     stateCounts: Record<MasteryState, number>;
 }
 
+export interface ObjectiveMasteryAggregateObjectiveRow {
+    objectiveId: LearningObjectiveId;
+    title: string;
+    domain: LearningObjectiveDomain;
+    score: number;
+    state: MasteryState;
+    attempts: number;
+    correct: number;
+    confidence: number;
+    transferAttempts: number;
+    nextReviewAt: number;
+}
+
+export interface ObjectiveMasteryAggregateDomainRow {
+    domain: LearningObjectiveDomain;
+    averageScore: number;
+    objectiveCount: number;
+    masteredCount: number;
+    learningCount: number;
+}
+
+export interface ObjectiveMasteryAggregateSnapshot {
+    windowDays: number;
+    generatedAt: number;
+    averageScore: number;
+    byObjective: ObjectiveMasteryAggregateObjectiveRow[];
+    byDomain: ObjectiveMasteryAggregateDomainRow[];
+    stateCounts: Record<MasteryState, number>;
+}
+
+export type PracticePlanRunStatus = 'active' | 'completed' | 'skipped';
+
+export interface PracticePlanRunRecord {
+    id?: number;
+    planId: string;
+    dateKey: string;
+    title: string;
+    status: PracticePlanRunStatus;
+    steps: unknown[];
+    completedStepIds: string[];
+    evidenceBefore: unknown[];
+    evidenceAfter: unknown[];
+    startedAt: number;
+    completedAt?: number;
+    updatedAt: number;
+}
+
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
     mistakes!: Table<MistakeRecord>;
@@ -341,6 +439,8 @@ export class WordQuestDB extends Dexie {
     aiRequestMetrics!: Table<AIRequestMetric>;
     sessionRecoveryEvents!: Table<SessionRecoveryEvent>;
     skillMastery!: Table<SkillMasteryRecord>;
+    objectiveMastery!: Table<ObjectiveMasteryRecord>;
+    practicePlanRuns!: Table<PracticePlanRunRecord>;
 
     constructor() {
         super('WordQuestDB');
@@ -460,6 +560,22 @@ export class WordQuestDB extends Dexie {
             aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
             sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
             skillMastery: '++id, skillTag, state, score, updatedAt'
+        });
+        this.version(14).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag, learningObjectiveId, causeTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
+            sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
+            skillMastery: '++id, skillTag, state, score, updatedAt',
+            objectiveMastery: '++id, objectiveId, state, score, updatedAt, nextReviewAt',
+            practicePlanRuns: '++id, planId, dateKey, status, updatedAt, [planId+dateKey]'
         });
     }
 }
@@ -1400,6 +1516,179 @@ export function computeMasteryUpdate(input: {
     };
 }
 
+function emptyAttemptsByMode(): ObjectiveAttemptsByMode {
+    return { choice: 0, 'fill-blank': 0, typing: 0 };
+}
+
+function objectiveModeWeight(mode?: LearningEventMode): number {
+    if (mode === 'typing') return 1.08;
+    if (mode === 'fill-blank') return 0.92;
+    return 0.68;
+}
+
+function objectiveStateFromEvidence(input: {
+    previousState: MasteryState;
+    score: number;
+    attempts: number;
+    smoothedAccuracy: number;
+    transferAttempts: number;
+    transferAccuracy: number;
+    confidence: number;
+}): MasteryState {
+    const { previousState, score, attempts, smoothedAccuracy, transferAttempts, transferAccuracy, confidence } = input;
+    if (attempts < 3 || confidence < 0.18) return 'new';
+
+    if (previousState === 'mastered') {
+        if (score < 74 || smoothedAccuracy < 0.7 || confidence < 0.5) return 'consolidated';
+        return 'mastered';
+    }
+
+    if (score >= 86 && attempts >= 10 && smoothedAccuracy >= 0.84 && transferAttempts >= 2 && transferAccuracy >= 0.75 && confidence >= 0.68) {
+        return 'mastered';
+    }
+    if (score >= 68 && attempts >= 6 && smoothedAccuracy >= 0.68 && confidence >= 0.42) {
+        return 'consolidated';
+    }
+    if (score >= 32 || previousState === 'learning') return 'learning';
+    return 'new';
+}
+
+export function computeObjectiveMasteryUpdate(input: {
+    previousScore: number;
+    previousState: MasteryState;
+    attempts: number;
+    correct: number;
+    attemptsByMode: ObjectiveAttemptsByMode;
+    transferAttempts: number;
+    transferCorrect: number;
+    hintCount: number;
+    result: LearningEventResult;
+    mode?: LearningEventMode;
+    attemptKind?: LearningEventAttemptKind;
+    supportLevel?: LearningEventSupportLevel;
+    latencyMs?: number;
+}): { score: number; state: MasteryState; confidence: number; hintRate: number; nextReviewDelayMs: number; } {
+    const smoothed = smoothAccuracy(input.correct, input.attempts);
+    const modeWeight = objectiveModeWeight(input.mode);
+    const isTransfer = input.attemptKind === 'transfer';
+    const transferAccuracy = input.transferAttempts > 0 ? input.transferCorrect / input.transferAttempts : 0;
+    const transferBoost = isTransfer && input.result === 'correct' ? 7 : transferAccuracy * 8;
+    const supportPenalty = typeof input.supportLevel === 'number' ? (input.supportLevel / 3) * 7 : 3;
+    const hintRate = input.attempts > 0 ? input.hintCount / input.attempts : 0;
+    const hintPenalty = Math.min(12, hintRate * 24);
+    const latencyPenalty = input.latencyMs && input.latencyMs > 20_000 ? 5 : input.latencyMs && input.latencyMs > 12_000 ? 2 : 0;
+    const resultBias = input.result === 'correct' ? 4 * modeWeight : -7;
+    const targetScore = clamp(Math.round((smoothed * 100 * modeWeight) + transferBoost - supportPenalty - hintPenalty - latencyPenalty), 0, 100);
+    const weight = input.attempts < 8 ? 0.34 : 0.5;
+    const score = clamp(Math.round(input.previousScore * (1 - weight) + targetScore * weight + resultBias), 0, 100);
+
+    const productiveAttempts = (input.attemptsByMode.typing || 0) + (input.attemptsByMode['fill-blank'] || 0);
+    const productiveRatio = input.attempts > 0 ? productiveAttempts / input.attempts : 0;
+    const transferRatio = input.attempts > 0 ? input.transferAttempts / input.attempts : 0;
+    const confidence = clamp(
+        Number((Math.min(1, input.attempts / 10) * 0.35 +
+            productiveRatio * 0.25 +
+            transferRatio * 0.25 +
+            Math.min(1, smoothed) * 0.2 -
+            hintRate * 0.18 -
+            ((input.supportLevel || 0) / 3) * 0.08).toFixed(3)),
+        0.05,
+        0.98
+    );
+
+    const state = objectiveStateFromEvidence({
+        previousState: input.previousState,
+        score,
+        attempts: input.attempts,
+        smoothedAccuracy: smoothed,
+        transferAttempts: input.transferAttempts,
+        transferAccuracy,
+        confidence
+    });
+
+    const nextReviewDelayMs = confidence >= 0.72 && score >= 80
+        ? 6 * DAY_MS
+        : confidence >= 0.42 && score >= 60
+            ? 3 * DAY_MS
+            : DAY_MS;
+
+    return { score, state, confidence, hintRate, nextReviewDelayMs };
+}
+
+export async function updateObjectiveMastery(input: {
+    objectiveId?: string | null;
+    skillTag?: string | null;
+    type?: StoredQuestionType;
+    question?: string | null;
+    result: LearningEventResult;
+    mode?: LearningEventMode;
+    attemptKind?: LearningEventAttemptKind;
+    supportLevel?: LearningEventSupportLevel;
+    hintUsed?: boolean;
+    latencyMs?: number;
+    now?: number;
+}): Promise<ObjectiveMasteryRecord> {
+    const now = input.now ?? Date.now();
+    const objectiveId = getLearningObjective(input.objectiveId)?.objectiveId || mapSkillTagToObjectiveId({
+        skillTag: input.skillTag,
+        type: input.type,
+        question: input.question
+    });
+    const existing = await db.objectiveMastery.where('objectiveId').equals(objectiveId).first();
+    const attemptsByMode = { ...(existing?.attemptsByMode || emptyAttemptsByMode()) };
+    const mode = input.mode || 'choice';
+    attemptsByMode[mode] = (attemptsByMode[mode] || 0) + 1;
+
+    const attempts = (existing?.attempts || 0) + 1;
+    const correct = (existing?.correct || 0) + (input.result === 'correct' ? 1 : 0);
+    const isTransfer = input.attemptKind === 'transfer';
+    const transferAttempts = (existing?.transferAttempts || 0) + (isTransfer ? 1 : 0);
+    const transferCorrect = (existing?.transferCorrect || 0) + (isTransfer && input.result === 'correct' ? 1 : 0);
+    const hintCount = (existing?.hintCount || 0) + (input.hintUsed ? 1 : 0);
+
+    const update = computeObjectiveMasteryUpdate({
+        previousScore: existing?.score ?? 20,
+        previousState: existing?.state || 'new',
+        attempts,
+        correct,
+        attemptsByMode,
+        transferAttempts,
+        transferCorrect,
+        hintCount,
+        result: input.result,
+        mode,
+        attemptKind: input.attemptKind,
+        supportLevel: input.supportLevel,
+        latencyMs: input.latencyMs
+    });
+
+    const nextRecord: ObjectiveMasteryRecord = {
+        id: existing?.id,
+        objectiveId,
+        score: update.score,
+        state: update.state,
+        attempts,
+        correct,
+        attemptsByMode,
+        transferAttempts,
+        transferCorrect,
+        hintCount,
+        hintRate: update.hintRate,
+        lastReviewedAt: now,
+        nextReviewAt: now + update.nextReviewDelayMs,
+        confidence: update.confidence,
+        updatedAt: now
+    };
+
+    if (existing?.id) {
+        await db.objectiveMastery.update(existing.id, nextRecord);
+        return nextRecord;
+    }
+
+    const id = await db.objectiveMastery.add(nextRecord);
+    return { ...nextRecord, id };
+}
+
 export async function updateSkillMastery(skillTag: string, result: LearningEventResult): Promise<SkillMasteryRecord> {
     const now = Date.now();
     const existing = await db.skillMastery.where('skillTag').equals(skillTag).first();
@@ -1586,6 +1875,86 @@ export async function getMasteryAggregateSnapshot(windowDays = 7): Promise<Maste
     };
 }
 
+export function computeObjectiveMasteryAggregateFromRows(
+    rows: ObjectiveMasteryRecord[],
+    windowDays = 14,
+    now = Date.now()
+): ObjectiveMasteryAggregateSnapshot {
+    const byObjective: ObjectiveMasteryAggregateObjectiveRow[] = rows
+        .map((row) => {
+            const objective = getLearningObjective(row.objectiveId);
+            return {
+                objectiveId: row.objectiveId,
+                title: objective?.title || row.objectiveId,
+                domain: objective?.domain || 'vocab',
+                score: row.score,
+                state: row.state,
+                attempts: row.attempts,
+                correct: row.correct,
+                confidence: row.confidence,
+                transferAttempts: row.transferAttempts,
+                nextReviewAt: row.nextReviewAt
+            };
+        })
+        .sort((a, b) => {
+            if (a.state !== b.state) return a.score - b.score;
+            return a.nextReviewAt - b.nextReviewAt;
+        });
+
+    const domainMap = new Map<LearningObjectiveDomain, ObjectiveMasteryAggregateDomainRow & { totalScore: number }>();
+    byObjective.forEach((row) => {
+        const existing = domainMap.get(row.domain) || {
+            domain: row.domain,
+            averageScore: 0,
+            objectiveCount: 0,
+            masteredCount: 0,
+            learningCount: 0,
+            totalScore: 0
+        };
+        existing.objectiveCount += 1;
+        existing.totalScore += row.score;
+        if (row.state === 'mastered') existing.masteredCount += 1;
+        if (row.state === 'new' || row.state === 'learning') existing.learningCount += 1;
+        existing.averageScore = Math.round(existing.totalScore / existing.objectiveCount);
+        domainMap.set(row.domain, existing);
+    });
+
+    const stateCounts: Record<MasteryState, number> = {
+        new: 0,
+        learning: 0,
+        consolidated: 0,
+        mastered: 0
+    };
+    rows.forEach((row) => {
+        stateCounts[row.state] += 1;
+    });
+
+    const averageScore = byObjective.length > 0
+        ? Math.round(byObjective.reduce((sum, row) => sum + row.score, 0) / byObjective.length)
+        : 0;
+
+    return {
+        windowDays,
+        generatedAt: now,
+        averageScore,
+        byObjective,
+        byDomain: Array.from(domainMap.values()).map(({ totalScore, ...row }) => {
+            void totalScore;
+            return row;
+        }),
+        stateCounts
+    };
+}
+
+export async function getObjectiveMasteryAggregateSnapshot(windowDays = 14, now = Date.now()): Promise<ObjectiveMasteryAggregateSnapshot> {
+    const cutoff = now - (windowDays * DAY_MS);
+    const rows = await db.objectiveMastery
+        .where('updatedAt')
+        .aboveOrEqual(cutoff)
+        .toArray();
+    return computeObjectiveMasteryAggregateFromRows(rows, windowDays, now);
+}
+
 // XP to Level calculation (similar to Duolingo)
 function calculateLevel(xp: number): number {
     // Level 1: 0 XP, Level 2: 100 XP, Level 3: 250 XP, etc.
@@ -1675,6 +2044,10 @@ export async function reviewCard(
         explanation?: string;
         hint?: string;
         skillTag?: string;
+        learningObjectiveId?: string;
+        sourceContextSpan?: string;
+        questionMode?: 'choice' | 'typing' | 'fill-blank';
+        correctAnswer?: string;
     }
 ): Promise<FSRSCard> {
     const ratingMap: Record<string, Rating> = {
@@ -1687,6 +2060,21 @@ export async function reviewCard(
     const now = new Date();
     const fsrsRating = ratingMap[rating];
     const existing = await db.fsrsCards.where('questionHash').equals(questionHash).first();
+    const questionFields: Partial<FSRSCard> = questionData
+        ? {
+            question: questionData.question,
+            options: questionData.options,
+            correct_index: questionData.correct_index,
+            type: questionData.type,
+            explanation: questionData.explanation,
+            hint: questionData.hint,
+            skillTag: questionData.skillTag,
+            learningObjectiveId: questionData.learningObjectiveId,
+            sourceContextSpan: questionData.sourceContextSpan,
+            questionMode: questionData.questionMode,
+            correctAnswer: questionData.correctAnswer
+        }
+        : {};
 
     if (!existing) {
         // Create new card
@@ -1697,13 +2085,10 @@ export async function reviewCard(
 
         const newCard: FSRSCard = {
             questionHash,
-            question: questionData?.question || '',
-            options: questionData?.options || [],
-            correct_index: questionData?.correct_index ?? 0,
-            type: questionData?.type,
-            explanation: questionData?.explanation,
-            hint: questionData?.hint,
-            skillTag: questionData?.skillTag,
+            question: '',
+            options: [],
+            correct_index: 0,
+            ...questionFields,
             ...fromFSRSCard(result.card, {})
         } as FSRSCard;
 
@@ -1715,7 +2100,10 @@ export async function reviewCard(
         const scheduled = f.repeat(fsrsCard, now);
         const result = scheduled[fsrsRating as keyof typeof scheduled] as RecordLogItem;
 
-        const updated = fromFSRSCard(result.card, existing);
+        const updated = {
+            ...fromFSRSCard(result.card, existing),
+            ...questionFields
+        };
         await db.fsrsCards.update(existing.id!, updated);
         return { ...existing, ...updated } as FSRSCard;
     }

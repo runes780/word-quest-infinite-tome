@@ -62,4 +62,23 @@ describe('buildBossGateVariants', () => {
         expect(stages[1].question).toContain('best inference');
         expect(stages[2].question).toContain('Type the inference');
     });
+
+    test('keeps sentence context in pronoun reference recognition prompts', () => {
+        const stages = buildBossGateVariants({
+            ...baseBoss,
+            id: 30,
+            type: 'reading',
+            question: 'Read: "Lily found her notebook and put it away." What does "it" refer to?',
+            options: ['notebook', 'Lily', 'school', 'away'],
+            correct_index: 0,
+            explanation: '"It" refers to the notebook.',
+            skillTag: 'pronoun_reference',
+            learningObjectiveId: 'pronoun_reference',
+            correctAnswer: 'notebook',
+            sourceContextSpan: 'Lily found her notebook and put it away.'
+        });
+
+        expect(stages[0].question).toContain('Lily found her notebook and put it away.');
+        expect(stages[0].question).toContain('pronoun');
+    });
 });

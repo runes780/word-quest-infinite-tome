@@ -38,7 +38,6 @@
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --font-display: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -192,6 +191,7 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    --font-display: var(--font-playfair), "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
   }
 
   /* Smooth focus styles */
@@ -319,4 +319,65 @@
 
 .dark .shadow-card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ---------------------------------------------------------------------------
+   Marquee — Infinite scroll for tech stack display
+   --------------------------------------------------------------------------- */
+@keyframes marquee-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-20%); }
+}
+
+@keyframes marquee-right {
+  0% { transform: translateX(-20%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-marquee-left {
+  animation: marquee-left linear infinite;
+}
+
+.animate-marquee-right {
+  animation: marquee-right linear infinite;
+}
+
+/* Pause on section hover */
+.group:hover .animate-marquee-left,
+.group:hover .animate-marquee-right {
+  animation-play-state: paused;
+}
+
+/* Spotlight hover effect within a marquee row */
+.marquee-spotlight:hover .marquee-item {
+  opacity: 0.25;
+}
+.marquee-spotlight .marquee-item:hover {
+  opacity: 1 !important;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-left,
+  .animate-marquee-right {
+    animation-play-state: paused !important;
+  }
+}
+
+/* Edge fade mask for marquee */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
 }

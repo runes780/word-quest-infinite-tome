@@ -121,10 +121,15 @@ export class OpenRouterClient {
                                 { role: "user", content: prompt },
                             ],
                             stream: true, // Enable streaming!
+                            max_tokens: 4096
                         };
 
                         if (!this.isFreeModel) {
                             requestBody.response_format = { type: "json_object" };
+                        }
+
+                        if (this.provider === 'deepseek') {
+                            requestBody.thinking = { type: "disabled" };
                         }
 
                         const headers: Record<string, string> = {
@@ -234,6 +239,7 @@ export class OpenRouterClient {
 
                         console.log(`[AI] Success! Total: ${fullContent.length} chars`);
                         void logOpenRouterMetric({
+                            provider: this.provider,
                             model: this.model,
                             isFreeModel: this.isFreeModel,
                             outcome: 'success',
@@ -263,6 +269,7 @@ export class OpenRouterClient {
                 }
 
                 void logOpenRouterMetric({
+                    provider: this.provider,
                     model: this.model,
                     isFreeModel: this.isFreeModel,
                     outcome: lastError?.message.includes('timeout') ? 'timeout' : 'error',

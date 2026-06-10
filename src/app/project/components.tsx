@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { motion, type Transition } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Languages, Menu, X } from 'lucide-react';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useLandingCopy } from './landingI18n';
 
 // ---------------------------------------------------------------------------
 // ThemeScript — reads the main app's theme preference from localStorage
@@ -228,7 +230,7 @@ export function SectionHeader({
       {eyebrow && <Eyebrow dark={dark}>{eyebrow}</Eyebrow>}
       <ScrollReveal delay={eyebrow ? 0.1 : 0}>
         <h2
-          className={`font-display text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight ${
+          className={`font-display text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight ${
             dark ? 'text-white' : 'text-slate-900'
           } mb-5 leading-[1.1]`}
         >
@@ -249,48 +251,78 @@ export function SectionHeader({
 // ---------------------------------------------------------------------------
 // StickyNav — refined, minimal
 // ---------------------------------------------------------------------------
-const NAV_LINKS = [
-  { label: 'Home', href: '#hero' },
-  { label: 'Problem', href: '#problem' },
-  { label: 'Solution', href: '#solution' },
-  { label: 'Loop', href: '#learning-loop' },
-  { label: 'Preview', href: '#preview' },
-  { label: 'Evidence', href: '#evidence' },
-  { label: 'AI & Privacy', href: '#responsible-ai' },
-  { label: 'Status', href: '#status' },
-  { label: 'Feedback', href: '#feedback' },
-];
+const NAV_ITEMS = [
+  { key: 'home', href: '#hero' },
+  { key: 'problem', href: '#problem' },
+  { key: 'solution', href: '#solution' },
+  { key: 'loop', href: '#learning-loop' },
+  { key: 'preview', href: '#preview' },
+  { key: 'evidence', href: '#evidence' },
+  { key: 'responsibleAI', href: '#responsible-ai' },
+  { key: 'status', href: '#status' },
+  { key: 'feedback', href: '#feedback' },
+] as const;
+
+const DARK_SECTION_IDS = ['learning-loop', 'differentiators', 'tech-stack'];
 
 export function StickyNav() {
+  const { language, copy } = useLandingCopy();
+  const setLanguage = useSettingsStore((state) => state.setLanguage);
   const [active, setActive] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [overDark, setOverDark] = useState(false);
+  const navLinks = NAV_ITEMS.map((item) => ({
+    ...item,
+    label: copy.nav[item.key],
+  }));
 
+  /* Single scroll handler: active + scrolled + dark overlap */
   useEffect(() => {
-    const ids = NAV_LINKS.map((l) => l.href.replace('#', ''));
-    const observers: IntersectionObserver[] = [];
+    const ids = NAV_ITEMS.map((l) => l.href.replace('#', ''));
+    const NAV_HEIGHT = 56;
 
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const obs = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) {
-            setActive(id);
-          }
-        },
-        { rootMargin: '-40% 0px -55% 0px', threshold: 0 }
-      );
-      obs.observe(el);
-      observers.push(obs);
-    });
+    const onScroll = () => {
+      setScrolled(window.scrollY > 20);
 
-    return () => observers.forEach((o) => o.disconnect());
-  }, []);
+      /* Active: section whose bounds cover viewport center, fallback closest */
+      const center = window.innerHeight / 2;
+      let coveringId = '';
+      let closestId = '';
+      let closestDist = Infinity;
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= center && rect.bottom >= center) {
+          coveringId = id;
+        }
+        const elCenter = rect.top + rect.height / 2;
+        const dist = Math.abs(elCenter - center);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestId = id;
+        }
+      });
+      setActive(coveringId || closestId);
+
+      /* Dark mode: does a dark section overlap the nav bar? */
+      let isDark = false;
+      for (const darkId of DARK_SECTION_IDS) {
+        const el = document.getElementById(darkId);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.top < NAV_HEIGHT && rect.bottom > 0) {
+          isDark = true;
+          break;
+        }
+      }
+      setOverDark(isDark);
+    };
+
     window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
@@ -303,27 +335,38 @@ export function StickyNav() {
     }
   };
 
+  const navBg = overDark
+    ? 'bg-slate-950/80 backdrop-blur-xl border-b border-slate-800'
+    : scrolled
+      ? 'bg-background/80 backdrop-blur-xl border-b border-slate-100'
+      : 'bg-transparent';
+
+  const brandColor = overDark ? 'text-white' : 'text-slate-900';
+  const linkIdle = overDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700';
+  const linkActive = overDark ? 'text-white' : 'text-slate-900';
+  const mobileMenuBg = overDark ? 'bg-slate-950/95 border-slate-800' : 'bg-background/95 border-slate-100';
+  const mobileLinkActive = overDark ? 'text-white bg-slate-800' : 'text-slate-900 bg-slate-50';
+  const mobileLinkIdle = overDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700';
+  const menuBtnHover = overDark ? 'hover:bg-slate-800' : 'hover:bg-slate-50';
+  const languageToggleBorder = overDark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white/70';
+  const languageToggleIdle = overDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700';
+  const languageToggleActive = overDark ? 'bg-white text-slate-950' : 'bg-slate-900 text-white';
+
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled
-          ? 'bg-background/80 backdrop-blur-xl border-b border-slate-100'
-          : 'bg-transparent'
-      }`}
-    >
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${navBg}`}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14">
           <a
             href="#hero"
             onClick={(e) => handleClick(e, '#hero')}
-            className="font-display text-base font-semibold text-slate-900 tracking-tight"
+            className={`font-display text-base font-semibold tracking-tight transition-colors duration-500 ${brandColor}`}
           >
             Word Quest
           </a>
 
           {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-0.5">
-            {NAV_LINKS.map((link) => {
+          <div className="hidden lg:flex items-center gap-0.5">
+            {navLinks.map((link) => {
               const id = link.href.replace('#', '');
               const isActive = active === id;
               return (
@@ -332,9 +375,7 @@ export function StickyNav() {
                   href={link.href}
                   onClick={(e) => handleClick(e, link.href)}
                   className={`px-3 py-1.5 rounded-full text-[13px] font-medium transition-all duration-300 ${
-                    isActive
-                      ? 'text-slate-900'
-                      : 'text-slate-400 hover:text-slate-700'
+                    isActive ? linkActive : linkIdle
                   }`}
                 >
                   {link.label}
@@ -343,22 +384,72 @@ export function StickyNav() {
             })}
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setMobileOpen((p) => !p)}
-            className="md:hidden p-2 rounded-lg hover:bg-slate-50 transition-colors"
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-2">
+            <div className={`hidden sm:inline-flex items-center gap-1 rounded-full border p-1 transition-colors ${languageToggleBorder}`}>
+              <Languages className={`ml-1.5 w-3.5 h-3.5 ${languageToggleIdle}`} />
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                aria-label={copy.nav.toggleToEnglish}
+                className={`rounded-full px-2 py-1 text-[11px] font-semibold transition-colors ${
+                  language === 'en' ? languageToggleActive : languageToggleIdle
+                }`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('zh')}
+                aria-label={copy.nav.toggleToChinese}
+                className={`rounded-full px-2 py-1 text-[11px] font-semibold transition-colors ${
+                  language === 'zh' ? languageToggleActive : languageToggleIdle
+                }`}
+              >
+                中文
+              </button>
+            </div>
+
+            {/* Mobile menu button */}
+            <button
+              onClick={() => setMobileOpen((p) => !p)}
+              className={`lg:hidden p-2 rounded-lg transition-colors ${menuBtnHover}`}
+              aria-label={copy.nav.menu}
+            >
+              {mobileOpen ? <X className={`w-5 h-5 ${overDark ? 'text-white' : 'text-slate-900'}`} /> : <Menu className={`w-5 h-5 ${overDark ? 'text-white' : 'text-slate-900'}`} />}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-slate-100 bg-background/95 backdrop-blur-xl">
+        <div className={`lg:hidden border-t backdrop-blur-xl ${mobileMenuBg}`}>
           <div className="px-4 py-3 space-y-0.5">
-            {NAV_LINKS.map((link) => {
+            <div className={`mb-3 inline-flex w-full items-center justify-center gap-1 rounded-xl border p-1 ${languageToggleBorder}`}>
+              <Languages className={`w-3.5 h-3.5 ${languageToggleIdle}`} />
+              <button
+                type="button"
+                onClick={() => setLanguage('en')}
+                aria-label={copy.nav.toggleToEnglish}
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                  language === 'en' ? languageToggleActive : languageToggleIdle
+                }`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('zh')}
+                aria-label={copy.nav.toggleToChinese}
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                  language === 'zh' ? languageToggleActive : languageToggleIdle
+                }`}
+              >
+                中文
+              </button>
+            </div>
+
+            {navLinks.map((link) => {
               const id = link.href.replace('#', '');
               const isActive = active === id;
               return (
@@ -367,9 +458,7 @@ export function StickyNav() {
                   href={link.href}
                   onClick={(e) => handleClick(e, link.href)}
                   className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'text-slate-900 bg-slate-50'
-                      : 'text-slate-400 hover:text-slate-700'
+                    isActive ? mobileLinkActive : mobileLinkIdle
                   }`}
                 >
                   {link.label}

@@ -1,7 +1,7 @@
 import type { Monster, QuestionMode, UserAnswer, RunObjectiveBonus } from '@/store/gameStore';
 import type { LearningEventSource, SkillMasteryRecord } from '@/db/db';
 import {
-    mapSkillTagToObjectiveId,
+    canonicalizeLearningObjective,
     modeForSupportLevel,
     objectiveTitle,
     selectSupportLevelForMastery,
@@ -42,11 +42,14 @@ export const applyQuestionDefaults = (
     const safeCorrectIndex = question.correct_index >= 0 && question.correct_index < question.options.length
         ? question.correct_index
         : 0;
-    const objectiveId = question.learningObjectiveId || mapSkillTagToObjectiveId({
+    const canonical = canonicalizeLearningObjective({
+        suggestedObjectiveId: question.learningObjectiveId,
         skillTag: question.skillTag,
         type: question.type,
-        question: question.question
+        question: question.question,
+        sourceContextSpan: question.sourceContextSpan
     });
+    const objectiveId = canonical.objectiveId;
     const supportLevel = question.supportLevel ?? 3;
     const mode = question.questionMode || modeForSupportLevel(supportLevel) || defaultModeForIndex(index);
     const fallbackCorrect = question.options[safeCorrectIndex] || '';
@@ -61,6 +64,7 @@ export const applyQuestionDefaults = (
         questionMode: mode,
         correctAnswer,
         learningObjectiveId: objectiveId,
+        objectiveConfidence: question.objectiveConfidence ?? canonical.confidence,
         supportLevel,
         attemptKind: question.attemptKind,
         causeTag: question.causeTag,
@@ -76,8 +80,8 @@ export const attemptKindForQuestion = (
     question: Monster,
     supportLevel: SupportLevel
 ): AttemptKind => {
-    if (question.attemptKind) return question.attemptKind;
     if (source === 'srs') return 'review';
+    if (question.attemptKind) return question.attemptKind;
     if (question.sourceContextSpan === 'diagnostic') return 'diagnostic';
     if (supportLevel === 0 || question.isBoss) return 'transfer';
     return 'practice';
@@ -92,20 +96,86 @@ export const applyLearningMetadataForSource = (
     const supportLevel = question.sourceContextSpan === 'revenge'
         ? Math.min(3, baseSupport + 1) as SupportLevel
         : baseSupport;
-    const learningObjectiveId = question.learningObjectiveId || mapSkillTagToObjectiveId({
+    const canonical = canonicalizeLearningObjective({
+        suggestedObjectiveId: question.learningObjectiveId,
         skillTag: question.skillTag,
         type: question.type,
-        question: question.question
+        question: question.question,
+        sourceContextSpan: question.sourceContextSpan
     });
+    const learningObjectiveId = canonical.objectiveId;
     const attemptKind = attemptKindForQuestion(source, question, supportLevel);
     return {
         ...question,
         learningObjectiveId,
+        objectiveConfidence: question.objectiveConfidence ?? canonical.confidence,
         supportLevel,
         attemptKind,
-        questionMode: modeForSupportLevel(supportLevel),
+        questionMode: question.questionMode || modeForSupportLevel(supportLevel),
         correctAnswer: question.correctAnswer || question.options[question.correct_index] || ''
     };
+};
+
+export const buildImmediateRepairQuestion = (
+    question: Monster,
+    selectedOption: string,
+    index = 0
+): Monster => {
+    const correctAnswer = question.correctAnswer || question.options[question.correct_index] || '';
+    const supportLevel = Math.min(3, Math.max(2, (question.supportLevel ?? 2) + 1)) as SupportLevel;
+    const distractors = question.options
+        .filter((option) => option && option !== correctAnswer && option !== selectedOption)
+        .slice(0, 3);
+    const options = Array.from(new Set([correctAnswer, selectedOption, ...distractors].filter(Boolean)));
+    const safeOptions = options.length >= 2 ? options : [correctAnswer, selectedOption || 'Not this answer'].filter(Boolean);
+
+    return applyQuestionDefaults({
+        id: question.id + 1000000 + index,
+        type: question.type,
+        question: buildRepairQuestionText(question),
+        options: safeOptions,
+        correct_index: 0,
+        explanation: question.explanation,
+        hint: question.hint || (correctAnswer ? `Start with "${correctAnswer.slice(0, 1)}".` : undefined),
+        skillTag: question.skillTag,
+        difficulty: question.difficulty,
+        correctAnswer,
+        learningObjectiveId: question.learningObjectiveId,
+        objectiveConfidence: question.objectiveConfidence,
+        supportLevel,
+        attemptKind: 'practice',
+        causeTag: question.causeTag,
+        isImmediateRepair: true,
+        sourceContextSpan: repairSourceContextSpan(question)
+    }, index);
+};
+
+const GENERIC_SOURCE_CONTEXT_SPAN_REGEX = /^(?:mission|daily_plan|srs|battle|revenge|diagnostic|immediate_repair|sanitized_fallback|boss_gate_(?:recognition|application|transfer))$/i;
+
+const repairSourceContextSpan = (question: Monster) => {
+    const span = question.sourceContextSpan?.trim().replace(/\s+/g, ' ');
+    if (!span || GENERIC_SOURCE_CONTEXT_SPAN_REGEX.test(span)) return 'immediate_repair';
+    return span;
+};
+
+const buildRepairQuestionText = (question: Monster) => {
+    const originalQuestion = shortQuestionText(question.question);
+    if (/^read\s*:/i.test(originalQuestion)) {
+        return `Try again: ${originalQuestion}`;
+    }
+
+    const sourceContextSpan = repairSourceContextSpan(question);
+    if (sourceContextSpan !== 'immediate_repair' && (question.type === 'reading' || question.learningObjectiveId?.startsWith('reading'))) {
+        return `Read: "${sourceContextSpan}" ${originalQuestion}`;
+    }
+
+    return `Try again: ${originalQuestion}`;
+};
+
+const shortQuestionText = (question: string) => {
+    const trimmed = question.trim().replace(/\s+/g, ' ');
+    if (trimmed.length <= 120) return trimmed;
+    return `${trimmed.slice(0, 117)}...`;
 };
 
 export function expandBossGateQuestions(questions: Monster[]): Monster[] {
