@@ -31,7 +31,7 @@ const CJK_REGEX = /[\u3400-\u9FFF]/;
 const PLACEHOLDER_OPTION_REGEX = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|option\s+\d+|choice\s+\d+|\d+)$/i;
 const GENERIC_SOURCE_SPAN_REGEX = /^(?:mission|daily_plan|srs|battle|revenge|diagnostic|immediate_repair|sanitized_fallback|boss_gate_(?:recognition|application|transfer))$/i;
 const INTERNAL_FIELD_REGEX = /\b(?:questionMode|skillTag|correct_index|correctIndex|correctAnswer|sourceContextSpan|learningObjectiveId|supportLevel|attemptKind|apiProvider|apiKey|contextHash|level_title)\b/i;
-const META_CONTENT_REGEX = /\b(?:api|api key|api provider|provider|model|model name|openrouter|deepseek|gemini|claude|dashboard|guardian dashboard|settings|system status|json|schema|field name)\b/i;
+const META_CONTENT_REGEX = /\b(?:api\s+(?:key|provider)|api\s+provider|model\s+name|openrouter|deepseek|gemini|claude|guardian\s+dashboard|system\s+status|json\s+schema|field\s+name)\b/i;
 
 export function hasVisibleQuestionBlank(question: string): boolean {
     return BLANK_REGEX.test(question);
@@ -144,6 +144,7 @@ export function assessQuestionQuality(
     const maxDifficulty = options.maxDifficulty;
     if (maxDifficulty && question.difficulty && !difficultyAtOrBelow(question.difficulty, maxDifficulty)) {
         const textFits = isTextAtOrBelowDifficulty(stem, maxDifficulty) &&
+            Array.isArray(question.options) &&
             question.options.every((option) => isTextAtOrBelowDifficulty(option, maxDifficulty));
         if (!textFits) {
             addReject(rejectReasons, 'above_material_difficulty');

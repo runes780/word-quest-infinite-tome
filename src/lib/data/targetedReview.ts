@@ -2,6 +2,7 @@ import type { Monster } from '@/store/gameStore';
 import type { MistakeRecord } from '@/db/db';
 import { getBalancedFallbackQuestions, type FallbackQuestion } from './fallbackQuestions';
 import { planQuestionPack } from './questionPackPlanner';
+import { mapSkillTagToObjectiveId } from './learningObjectives';
 
 interface BuildTargetedReviewInput {
     mistakes: MistakeRecord[];
@@ -58,6 +59,11 @@ function normalizeOptions(record: MistakeRecord): { options: string[]; correctIn
 function recordToMonster(record: MistakeRecord, index: number): Monster {
     const { options, correctIndex } = normalizeOptions(record);
     const type = (record.type || (record.skillTag?.startsWith('grammar') ? 'grammar' : 'vocab')) as Monster['type'];
+    const learningObjectiveId = mapSkillTagToObjectiveId({
+        skillTag: record.skillTag,
+        type,
+        question: record.questionText
+    });
     return {
         id: (record.id || Date.now()) + index,
         type,
@@ -69,7 +75,9 @@ function recordToMonster(record: MistakeRecord, index: number): Monster {
         skillTag: record.skillTag || `${type}_review`,
         difficulty: 'medium',
         questionMode: 'choice',
-        correctAnswer: options[correctIndex]
+        correctAnswer: options[correctIndex],
+        learningObjectiveId,
+        sourceContextSpan: record.questionText
     };
 }
 

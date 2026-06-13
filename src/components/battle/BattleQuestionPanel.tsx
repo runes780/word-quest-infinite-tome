@@ -69,7 +69,7 @@ export function BattleQuestionPanel({
     const supportLabel = typeof currentQuestion.supportLevel === 'number'
         ? supportLevelLabel(currentQuestion.supportLevel, uiLanguage)
         : null;
-    const transferLabel = currentQuestion.attemptKind === 'transfer' || currentQuestion.supportLevel === 0
+    const transferLabel = currentQuestion.attemptKind === 'transfer'
         ? (uiLanguage === 'zh' ? '迁移检查' : 'Transfer Check')
         : null;
     const repairLabel = currentQuestion.isImmediateRepair
