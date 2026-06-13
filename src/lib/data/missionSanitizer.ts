@@ -1,6 +1,5 @@
 import type { Monster, QuestionMode } from '@/store/gameStore';
 import { FALLBACK_QUESTIONS } from '@/lib/data/fallbackQuestions';
-import { rebalanceQuestionModes } from '@/lib/data/questionModes';
 import { canonicalizeLearningObjective } from '@/lib/data/learningObjectives';
 import {
     analyzeMaterialProfile,
@@ -8,6 +7,7 @@ import {
     isTextAtOrBelowDifficulty
 } from '@/lib/ai/materialProfile';
 import type { MaterialDifficulty } from '@/lib/ai/materialProfile';
+import { planQuestionPack } from '@/lib/data/questionPackPlanner';
 
 const DEFAULT_MODE_SEQUENCE: QuestionMode[] = [
     'choice', 'choice', 'choice', 'choice', 'choice',
@@ -320,7 +320,7 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
 
         const rawQuestion = cleanText(source.question);
         const sanitizedOptions = sanitizeOptions(source.options);
-        const sourceDifficulty = asDifficulty(source.difficulty);
+        const declaredDifficulty = asDifficulty(source.difficulty);
         const type = asType(source.type) || fallback.type;
         const providedCorrect = cleanOption(source.correctAnswer);
         const providedIndex = typeof source.correct_index === 'number' ? source.correct_index : -1;
@@ -360,7 +360,11 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
             return fallback;
         }
 
-        if (!isValidQuestionPayload(question, sanitizedOptions, sourceDifficulty, maxDifficulty, needsContext)) {
+        const validationDifficulty = declaredDifficulty && maxDifficulty && !difficultyAtOrBelow(declaredDifficulty, maxDifficulty)
+            ? maxDifficulty
+            : declaredDifficulty;
+
+        if (!isValidQuestionPayload(question, sanitizedOptions, validationDifficulty, maxDifficulty, needsContext)) {
             if (source.id !== undefined) {
                 fallback.id = source.id;
             }
@@ -369,7 +373,7 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
 
         const hintText = cleanText(source.hint);
         const explanationText = cleanText(source.explanation);
-        const supportDifficulty = sourceDifficulty || maxDifficulty;
+        const supportDifficulty = validationDifficulty || maxDifficulty;
         const fallbackHint = 'Use the words in the text.';
         const fallbackExplanation = `The answer is "${sanitizedOptions[safeCorrectIndex]}". The text gives this clue.`;
         const canonicalObjective = canonicalizeLearningObjective({
@@ -395,7 +399,7 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
             explanation: normalizeSupportText(explanationText, supportDifficulty, fallbackExplanation),
             hint: normalizeSupportText(hintText, supportDifficulty, fallbackHint),
             skillTag: source.skillTag || `${type}_core`,
-            difficulty: sourceDifficulty || fallback.difficulty,
+            difficulty: validationDifficulty || fallback.difficulty,
             questionMode: requestedMode,
             correctAnswer: sanitizedOptions[safeCorrectIndex] || '',
             learningObjectiveId: canonicalObjective.objectiveId,
@@ -407,5 +411,5 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
         };
     });
 
-    return normalized.length >= 5 ? rebalanceQuestionModes(normalized) as Monster[] : normalized as Monster[];
+    return normalized.length >= 5 ? planQuestionPack(normalized as Monster[]).questions : normalized as Monster[];
 }

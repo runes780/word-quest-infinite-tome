@@ -69,6 +69,12 @@ export function BattleQuestionPanel({
     const supportLabel = typeof currentQuestion.supportLevel === 'number'
         ? supportLevelLabel(currentQuestion.supportLevel, uiLanguage)
         : null;
+    const transferLabel = currentQuestion.attemptKind === 'transfer' || currentQuestion.supportLevel === 0
+        ? (uiLanguage === 'zh' ? '迁移检查' : 'Transfer Check')
+        : null;
+    const repairLabel = currentQuestion.isImmediateRepair
+        ? (uiLanguage === 'zh' ? '补救反击' : 'Counter-Attack')
+        : null;
 
     return (
         <div className="flex flex-col justify-center space-y-6">
@@ -115,6 +121,16 @@ export function BattleQuestionPanel({
                     {supportLabel && (
                         <span className="rounded-full border border-border bg-secondary/70 px-3 py-1 text-xs font-bold text-muted-foreground">
                             {supportLabel}
+                        </span>
+                    )}
+                    {transferLabel && (
+                        <span className="rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-green-600 dark:text-green-300">
+                            {transferLabel}
+                        </span>
+                    )}
+                    {repairLabel && (
+                        <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-orange-600 dark:text-orange-300">
+                            {repairLabel}
                         </span>
                     )}
                 </div>

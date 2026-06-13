@@ -33,8 +33,9 @@ Generate **6-8** questions. Each must test a skill, not a random detail. Distrib
 - **Options**: 4 options. 1 correct, 3 plausible distractors. Never output speaker names or labels (e.g., "Tom:", "Mike") as the correct option.
 - Fill-blank questions must contain one visible blank such as ___, [...], or (blank), and that blank must hide only the target word or phrase.
 - **No placeholder options**: Never output bare placeholders like "A", "B", "C", "D", "Option A", or "Choice 1".
-- **Source Grounding**: Every question must be answerable from the Input Text. Do not use app UI, schemas, settings, logs, or model configuration as learning content.
+- **Source Grounding**: Practice questions must be directly supported by sourceContextSpan copied from the Input Text. Do not use app UI, schemas, settings, logs, or model configuration as learning content.
 - Every question must include a sourceContextSpan copied from the Input Text. For vocabulary and grammar this can be the exact sentence containing the word or pattern. For reading/pronoun/inference questions, the question text itself must also include that span.
+- Transfer questions may use a new simple context, but they must keep the same learningObjectiveId, stay no harder than the source span, and keep sourceContextSpan as the original Input Text evidence for the skill.
 - Do not ask standalone trivia. If a detail is tested, it must support a language target such as weather words, time/place prepositions, pronoun reference, sequence words, inference clues, or a phrase meaning.
 - Never ask about JSON keys, app labels, provider names, model names, or internal field names.
 - **Hint**: One short English clue in simple words.

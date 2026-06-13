@@ -101,6 +101,8 @@ The fox runs under the pine tree.
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('recognition -> cloze -> active recall -> transfer');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Fill-blank questions must contain one visible blank');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Do not ask standalone trivia');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Practice questions must be directly supported by sourceContextSpan');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Transfer questions may use a new simple context');
     });
 
     test('generateMentorPrompt includes context', () => {

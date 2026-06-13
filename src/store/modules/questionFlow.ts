@@ -160,16 +160,36 @@ const repairSourceContextSpan = (question: Monster) => {
 
 const buildRepairQuestionText = (question: Monster) => {
     const originalQuestion = shortQuestionText(question.question);
+    const sourceContextSpan = repairSourceContextSpan(question);
+    const correctAnswer = question.correctAnswer || question.options[question.correct_index] || '';
+
+    if (sourceContextSpan !== 'immediate_repair' && (question.type === 'reading' || question.learningObjectiveId?.startsWith('reading'))) {
+        if (/^read\s*:/i.test(originalQuestion)) {
+            return `Try again: ${originalQuestion}`;
+        }
+        return `Read: "${sourceContextSpan}" ${originalQuestion}`;
+    }
+
+    if (sourceContextSpan !== 'immediate_repair' && correctAnswer) {
+        const target = repairBlankTarget(question, correctAnswer, sourceContextSpan);
+        if (target) {
+            const cloze = sourceContextSpan.replace(quoteRegex(target), '___');
+            return `Try this clue: Read: "${cloze}" Choose the missing answer.`;
+        }
+    }
+
     if (/^read\s*:/i.test(originalQuestion)) {
         return `Try again: ${originalQuestion}`;
     }
 
-    const sourceContextSpan = repairSourceContextSpan(question);
-    if (sourceContextSpan !== 'immediate_repair' && (question.type === 'reading' || question.learningObjectiveId?.startsWith('reading'))) {
-        return `Read: "${sourceContextSpan}" ${originalQuestion}`;
-    }
-
     return `Try again: ${originalQuestion}`;
+};
+
+const repairBlankTarget = (question: Monster, correctAnswer: string, sourceContextSpan: string) => {
+    if (quoteRegex(correctAnswer).test(sourceContextSpan)) return correctAnswer;
+    const quotedTarget = question.question.match(/["']([A-Za-z][A-Za-z'-]*)["']/)?.[1];
+    if (quotedTarget && quoteRegex(quotedTarget).test(sourceContextSpan)) return quotedTarget;
+    return undefined;
 };
 
 const shortQuestionText = (question: string) => {
@@ -177,6 +197,9 @@ const shortQuestionText = (question: string) => {
     if (trimmed.length <= 120) return trimmed;
     return `${trimmed.slice(0, 117)}...`;
 };
+
+const quoteRegex = (value: string): RegExp =>
+    new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 export function expandBossGateQuestions(questions: Monster[]): Monster[] {
     return questions.flatMap((question) => {

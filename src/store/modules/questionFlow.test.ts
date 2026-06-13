@@ -13,7 +13,8 @@ describe('question flow learning gates', () => {
             difficulty: 'hard',
             questionMode: 'choice',
             correctAnswer: 'went',
-            isBoss: true
+            isBoss: true,
+            sourceContextSpan: 'Yesterday, I went to school.'
         });
 
         const stages = expandBossGateQuestions([boss]);
@@ -68,6 +69,33 @@ describe('question flow learning gates', () => {
         expect(repair.question).toContain('What is the weather like today?');
         expect(repair.question).not.toContain('Repair the same pattern');
         expect(repair.sourceContextSpan).toBe('Today is rainy and cold.');
+        expect(repair.isImmediateRepair).toBe(true);
+    });
+
+    test('builds immediate repair as a scaffolded re-ask instead of repeating the original stem', () => {
+        const question = applyQuestionDefaults({
+            id: 40,
+            type: 'vocab',
+            question: 'Read: "The bright star shines at night." What does "bright" mean?',
+            options: ['shining', 'dark', 'quiet', 'late'],
+            correct_index: 0,
+            explanation: 'Bright means shining.',
+            hint: 'Look for light.',
+            skillTag: 'vocab:bright',
+            difficulty: 'easy',
+            questionMode: 'choice',
+            correctAnswer: 'shining',
+            learningObjectiveId: 'vocab_context_meaning',
+            sourceContextSpan: 'The bright star shines at night.',
+            supportLevel: 2
+        });
+
+        const repair = buildImmediateRepairQuestion(question, 'dark', 1);
+
+        expect(repair.question).not.toBe(question.question);
+        expect(repair.question).toContain('Try this clue');
+        expect(repair.supportLevel).toBeGreaterThanOrEqual(question.supportLevel || 0);
+        expect(repair.difficulty).toBe(question.difficulty);
         expect(repair.isImmediateRepair).toBe(true);
     });
 });

@@ -44,7 +44,7 @@ describe('buildTargetedReviewPack', () => {
                     id: 10,
                     type: 'vocab',
                     question: 'F1',
-                    options: ['a', 'b', 'c', 'd'],
+                    options: ['alpha', 'beta', 'gamma', 'delta'],
                     correct_index: 0,
                     explanation: 'e',
                     skillTag: 'vocab:f1',
@@ -54,7 +54,7 @@ describe('buildTargetedReviewPack', () => {
                     id: 11,
                     type: 'grammar',
                     question: 'F2',
-                    options: ['a', 'b', 'c', 'd'],
+                    options: ['was', 'is', 'are', 'be'],
                     correct_index: 1,
                     explanation: 'e',
                     skillTag: 'grammar:f2',
@@ -64,7 +64,7 @@ describe('buildTargetedReviewPack', () => {
                     id: 12,
                     type: 'reading',
                     question: 'F3',
-                    options: ['a', 'b', 'c', 'd'],
+                    options: ['morning', 'afternoon', 'evening', 'night'],
                     correct_index: 2,
                     explanation: 'e',
                     skillTag: 'reading:f3',
@@ -74,7 +74,7 @@ describe('buildTargetedReviewPack', () => {
                     id: 13,
                     type: 'vocab',
                     question: 'F4',
-                    options: ['a', 'b', 'c', 'd'],
+                    options: ['small', 'large', 'fast', 'slow'],
                     correct_index: 3,
                     explanation: 'e',
                     skillTag: 'vocab:f4',
@@ -86,5 +86,99 @@ describe('buildTargetedReviewPack', () => {
         expect(pack.monsters).toHaveLength(5);
         expect(pack.fromMistakes).toBe(1);
         expect(pack.fromFallback).toBe(4);
+    });
+
+    test('does not emit placeholder options for sparse mistake records', () => {
+        const pack = buildTargetedReviewPack({
+            mistakes: [row({ questionText: 'Sparse record', wrongAnswer: '', correctAnswer: 'correct', options: undefined })],
+            desiredCount: 3,
+            fallbackQuestions: [
+                {
+                    id: 20,
+                    type: 'vocab',
+                    question: 'Fallback 1',
+                    options: ['alpha', 'beta', 'gamma', 'delta'],
+                    correct_index: 0,
+                    explanation: 'e',
+                    skillTag: 'vocab:fallback',
+                    difficulty: 'easy'
+                },
+                {
+                    id: 21,
+                    type: 'grammar',
+                    question: 'Fallback 2',
+                    options: ['was', 'is', 'are', 'be'],
+                    correct_index: 0,
+                    explanation: 'e',
+                    skillTag: 'grammar:fallback',
+                    difficulty: 'easy'
+                }
+            ]
+        });
+
+        const placeholder = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|option\s+\d+|\d+)$/i;
+        expect(pack.monsters.flatMap((monster) => monster.options).some((option) => placeholder.test(option))).toBe(false);
+    });
+
+    test('repairs duplicate mistake options without adding placeholder choices', () => {
+        const pack = buildTargetedReviewPack({
+            mistakes: [row({
+                questionText: 'Duplicate options',
+                wrongAnswer: 'wrong',
+                correctAnswer: 'correct',
+                options: ['correct', 'correct'],
+                correctIndex: 0
+            })],
+            desiredCount: 3,
+            fallbackQuestions: [
+                {
+                    id: 30,
+                    type: 'vocab',
+                    question: 'Fallback 1',
+                    options: ['alpha', 'beta', 'gamma', 'delta'],
+                    correct_index: 0,
+                    explanation: 'e',
+                    skillTag: 'vocab:fallback',
+                    difficulty: 'easy'
+                },
+                {
+                    id: 31,
+                    type: 'reading',
+                    question: 'Fallback 2',
+                    options: ['morning', 'afternoon', 'evening', 'night'],
+                    correct_index: 1,
+                    explanation: 'e',
+                    skillTag: 'reading:fallback',
+                    difficulty: 'easy'
+                }
+            ]
+        });
+
+        const duplicateCard = pack.monsters.find((monster) => monster.question === 'Duplicate options');
+        const placeholder = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|option\s+\d+|\d+)$/i;
+
+        expect(duplicateCard?.options).toHaveLength(4);
+        expect(duplicateCard?.options.some((option) => placeholder.test(option))).toBe(false);
+    });
+
+    test('does not force targeted review cards into invalid fill-blank modes', () => {
+        const records = Array.from({ length: 5 }, (_, index) => row({
+            questionId: index + 1,
+            questionText: `Review question ${index + 1}`,
+            correctAnswer: `answer ${index + 1}`,
+            wrongAnswer: `wrong ${index + 1}`,
+            options: [`answer ${index + 1}`, `wrong ${index + 1}`, 'near choice', 'far choice'],
+            correctIndex: 0,
+            skillTag: 'vocab:review'
+        }));
+
+        const pack = buildTargetedReviewPack({
+            mistakes: records,
+            desiredCount: 5,
+            fallbackQuestions: []
+        });
+
+        const blankPattern = /(?:_{2,}|\[\s*(?:\.\.\.|…)?\s*\]|\(\s*blank\s*\))/i;
+        expect(pack.monsters.every((monster) => monster.questionMode !== 'fill-blank' || blankPattern.test(monster.question))).toBe(true);
     });
 });

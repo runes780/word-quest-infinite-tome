@@ -15,7 +15,8 @@ const baseBoss: Monster = {
     isBoss: true,
     learningObjectiveId: 'past_tense_basic',
     supportLevel: 3,
-    attemptKind: 'transfer'
+    attemptKind: 'transfer',
+    sourceContextSpan: 'Yesterday, I went to school.'
 };
 
 describe('buildBossGateVariants', () => {
@@ -24,11 +25,7 @@ describe('buildBossGateVariants', () => {
 
         expect(stages).toHaveLength(3);
         expect(stages.map((stage) => stage.bossStage)).toEqual([1, 2, 3]);
-        expect(stages.map((stage) => stage.sourceContextSpan)).toEqual([
-            'boss_gate_recognition',
-            'boss_gate_application',
-            'boss_gate_transfer'
-        ]);
+        expect(stages.every((stage) => stage.sourceContextSpan === 'Yesterday, I went to school.')).toBe(true);
         expect(new Set(stages.map((stage) => stage.question)).size).toBe(3);
         expect(stages[1]).toEqual(expect.objectContaining({
             questionMode: 'fill-blank',
@@ -80,5 +77,64 @@ describe('buildBossGateVariants', () => {
 
         expect(stages[0].question).toContain('Lily found her notebook and put it away.');
         expect(stages[0].question).toContain('pronoun');
+    });
+
+    test('builds preposition boss stages with answer-matched contexts', () => {
+        const stages = buildBossGateVariants({
+            ...baseBoss,
+            id: 35,
+            question: 'Choose the correct preposition: "We meet ___ seven o\'clock."',
+            options: ['in', 'on', 'at', 'under'],
+            correct_index: 2,
+            explanation: 'Use at with clock time.',
+            skillTag: 'grammar:preposition_time',
+            learningObjectiveId: 'preposition_place_time',
+            correctAnswer: 'at',
+            sourceContextSpan: 'We meet at seven o\'clock.'
+        });
+
+        expect(stages).toHaveLength(3);
+        expect(stages[1]).toEqual(expect.objectContaining({
+            questionMode: 'fill-blank',
+            correctAnswer: 'at'
+        }));
+        expect(stages[1].question).toContain('___ seven');
+        expect(stages[1].question).not.toContain('book is ___ the table');
+        expect(stages[2]).toEqual(expect.objectContaining({
+            questionMode: 'typing',
+            supportLevel: 0,
+            attemptKind: 'transfer',
+            correctAnswer: 'at'
+        }));
+        expect(stages[2].question).toContain('___ nine');
+    });
+
+    test('does not expand bosses when a valid three-step ladder cannot be built', () => {
+        const stages = buildBossGateVariants({
+            ...baseBoss,
+            id: 40,
+            type: 'vocab',
+            question: 'What does the word mean?',
+            options: ['answer', 'Option A', 'Option B', 'Option C'],
+            correct_index: 0,
+            skillTag: 'vocab:unknown',
+            learningObjectiveId: 'vocab_context_meaning',
+            correctAnswer: 'answer',
+            sourceContextSpan: undefined
+        });
+
+        expect(stages).toHaveLength(1);
+        expect(stages[0].id).toBe(40);
+    });
+
+    test('does not expand transfer bosses without original source evidence', () => {
+        const stages = buildBossGateVariants({
+            ...baseBoss,
+            id: 50,
+            sourceContextSpan: undefined
+        });
+
+        expect(stages).toHaveLength(1);
+        expect(stages[0].id).toBe(50);
     });
 });

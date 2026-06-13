@@ -288,7 +288,9 @@ describe('learning pipeline regression (battle/srs)', () => {
             isImmediateRepair: true
         }));
         expect(repair.supportLevel).toBeGreaterThanOrEqual(2);
-        expect(repair.question).toContain('Try again: apple');
+        expect(repair.question).toContain('Try this clue');
+        expect(repair.question).toContain('The ___ is red.');
+        expect(repair.question).not.toBe(baseQuestion.question);
         expect(repair.question).not.toContain('Repair the same pattern');
     });
 });

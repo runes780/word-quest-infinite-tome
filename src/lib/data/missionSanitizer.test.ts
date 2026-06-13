@@ -4,6 +4,62 @@ const CJK_REGEX = /[\u3400-\u9FFF]/;
 const PLACEHOLDER_REGEX = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|\d+)$/i;
 
 describe('normalizeMissionMonsters', () => {
+    test('does not force valid choice questions into invalid fill-blank cards', () => {
+        const input = Array.from({ length: 6 }, (_, index) => ({
+            id: index + 100,
+            type: 'vocab',
+            question: `Read: "The bright star shines at night." What does "bright" mean? ${index}`,
+            options: ['shining', 'dark', 'quiet', 'late'],
+            correct_index: 0,
+            questionMode: 'choice',
+            correctAnswer: 'shining',
+            explanation: 'Bright means shining.',
+            hint: 'Look for light.',
+            skillTag: 'vocab:bright',
+            learningObjectiveId: 'vocab_context_meaning',
+            sourceContextSpan: 'The bright star shines at night.'
+        }));
+
+        const normalized = normalizeMissionMonsters(input);
+
+        expect(normalized).toHaveLength(6);
+        expect(normalized.some((item) => item.attemptKind === 'transfer')).toBe(true);
+        expect(normalized.every((item) => item.questionMode !== 'fill-blank' || /_{2,}|\[\s*(?:\.\.\.|…)?\s*\]|\(\s*blank\s*\)/i.test(item.question))).toBe(true);
+    });
+
+    test('keeps valid transfer questions with new context and an original source span', () => {
+        const normalized = normalizeMissionMonsters([
+            {
+                id: 101,
+                type: 'reading',
+                question: 'A student sees dark clouds and opens an umbrella. What can you infer?',
+                options: ['It might rain', 'It is lunchtime', 'The bag is heavy', 'The student is asleep'],
+                correct_index: 0,
+                difficulty: 'medium',
+                questionMode: 'typing',
+                correctAnswer: 'It might rain',
+                explanation: 'Dark clouds and an umbrella are clues about rain.',
+                hint: 'Connect the weather clue to the action.',
+                skillTag: 'reading:inference',
+                learningObjectiveId: 'reading_inference',
+                sourceContextSpan: 'Mia saw dark clouds, so she took an umbrella.',
+                supportLevel: 0,
+                attemptKind: 'transfer'
+            }
+        ], {
+            sourceText: 'Mia saw dark clouds, so she took an umbrella.'
+        });
+
+        expect(normalized[0]).toEqual(expect.objectContaining({
+            id: 101,
+            questionMode: 'typing',
+            attemptKind: 'transfer',
+            supportLevel: 0,
+            learningObjectiveId: 'reading_inference',
+            sourceContextSpan: 'Mia saw dark clouds, so she took an umbrella.'
+        }));
+    });
+
     test('replaces placeholder options like A/B/C/D with safe fallback content', () => {
         const normalized = normalizeMissionMonsters([
             {
