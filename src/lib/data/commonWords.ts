@@ -75,6 +75,24 @@ const RAW_COMMON_WORDS = [
   'conjunction', 'adjective', 'adjectives', 'adverb', 'adverbs', 'form',
   'letter', 'spell', 'spelling', 'capital', 'comma', 'period', 'pronoun',
   'preposition', 'add', 'adds', 'third', 'second', 'first', 'person',
+  // additional high-frequency words (distractor / hint vocabulary)
+  'care', 'ready', 'keep', 'stay', 'soft', 'far', 'stop', 'move', 'need',
+  'tell', 'told', 'true', 'false', 'real', 'both', 'whole', 'half', 'open',
+  'closed', 'break', 'fix', 'wash', 'laugh', 'cry', 'smile', 'voice',
+  'sound', 'noise', 'team', 'ball', 'jump', 'walk', 'baby', 'children',
+  'mother', 'father', 'sister', 'brother', 'idea', 'hope', 'wish', 'love',
+  'like', 'learn', 'teach', 'understand', 'remember', 'forget', 'begin',
+  'start', 'fall', 'fell', 'grow', 'grew', 'rise', 'turn', 'side', 'edge',
+  'middle', 'top', 'bottom', 'front', 'back', 'inside', 'outside', 'near',
+  'far', 'deep', 'shallow', 'wide', 'narrow', 'thick', 'thin', 'heavy',
+  'light', 'round', 'square', 'sharp', 'flat', 'smooth', 'rough', 'clean',
+  'dirty', 'fresh', 'old', 'new', 'young', 'sweet', 'sour', 'bitter',
+  'empty', 'full', 'quiet', 'loud', 'rich', 'poor', 'safe', 'dangerous',
+  'wild', 'tame', 'alive', 'dead', 'asleep', 'awake', 'glad', 'calm',
+  'rest', 'tired', 'busy', 'free', 'sure', 'ready', 'able', 'fair',
+  'unfair', 'right', 'wrong', 'own', 'another', 'certain', 'maybe',
+  'perhaps', 'almost', 'enough', 'together', 'alone', 'around', 'through',
+  'along', 'across', 'toward', 'away', 'back', 'forward', 'later', 'soon',
 ];
 
 export const COMMON_WORD_LIST: string[] = Array.from(
