@@ -1,5 +1,5 @@
 import type { PlanDomain, PlanReadingSkill, PlanRole } from './questionPlan';
-import type { QuestionMode } from '@/store/gameStore';
+import type { Monster, QuestionMode } from '@/store/gameStore';
 import { COMMON_WORD_SET } from './commonWords';
 import { normalizeWord } from './textNormalize';
 
@@ -141,4 +141,30 @@ export function getBalancedFallbackQuestions(
 ): FallbackQuestion[] {
     const pool = FALLBACK_QUESTIONS.filter((q) => DIFFICULTY_RANK[q.difficulty] <= DIFFICULTY_RANK[maxDifficulty]);
     return [...pool].sort(() => Math.random() - 0.5).slice(0, count);
+}
+
+/**
+ * Map a fallback-bank question to a fully-formed Monster, preserving its
+ * 1T grounding (sourceSpan → sourceContextSpan), objective, support level,
+ * and transfer/practice intent. Used by the pipeline safety net so a
+ * critic-rejected, unrepairable question is replaced — never shipped as-is.
+ */
+export function fallbackToMonster(fb: FallbackQuestion, id: number): Monster {
+    return {
+        id,
+        type: fb.type,
+        question: fb.question,
+        options: fb.options,
+        correct_index: fb.correct_index,
+        explanation: fb.explanation,
+        hint: fb.hint,
+        skillTag: fb.skillTag,
+        difficulty: fb.difficulty,
+        questionMode: fb.questionMode,
+        correctAnswer: fb.options[fb.correct_index] || '',
+        learningObjectiveId: fb.learningObjectiveId,
+        supportLevel: fb.supportLevel,
+        attemptKind: fb.role === 'transfer' ? 'transfer' : 'practice',
+        sourceContextSpan: fb.sourceSpan
+    };
 }

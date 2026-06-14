@@ -2,7 +2,8 @@ import {
     FALLBACK_PASSAGES,
     FALLBACK_QUESTIONS,
     getRandomFallbackQuestions,
-    getBalancedFallbackQuestions
+    getBalancedFallbackQuestions,
+    fallbackToMonster
 } from './fallbackQuestions';
 import { assessQuestionQuality } from './questionQuality';
 
@@ -53,5 +54,16 @@ describe('fallback bank 1T compliance', () => {
     test('getRandomFallbackQuestions respects difficulty', () => {
         const result = getRandomFallbackQuestions(3, 'easy');
         expect(result.every((q) => q.difficulty === 'easy')).toBe(true);
+    });
+
+    test('fallbackToMonster preserves grounding and intent', () => {
+        const fb = FALLBACK_QUESTIONS[0];
+        const monster = fallbackToMonster(fb, 42);
+        expect(monster.id).toBe(42);
+        expect(monster.sourceContextSpan).toBe(fb.sourceSpan); // span preserved
+        expect(monster.correctAnswer).toBe(fb.options[fb.correct_index]);
+        expect(monster.learningObjectiveId).toBe(fb.learningObjectiveId);
+        expect(monster.supportLevel).toBe(fb.supportLevel);
+        expect(monster.attemptKind).toBe(fb.role === 'transfer' ? 'transfer' : 'practice');
     });
 });

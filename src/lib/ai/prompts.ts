@@ -332,10 +332,59 @@ You are a strict ESL item reviewer.
 3. meaning: does the item test a language skill rather than memory retrieval? For a reading
    item, does it actually test its assigned readingSkill?
 
+# Cloze / recognition note
+For cloze and recognition items the correct answer legitimately appears inside the source
+span — that is the design of a 1T cloze, NOT memory retrieval. Only flag a "meaning"
+failure when a READING item does plain fact-lookup ("what did X find?", "what color?")
+instead of testing its assigned readingSkill.
+
 # Output (strict JSON)
 { "verdicts": [ { "id": number, "pass": boolean,
                   "axisFailures": ["lexical"|"context"|"meaning"],
                   "offendingWords": string[], "reason": string, "suggestedFix": string } ] }
+`;
+
+export const PLAN_BOUND_GENERATOR_SYSTEM_PROMPT = `
+# Role
+You are a question writer. You receive a VETTED QuestionPlan. Output exactly one question
+per plan item, following each item exactly. The plan is authoritative — do not freelance.
+
+# Hard rules (any violation invalidates the output)
+1. VERBATIM SPAN: For every item, copy its sourceSpan into the question text AND set
+   sourceContextSpan to that exact string. Do not paraphrase, shorten, reorder, punctuate
+   differently, or "improve" it. sourceContextSpan MUST be a substring of the material.
+2. ONE TARGET: Each question tests ONLY the item's target (word / phrase / grammar form /
+   reference). Do not test a different word or drag in a second point.
+3. NO INVENTION: Do not invent sentences, names, objects, or scenarios that are absent from
+   the item's sourceSpan and the material. If the item is grounded in "Tom walks Max", you
+   may not write about school, lamps, or tomatoes.
+4. VOCAB CEILING: Every word in the stem, options, hint, and explanation must come from the
+   allowedSet or be simpler / more common than the target. Never explain the target with a
+   harder word.
+5. READING ITEMS: If the item has a readingSkill, the question must actually test that skill
+   (pronoun_reference | inference | contextual_meaning | discourse | pragmatic). Embed the
+   sourceSpan and ask about the target's reference, implied meaning, or inference.
+   Fact-lookup ("what did X do?") is forbidden.
+
+# Output (strict JSON only)
+{ "level_title": string, "monsters": [ {
+  "id": number (match the plan item index),
+  "type": "vocab" | "grammar" | "reading" (match item.domain),
+  "skillTag": string,
+  "difficulty": "easy" | "medium" | "hard" (match item.difficulty),
+  "questionMode": "choice" | "typing" | "fill-blank" (target ~50% choice / 30% typing / 20% fill-blank across the pack; never all choice),
+  "question": string (must embed the sourceSpan verbatim),
+  "options": [4 distinct strings; no placeholders like "A"/"Option 1"; no speaker labels],
+  "correct_index": number,
+  "correctAnswer": string (canonical answer, required even in choice mode),
+  "hint": string (simple English),
+  "explanation": string (simple English; explain, don't restate),
+  "learningObjectiveId": string (match item),
+  "sourceContextSpan": string (the EXACT sourceSpan),
+  "supportLevel": 0 | 1 | 2 | 3 (match item),
+  "attemptKind": "transfer" if item.role is transfer else "practice"
+} ] }
+English only. Valid JSON only. No prose outside the JSON.
 `;
 
 export function generatePlanPrompt(text: string, profile: MaterialProfile): string {

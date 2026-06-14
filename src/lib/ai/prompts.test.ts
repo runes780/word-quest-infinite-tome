@@ -169,6 +169,7 @@ The fox runs under the pine tree.
 import {
     PLAN_SYSTEM_PROMPT,
     CRITIC_SYSTEM_PROMPT,
+    PLAN_BOUND_GENERATOR_SYSTEM_PROMPT,
     generatePlanPrompt,
     generateLevelFromPlanPrompt,
     generateCriticPrompt
@@ -212,6 +213,20 @@ describe('plan / generate / critic prompts', () => {
         expect(CRITIC_SYSTEM_PROMPT).toContain('lexical');
         expect(CRITIC_SYSTEM_PROMPT).toContain('context');
         expect(CRITIC_SYSTEM_PROMPT).toContain('meaning');
+    });
+
+    test('CRITIC_SYSTEM_PROMPT exempts legitimate cloze from the meaning axis', () => {
+        // Without this note the critic nukes every source cloze (answer is in the
+        // span by design) as "memory retrieval".
+        expect(CRITIC_SYSTEM_PROMPT.toLowerCase()).toContain('cloze');
+        expect(CRITIC_SYSTEM_PROMPT).toContain('NOT memory retrieval');
+    });
+
+    test('PLAN_BOUND_GENERATOR_SYSTEM_PROMPT enforces verbatim span and no invention', () => {
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('VERBATIM SPAN');
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('NO INVENTION');
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('ONE TARGET');
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('sourceContextSpan');
     });
 
     test('generateCriticPrompt embeds material and a monster', () => {
