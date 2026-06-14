@@ -1,5 +1,8 @@
 import type { UserAnswer } from '@/store/gameStore';
 import { analyzeMaterialProfile } from './materialProfile';
+import type { MaterialProfile } from './materialProfile';
+import type { QuestionPlan, QuestionPlanItem } from '@/lib/data/questionPlan';
+import type { Monster } from '@/store/gameStore';
 
 const MAX_LEARNING_MATERIAL_CHARS = 6200;
 const MAX_REPORT_PROMPT_CHARS = 5600;
@@ -288,6 +291,126 @@ ${materialGuidance}
 `;
 }
 
+export const PLAN_SYSTEM_PROMPT = `
+# Role
+You are an ESL curriculum designer. Design a 6-8 item "1T context practice plan" from the material.
+
+# 1T Context Law (highest priority)
+Every item must bind a sourceSpan that you copy VERBATIM from the material, and inside that
+span only the target is something a learner might not know. Isolated word-meaning items and
+decontextualized retrieval items are forbidden.
+
+# Ladder
+Order items recognition -> cloze -> recall -> transfer. Include at least one transfer item.
+
+# Domain mix (default; may be configured)
+grammar 50% / vocab 30% / reading 20%.
+
+# Reading items
+When domain=reading you MUST set readingSkill to one of:
+pronoun_reference, inference, contextual_meaning, discourse, pragmatic.
+Retrieval questions ("what did X find?", "what color?") are forbidden — they test no language skill.
+
+# Vocabulary grounding
+allowedWords may only be drawn from the provided vocabularyAllowed set.
+Never explain the target with a word outside that set.
+
+# Output
+Strict JSON matching the QuestionPlan schema: { levelTitle, materialSummary,
+vocabularyAllowed: string[], items: QuestionPlanItem[] }.
+`;
+
+export const CRITIC_SYSTEM_PROMPT = `
+# Role
+You are a strict ESL item reviewer.
+
+# Per-question three-axis review
+1. lexical: do the stem, options, hint, and explanation use only allowedSet words
+   (or the target itself, or simpler common words)? List any offending words.
+2. context: does the stem embed a source span from the material, and is the target the
+   single unknown point being tested?
+3. meaning: does the item test a language skill rather than memory retrieval? For a reading
+   item, does it actually test its assigned readingSkill?
+
+# Output (strict JSON)
+{ "verdicts": [ { "id": number, "pass": boolean,
+                  "axisFailures": ["lexical"|"context"|"meaning"],
+                  "offendingWords": string[], "reason": string, "suggestedFix": string } ] }
+`;
+
+export function generatePlanPrompt(text: string, profile: MaterialProfile): string {
+    const allowed = Array.from(profile.vocabulary.allowed).slice(0, 600).sort();
+    const targets = profile.vocabulary.materialSpecific.slice(0, 40).join(', ') || '(none)';
+    const sentences = profile.sentences.slice(0, 30).join('\n');
+    return `
+# Material
+"""
+${text}
+"""
+
+# Source Material Profile
+Language: ${profile.language}
+Band: ${profile.bandLabel}
+Allowed question difficulties: ${profile.allowedQuestionDifficulties.join(', ')}
+Recommended target candidates (material-specific words): ${targets}
+Available sentences to copy sourceSpans from:
+${sentences}
+
+# vocabularyAllowed (your allowedWords must be a subset)
+${allowed.join(', ')}
+
+# Output (JSON Only)
+`;
+}
+
+export function generateLevelFromPlanPrompt(plan: QuestionPlan): string {
+    const items = plan.items.map((item: QuestionPlanItem, index: number) => ({
+        index,
+        role: item.role,
+        domain: item.domain,
+        learningObjectiveId: item.learningObjectiveId,
+        readingSkill: item.readingSkill,
+        sourceSpan: item.sourceSpan,
+        target: item.target,
+        targetKind: item.targetKind,
+        allowedWords: item.allowedWords,
+        supportLevel: item.supportLevel,
+        difficulty: item.difficulty
+    }));
+    return `
+# QuestionPlan (follow it exactly)
+levelTitle: ${plan.levelTitle}
+materialSummary: ${plan.materialSummary}
+allowedSet: ${plan.vocabularyAllowed.join(', ')}
+
+items:
+${JSON.stringify(items, null, 2)}
+
+# Output (JSON Only): { level_title, monsters: [...] }
+`;
+}
+
+export interface CriticMonsterPack {
+    levelTitle: string;
+    monsters: Array<Pick<Monster, 'id' | 'question' | 'options' | 'correct_index' | 'explanation' | 'sourceContextSpan'> & { hint?: string }>;
+}
+
+export function generateCriticPrompt(material: string, planItems: QuestionPlanItem[], packs: CriticMonsterPack[]): string {
+    return `
+# Material
+"""
+${material}
+"""
+
+# Plan items (for reference)
+${JSON.stringify(planItems, null, 2)}
+
+# Generated questions to review
+${JSON.stringify(packs, null, 2)}
+
+# Output (JSON Only)
+`;
+}
 
 export function generateMentorPrompt(
   question: string,
