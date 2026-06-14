@@ -73,10 +73,21 @@ describe('validateQuestionPlan', () => {
         expect(result.errors.some((e) => e.includes('6'))).toBe(true);
     });
 
-    test('rejects plan with no transfer item', () => {
+    test('treats a missing transfer item as advisory, not a rejection', () => {
         const items = sixValidItems().map((i) => ({ ...i, role: 'cloze' as const }));
         const result = validateQuestionPlan(plan(items), MATERIAL, ALLOWED);
-        expect(result.valid).toBe(false);
-        expect(result.errors.some((e) => e.includes('transfer'))).toBe(true);
+        // An otherwise-good plan must not degrade to the legacy path just because
+        // the model omitted a transfer item.
+        expect(result.valid).toBe(true);
+        expect(result.errors.some((e) => e.includes('transfer'))).toBe(false);
+        expect(result.warnings.some((w) => w.includes('transfer'))).toBe(true);
+    });
+
+    test('does not crash on items missing optional fields (resilience)', () => {
+        const items = sixValidItems();
+        // Models sometimes omit allowedWords entirely; the validator must not throw.
+        delete (items[0] as { allowedWords?: string[] }).allowedWords;
+        const result = validateQuestionPlan(plan(items), MATERIAL, ALLOWED);
+        expect(result.valid).toBe(true);
     });
 });
