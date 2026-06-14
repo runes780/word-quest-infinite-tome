@@ -93,4 +93,13 @@ describe('DailyChallenge learning pipeline regression', () => {
 
         expect(onClose).toHaveBeenCalledTimes(1);
     });
+
+    test('keeps the challenge dialog within the viewport when content grows', () => {
+        render(<DailyChallenge isOpen onClose={jest.fn()} />);
+
+        const dialog = screen.getByRole('dialog', { name: 'Daily Challenge' });
+
+        expect(dialog.className).toContain('max-h-[calc(100dvh-2rem)]');
+        expect(dialog.className).toContain('overflow-y-auto');
+    });
 });

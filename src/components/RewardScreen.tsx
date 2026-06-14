@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { Coins, ArrowRight, X } from 'lucide-react';
 import { playSound } from '@/lib/audio';
+import { formatLearningLabel } from '@/lib/data/learningObjectives';
 
 export function RewardScreen() {
     const { showRewardScreen, pendingRewards, claimReward, closeRewardScreen, nextQuestion } = useGameStore();
@@ -18,12 +19,15 @@ export function RewardScreen() {
     return (
         <AnimatePresence>
             {showRewardScreen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:items-center sm:p-4">
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className="relative bg-slate-900 border-2 border-yellow-500/50 rounded-3xl w-full max-w-2xl shadow-[0_0_50px_rgba(234,179,8,0.2)] overflow-hidden"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={t.battle.rewards}
+                        className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border-2 border-yellow-500/50 bg-slate-900 shadow-[0_0_50px_rgba(234,179,8,0.2)]"
                     >
                         <button
                             type="button"
@@ -35,7 +39,7 @@ export function RewardScreen() {
                             <span className="hidden sm:inline">{language === 'zh' ? '稍后' : 'Later'}</span>
                         </button>
                         {/* Header */}
-                        <div className="p-8 text-center border-b border-white/10 bg-gradient-to-b from-yellow-500/10 to-transparent">
+                        <div className="shrink-0 p-8 text-center border-b border-white/10 bg-gradient-to-b from-yellow-500/10 to-transparent">
                             <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
@@ -50,7 +54,7 @@ export function RewardScreen() {
                         </div>
 
                         {/* Rewards Grid */}
-                        <div className="p-8 grid gap-4">
+                        <div className="min-h-0 flex-1 overflow-y-auto p-8 grid gap-4">
                             {pendingRewards.length === 0 ? (
                                 <div className="text-center text-muted-foreground py-8">
                                     {t.battle.inventoryEmpty}
@@ -73,11 +77,11 @@ export function RewardScreen() {
                                         </div>
                                         <div className="flex-1">
                                             <h3 className="text-xl font-bold text-white group-hover:text-yellow-400 transition-colors whitespace-nowrap">
-                                                {reward.label}
+                                                {rewardLabel(reward, language)}
                                             </h3>
                                             {reward.description && (
                                                 <p className="text-sm text-muted-foreground group-hover:text-white/70 transition-colors text-balance">
-                                                    {reward.description}
+                                                    {rewardDescription(reward, language)}
                                                 </p>
                                             )}
                                         </div>
@@ -90,7 +94,7 @@ export function RewardScreen() {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-6 bg-black/20 border-t border-white/10 flex justify-end">
+                        <div className="shrink-0 p-6 bg-black/20 border-t border-white/10 flex justify-end">
                             <button
                                 onClick={handleContinue}
                                 className="px-8 py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-yellow-500/20"
@@ -104,4 +108,30 @@ export function RewardScreen() {
             )}
         </AnimatePresence>
     );
+}
+
+function rewardLabel(
+    reward: { id: string; type: string; value: unknown; label: string },
+    language: 'en' | 'zh'
+) {
+    if (language !== 'zh') return reward.label;
+    if (reward.type === 'gold') return `${Number(reward.value || 0)} 金币`;
+    if (reward.type === 'fragment') return `根源碎片 x${Number(reward.value || 0)}`;
+    if (reward.type === 'card' && reward.value && typeof reward.value === 'object' && 'skillTag' in reward.value) {
+        return `知识卡：${formatLearningLabel(String(reward.value.skillTag), language)}`;
+    }
+    if (reward.id.startsWith('objective_breakthrough')) return '薄弱点突破';
+    return reward.label;
+}
+
+function rewardDescription(
+    reward: { id: string; type: string; value: unknown; description?: string },
+    language: 'en' | 'zh'
+) {
+    if (language !== 'zh') return reward.description || '';
+    if (reward.type === 'gold') return '任务保底奖励。';
+    if (reward.type === 'fragment') return '保底进度掉落，可用于合成。';
+    if (reward.type === 'card') return '针对当前薄弱点生成的练习奖励。';
+    if (reward.id.startsWith('objective_breakthrough')) return '当前薄弱点已经出现稳定进步。';
+    return reward.description || '';
 }

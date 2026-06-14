@@ -8,12 +8,13 @@ import {
 } from '@/lib/ai/modelOptions';
 
 export type Theme = 'light' | 'dark';
+export type Language = 'en' | 'zh';
 
 interface SettingsState {
     apiKey: string;
     apiProvider: AIProvider;
     model: string;
-    language: 'en' | 'zh';
+    language: Language;
     theme: Theme;
     soundEnabled: boolean;
     ttsEnabled: boolean;
@@ -21,7 +22,7 @@ interface SettingsState {
     setApiKey: (key: string) => void;
     setApiProvider: (provider: AIProvider) => void;
     setModel: (model: string) => void;
-    setLanguage: (lang: 'en' | 'zh') => void;
+    setLanguage: (lang: Language) => void;
     setTheme: (theme: Theme) => void;
     setSoundEnabled: (enabled: boolean) => void;
     setTtsEnabled: (enabled: boolean) => void;
@@ -40,13 +41,26 @@ function applyTheme(theme: Theme) {
     }
 }
 
+export function detectPreferredLanguage(): Language {
+    if (typeof navigator === 'undefined') return 'en';
+
+    const browserLanguages = [
+        ...(Array.isArray(navigator.languages) ? navigator.languages : []),
+        navigator.language
+    ].filter(Boolean);
+
+    return browserLanguages.some((locale) => locale.toLowerCase().startsWith('zh'))
+        ? 'zh'
+        : 'en';
+}
+
 export const useSettingsStore = create<SettingsState>()(
     persist(
         (set) => ({
             apiKey: '',
             apiProvider: 'deepseek',
             model: 'deepseek-v4-flash',
-            language: 'en',
+            language: detectPreferredLanguage(),
             theme: 'light',
             soundEnabled: true,
             ttsEnabled: false,
@@ -73,7 +87,7 @@ export const useSettingsStore = create<SettingsState>()(
             version: 1,
             migrate: (persistedState): PersistedSettingsState => {
                 const state = persistedState as Partial<PersistedSettingsState>;
-                const apiProvider = state.apiProvider || 'openrouter';
+                const apiProvider = state.apiProvider || 'deepseek';
 
                 return {
                     apiKey: state.apiKey || '',
@@ -81,7 +95,7 @@ export const useSettingsStore = create<SettingsState>()(
                     model: state.model && isModelAvailableForProvider(apiProvider, state.model)
                         ? state.model
                         : getDefaultModelForProvider(apiProvider),
-                    language: state.language || 'en',
+                    language: state.language || detectPreferredLanguage(),
                     theme: state.theme || 'light',
                     soundEnabled: state.soundEnabled ?? true,
                     ttsEnabled: state.ttsEnabled ?? false

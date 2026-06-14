@@ -77,6 +77,8 @@ jest.mock('@/db/db', () => ({
         lastReviewedAt: Date.now(),
         updatedAt: Date.now()
     })),
+    updateObjectiveMastery: jest.fn(async () => undefined),
+    upsertStudyActionExecution: jest.fn(async () => undefined),
     seedSkillMasteryFromLearningEvents: jest.fn(async () => 0),
     getSkillMasteryMap: jest.fn(async () => ({})),
     getSkillReviewRiskMap: jest.fn(async () => ({})),

@@ -59,12 +59,21 @@ export function BattleQuestionPanel({
     onOpenMentor,
     onNext
 }: BattleQuestionPanelProps) {
+    const uiLanguage = language === 'zh' ? 'zh' : 'en';
     const bossGateLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
-        ? `Boss Gate ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`
+        ? (uiLanguage === 'zh'
+            ? `首领关卡 ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`
+            : `Boss Gate ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`)
         : null;
-    const objectiveLabel = objectiveTitle(currentQuestion.learningObjectiveId);
+    const objectiveLabel = objectiveTitle(currentQuestion.learningObjectiveId, uiLanguage);
     const supportLabel = typeof currentQuestion.supportLevel === 'number'
-        ? supportLevelLabel(currentQuestion.supportLevel)
+        ? supportLevelLabel(currentQuestion.supportLevel, uiLanguage)
+        : null;
+    const transferLabel = currentQuestion.attemptKind === 'transfer'
+        ? (uiLanguage === 'zh' ? '迁移检查' : 'Transfer Check')
+        : null;
+    const repairLabel = currentQuestion.isImmediateRepair
+        ? (uiLanguage === 'zh' ? '补救反击' : 'Counter-Attack')
         : null;
 
     return (
@@ -112,6 +121,16 @@ export function BattleQuestionPanel({
                     {supportLabel && (
                         <span className="rounded-full border border-border bg-secondary/70 px-3 py-1 text-xs font-bold text-muted-foreground">
                             {supportLabel}
+                        </span>
+                    )}
+                    {transferLabel && (
+                        <span className="rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-green-600 dark:text-green-300">
+                            {transferLabel}
+                        </span>
+                    )}
+                    {repairLabel && (
+                        <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-orange-600 dark:text-orange-300">
+                            {repairLabel}
                         </span>
                     )}
                 </div>

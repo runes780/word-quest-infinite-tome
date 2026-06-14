@@ -475,14 +475,17 @@ export function DailyChallenge({ isOpen, onClose }: DailyChallengeProps) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+                    className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:items-center sm:p-4"
                     onClick={phase === 'intro' || phase === 'result' ? onClose : undefined}
                 >
                     <motion.div
                         initial={{ scale: 0.9, y: 20 }}
                         animate={{ scale: 1, y: 0 }}
                         exit={{ scale: 0.9, y: 20 }}
-                        className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={language === 'zh' ? '每日挑战' : 'Daily Challenge'}
+                        className="relative my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl"
                         onClick={e => e.stopPropagation()}
                     >
                         <button

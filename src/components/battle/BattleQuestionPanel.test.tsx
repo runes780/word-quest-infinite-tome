@@ -56,4 +56,44 @@ describe('BattleQuestionPanel learning metadata', () => {
         expect(screen.getByText('Basic Past Tense')).toBeInTheDocument();
         expect(screen.getByText('scaffolded')).toBeInTheDocument();
     });
+
+    test('shows lightweight game labels for transfer and repair moments', () => {
+        render(
+            <BattleQuestionPanel
+                currentQuestion={{
+                    ...bossQuestion,
+                    isBoss: false,
+                    bossStage: undefined,
+                    bossTotalStages: undefined,
+                    supportLevel: 0,
+                    attemptKind: 'transfer',
+                    isImmediateRepair: true
+                }}
+                t={translations.zh}
+                language="zh"
+                ttsEnabled={false}
+                showHint={false}
+                showResult={false}
+                selectedOption={null}
+                isCorrect={false}
+                resultMessage=""
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                bossComboThreshold={2}
+                clarityEffect={null}
+                onToggleHint={jest.fn()}
+                onChoiceSelect={jest.fn()}
+                onTypingAnswer={jest.fn()}
+                onFillBlankAnswer={jest.fn()}
+                onVoiceAnswer={jest.fn()}
+                onSpeakQuestion={jest.fn()}
+                onSpeakExplanation={jest.fn()}
+                onOpenMentor={jest.fn()}
+                onNext={jest.fn()}
+            />
+        );
+
+        expect(screen.getByText('迁移检查')).toBeInTheDocument();
+        expect(screen.getByText('补救反击')).toBeInTheDocument();
+    });
 });

@@ -7,6 +7,7 @@ import {
     LearningEvent,
     LearningTask,
     MasteryAggregateSnapshot,
+    ObjectiveMasteryAggregateSnapshot,
     SessionRecoverySnapshot,
     StudyActionExecution,
     StudyActionExecutionGoalSnapshot,
@@ -18,6 +19,7 @@ import {
     getEngagementSnapshot,
     getGuardianAcceptanceSnapshot,
     getMasteryAggregateSnapshot,
+    getObjectiveMasteryAggregateSnapshot,
     getPlayerProfile,
     getSRSStats,
     getSessionRecoverySnapshot,
@@ -71,6 +73,7 @@ export interface GuardianDashboardViewModel {
     dueCards: FSRSCard[];
     srsStats: { total: number; due: number; new: number; learning: number; review: number; };
     mastery: MasteryAggregateSnapshot;
+    objectiveMastery: ObjectiveMasteryAggregateSnapshot;
     learningTasks: LearningTask[];
     studyActionExecutions: StudyActionExecution[];
     studyActionSummary: StudyActionExecutionSummary;
@@ -259,6 +262,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dueCards,
         srsStats,
         mastery,
+        objectiveMastery,
         learningTasks,
         studyActionExecutions,
         studyActionSummary,
@@ -280,6 +284,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         getDueCardsWithPriority(6),
         getSRSStats(),
         getMasteryAggregateSnapshot(range),
+        getObjectiveMasteryAggregateSnapshot(range),
         getWeeklyLearningTasks(now),
         getStudyActionExecutions(),
         getStudyActionExecutionSummary(14),
@@ -337,6 +342,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dueCards,
         srsStats,
         mastery,
+        objectiveMastery,
         learningTasks,
         studyActionExecutions,
         studyActionSummary: studyActionSummary ?? computeStudyActionExecutionSummaryFromRows(studyActionExecutions, 14),

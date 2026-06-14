@@ -238,12 +238,15 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4"
+                    className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/90 p-3 backdrop-blur-md sm:items-center sm:p-4"
                 >
                     <motion.div
                         initial={{ scale: 0.8, y: 50 }}
                         animate={{ scale: 1, y: 0 }}
-                        className="relative max-w-2xl w-full bg-card border-2 border-primary/50 rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(59,130,246,0.3)]"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={t.mentor.title}
+                        className="relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border-2 border-primary/50 bg-card shadow-[0_0_50px_rgba(59,130,246,0.3)]"
                     >
                         <button
                             type="button"
@@ -254,7 +257,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                             <X className="h-4 w-4" />
                             <span className="hidden sm:inline">{language === 'zh' ? '关闭' : 'Close'}</span>
                         </button>
-                        <div className="bg-primary/10 p-6 border-b border-primary/20 flex items-center gap-4">
+                        <div className="shrink-0 bg-primary/10 p-6 border-b border-primary/20 flex items-center gap-4">
                             <div className="p-3 bg-primary rounded-full animate-pulse">
                                 <Bot className="w-8 h-8 text-primary-foreground" />
                             </div>
@@ -264,7 +267,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
                             </div>
                         </div>
 
-                        <div className="p-8 space-y-6">
+                        <div className="min-h-0 flex-1 overflow-y-auto p-8 space-y-6">
                             {isLoading ? (
                                 <div className="space-y-4 animate-pulse">
                                     <div className="h-4 bg-secondary rounded w-3/4" />

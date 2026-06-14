@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Local fonts via fontsource */
+@import "@fontsource/newsreader/400.css";
+@import "@fontsource/newsreader/400-italic.css";
+@import "@fontsource/newsreader/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 @theme {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -29,8 +36,8 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -130,9 +137,6 @@
   --gold: 40 95% 50%;
   --gold-foreground: 40 95% 15%;
 
-  --font-geist-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-
   /* Battle arena - subtle gradient feel without gradients */
   --arena-bg: 208 72% 97%;
   --arena-border: 213 58% 84%;
@@ -185,8 +189,9 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: var(--font-geist-sans);
+    font-family: var(--font-sans);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    --font-display: var(--font-playfair), "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
   }
 
   /* Smooth focus styles */
@@ -205,10 +210,69 @@
   }
 }
 
+/* Subtle ambient float */
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* Gentle breathe for ambient orbs */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
 /* Custom utility classes */
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Display font for hero headings */
+  .font-display {
+    font-family: var(--font-display), ui-serif, Georgia, "Times New Roman", serif;
+  }
+
+  /* Monospace font for labels/eyebrows */
+  .font-mono-label {
+    font-family: var(--font-jetbrains), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* Outline / stroke text effect */
+  .text-stroke {
+    -webkit-text-stroke: 2px hsl(220, 30%, 12%);
+    color: transparent;
+  }
+
+  .text-stroke-thin {
+    -webkit-text-stroke: 1px hsl(220, 30%, 12%);
+    color: transparent;
+  }
+
+  @media (min-width: 768px) {
+    .text-stroke {
+      -webkit-text-stroke: 3px hsl(220, 30%, 12%);
+    }
+  }
+
+  /* Subtle floating animation */
+  .animate-float-gentle {
+    animation: float-gentle 4s ease-in-out infinite;
+  }
+
+  /* Ambient orb breathe */
+  .animate-breathe {
+    animation: breathe 8s ease-in-out infinite;
   }
 
   .shadow-soft {
@@ -255,4 +319,65 @@
 
 .dark .shadow-card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ---------------------------------------------------------------------------
+   Marquee — Infinite scroll for tech stack display
+   --------------------------------------------------------------------------- */
+@keyframes marquee-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-20%); }
+}
+
+@keyframes marquee-right {
+  0% { transform: translateX(-20%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-marquee-left {
+  animation: marquee-left linear infinite;
+}
+
+.animate-marquee-right {
+  animation: marquee-right linear infinite;
+}
+
+/* Pause on section hover */
+.group:hover .animate-marquee-left,
+.group:hover .animate-marquee-right {
+  animation-play-state: paused;
+}
+
+/* Spotlight hover effect within a marquee row */
+.marquee-spotlight:hover .marquee-item {
+  opacity: 0.25;
+}
+.marquee-spotlight .marquee-item:hover {
+  opacity: 1 !important;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee-left,
+  .animate-marquee-right {
+    animation-play-state: paused !important;
+  }
+}
+
+/* Edge fade mask for marquee */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 8%,
+    black 92%,
+    transparent 100%
+  );
 }

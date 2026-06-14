@@ -469,6 +469,31 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.queryByText('No incidents reported')).not.toBeInTheDocument();
     });
 
+    test('shows the latest execution result on guardian recommendation cards', async () => {
+        mockGetGuardianDashboardViewModel.mockResolvedValueOnce({
+            ...buildMockDashboardViewModel(),
+            studyActionExecutions: [{
+                actionId: 'targeted_pack',
+                dateKey: new Date().toISOString().slice(0, 10),
+                status: 'completed' as const,
+                priority: 'urgent' as const,
+                estimatedMinutes: 8,
+                source: 'guardian_dashboard' as const,
+                completedAt: Date.now() - 1000,
+                updatedAt: Date.now()
+            }]
+        });
+
+        render(<ParentDashboard />);
+
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        await waitFor(() => {
+            expect(screen.getByText('Result after completion:')).toBeInTheDocument();
+        });
+        expect(screen.getByText('Completed today · 8 min tracked')).toBeInTheDocument();
+    });
+
     test('exports a print-ready report snapshot with generation time instead of the scrollable dashboard', async () => {
         render(<ParentDashboard />);
 

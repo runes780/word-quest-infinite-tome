@@ -39,6 +39,25 @@ The fox runs under the pine tree.
         expect(prompt).not.toContain('Generate a new wave');
     });
 
+    test('generateLevelPrompt trims unrelated large context while preserving learning material', () => {
+        const noisyUiContext = Array.from({ length: 120 }, (_, index) =>
+            `Guardian Dashboard setting row ${index}: apiProvider deepseek modelName config ${index}`
+        ).join('\n');
+        const learningMaterial = [
+            'The small fox sleeps under the tree.',
+            'Yesterday, the fox found a red leaf.',
+            'The leaf was bright, so the fox kept it.'
+        ].join('\n');
+
+        const prompt = generateLevelPrompt(`${noisyUiContext}\n${learningMaterial}\n${noisyUiContext}`);
+
+        expect(prompt.length).toBeLessThan(9000);
+        expect(prompt).toContain('The small fox sleeps under the tree.');
+        expect(prompt).toContain('Yesterday, the fox found a red leaf.');
+        expect(prompt).toContain('The leaf was bright, so the fox kept it.');
+        expect(prompt).not.toContain('apiProvider deepseek modelName config 40');
+    });
+
     test('generateLevelPrompt includes learner level guidance outside the reading material', () => {
         const prompt = generateLevelPrompt('The fox runs under the pine tree.', { learnerLevel: 5 });
 
@@ -74,6 +93,16 @@ The fox runs under the pine tree.
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).not.toContain('Grade 5');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).not.toContain('A1/A2');
         expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never output all questions in "choice" mode');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('one clear learning target');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Every question must include a sourceContextSpan');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Never ask "What does it refer to?" without the source sentence');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Card ladder contract');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('1T sentence');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('recognition -> cloze -> active recall -> transfer');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Fill-blank questions must contain one visible blank');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Do not ask standalone trivia');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Practice questions must be directly supported by sourceContextSpan');
+        expect(LEVEL_GENERATOR_SYSTEM_PROMPT).toContain('Transfer questions may use a new simple context');
     });
 
     test('generateMentorPrompt includes context', () => {
@@ -99,9 +128,40 @@ The fox runs under the pine tree.
         expect(REPORT_SYSTEM_PROMPT).not.toContain('Grade 4-6');
     });
 
+    test('buildReportSystemPrompt follows the selected UI language', async () => {
+        const prompts = await import('@/lib/ai/prompts');
+        const buildReportSystemPrompt = (prompts as Record<string, unknown>).buildReportSystemPrompt;
+
+        expect(typeof buildReportSystemPrompt).toBe('function');
+        expect((buildReportSystemPrompt as (language: 'en' | 'zh') => string)('zh')).toContain('Simplified Chinese');
+        expect((buildReportSystemPrompt as (language: 'en' | 'zh') => string)('en')).toContain('English');
+        expect((buildReportSystemPrompt as (language: 'en' | 'zh') => string)('en')).not.toContain('Generate a brief "Mission Debrief" in Chinese');
+    });
+
     test('generateReportPrompt calculates score correctly', () => {
         const prompt = generateReportPrompt(50, 10, []);
         expect(prompt).toContain('Mission Score: 50 / 100');
         expect(prompt).toContain('Total Questions: 10');
+    });
+
+    test('generateReportPrompt keeps analysis payload compact for large sessions', () => {
+        const history = Array.from({ length: 60 }, (_, index) => ({
+            questionId: index + 1,
+            questionText: `Very long generated question ${index + 1} `.repeat(12),
+            userChoice: index % 3 === 0 ? 'wrong answer with extra text' : 'correct answer with extra text',
+            correctChoice: 'correct answer with extra text',
+            isCorrect: index % 3 !== 0,
+            learningObjectiveId: index % 2 === 0 ? 'vocab_context_meaning' : 'reading_inference',
+            attemptKind: index % 4 === 0 ? 'transfer' : 'practice',
+            supportLevel: index % 4,
+            causeTag: index % 3 === 0 ? 'context_clue' : undefined
+        }));
+
+        const prompt = generateReportPrompt(400, 60, history);
+
+        expect(prompt.length).toBeLessThan(6000);
+        expect(prompt).toContain('Objective Summary');
+        expect(prompt).toContain('Recent Mistakes');
+        expect(prompt).not.toContain('Very long generated question 1 Very long generated question 1 Very long generated question 1');
     });
 });

@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-06-10T12:13:18.310Z",
+  "screenshots": [
+    {
+      "name": "wordquest-current-desktop-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/wordquest-current-desktop-hero.png"
+    },
+    {
+      "name": "wordquest-current-mobile-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/wordquest-current-mobile-hero.png"
+    },
+    {
+      "name": "linear-desktop-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/linear-desktop-hero.png"
+    },
+    {
+      "name": "linear-product-rhythm.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/linear-product-rhythm.png"
+    },
+    {
+      "name": "cursor-desktop-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/cursor-desktop-hero.png"
+    },
+    {
+      "name": "raycast-dark-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/raycast-dark-hero.png"
+    },
+    {
+      "name": "framer-desktop-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/framer-desktop-hero.png"
+    },
+    {
+      "name": "apple-ipad-product-reveal.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/apple-ipad-product-reveal.png"
+    },
+    {
+      "name": "anthropic-editorial-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/anthropic-editorial-hero.png"
+    },
+    {
+      "name": "codedex-adventure-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/codedex-adventure-hero.png"
+    },
+    {
+      "name": "vercel-tech-hero.png",
+      "ok": true,
+      "target": "/Users/xuqining/Documents/code/Claude-Code/Word Quest: Infinite Tome/docs/kimi-landing-reference-pack/screenshots/vercel-tech-hero.png"
+    }
+  ]
+}

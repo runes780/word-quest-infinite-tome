@@ -1,9 +1,9 @@
 import { db, getDueCardsWithPriority } from '@/db/db';
-import type { FSRSCard, LearningEventSource } from '@/db/db';
+import type { FSRSCard, LearningEventSource, PracticePlanRunRecord } from '@/db/db';
 import type { Monster } from '@/store/gameStore';
 import { normalizeMissionMonsters } from './missionSanitizer';
 import { buildTargetedReviewPack } from './targetedReview';
-import type { PracticePlan, PracticePlanStep } from './dailyPracticePlan';
+import type { PracticePlan, PracticePlanEvidence, PracticePlanStep } from './dailyPracticePlan';
 
 export interface PracticePlanRun {
     planId: string;
@@ -34,6 +34,74 @@ export function createPracticePlanRun(plan: PracticePlan, now = Date.now()): Pra
         startedAt: now,
         updatedAt: now
     };
+}
+
+export function createPracticePlanRunRecord(plan: PracticePlan, now = Date.now()): PracticePlanRunRecord {
+    return {
+        planId: plan.planId,
+        dateKey: new Date(now).toISOString().slice(0, 10),
+        title: plan.title,
+        status: plan.steps.length > 0 ? 'active' : 'completed',
+        steps: plan.steps,
+        completedStepIds: [],
+        evidenceBefore: plan.evidence,
+        evidenceAfter: [],
+        startedAt: now,
+        completedAt: plan.steps.length > 0 ? undefined : now,
+        updatedAt: now
+    };
+}
+
+export function completePracticePlanRunRecordStep(
+    record: PracticePlanRunRecord,
+    stepId: string,
+    evidenceAfter: PracticePlanEvidence[] = [],
+    now = Date.now()
+): PracticePlanRunRecord {
+    const completedStepIds = record.completedStepIds.includes(stepId)
+        ? record.completedStepIds
+        : [...record.completedStepIds, stepId];
+    const status = completedStepIds.length >= record.steps.length ? 'completed' : 'active';
+    return {
+        ...record,
+        status,
+        completedStepIds,
+        evidenceAfter: [...record.evidenceAfter, ...evidenceAfter],
+        completedAt: status === 'completed' ? now : record.completedAt,
+        updatedAt: now
+    };
+}
+
+export async function savePracticePlanRunRecord(record: PracticePlanRunRecord): Promise<PracticePlanRunRecord> {
+    const existing = await db.practicePlanRuns
+        .where('[planId+dateKey]')
+        .equals([record.planId, record.dateKey])
+        .first();
+
+    if (existing?.id) {
+        await db.practicePlanRuns.put({ ...record, id: existing.id });
+        return { ...record, id: existing.id };
+    }
+
+    const id = await db.practicePlanRuns.add(record);
+    return { ...record, id };
+}
+
+export async function markPracticePlanRunStepComplete(
+    planId: string,
+    stepId: string,
+    evidenceAfter: PracticePlanEvidence[] = [],
+    now = Date.now()
+): Promise<PracticePlanRunRecord | null> {
+    const records = await db.practicePlanRuns
+        .where('planId')
+        .equals(planId)
+        .toArray();
+    const existing = records.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (!existing) return null;
+    const next = completePracticePlanRunRecordStep(existing, stepId, evidenceAfter, now);
+    await db.practicePlanRuns.put({ ...next, id: existing.id });
+    return { ...next, id: existing.id };
 }
 
 export function currentPracticePlanStep(run?: PracticePlanRun | null): PracticePlanStep | null {
@@ -78,22 +146,22 @@ function cardsToMonsters(cards: FSRSCard[], step: PracticePlanStep): Monster[] {
         hint: card.hint,
         skillTag: card.skillTag || `${card.type || 'vocab'}_review`,
         difficulty: 'medium',
-        questionMode: 'choice',
-        correctAnswer: card.options[card.correct_index] || '',
-        learningObjectiveId: step.objectiveId,
+        questionMode: card.questionMode || 'choice',
+        correctAnswer: card.correctAnswer || card.options[card.correct_index] || '',
+        learningObjectiveId: card.learningObjectiveId || step.objectiveId,
         supportLevel: step.supportLevel,
         attemptKind: step.attemptKind,
-        sourceContextSpan: 'daily_plan'
+        sourceContextSpan: card.sourceContextSpan || 'daily_plan'
     }));
 }
 
 function withStepMetadata(monsters: Monster[], step: PracticePlanStep): Monster[] {
     return normalizeMissionMonsters(monsters).map((monster) => ({
         ...monster,
-        learningObjectiveId: step.objectiveId,
+        learningObjectiveId: monster.learningObjectiveId || step.objectiveId,
         supportLevel: step.supportLevel,
         attemptKind: step.attemptKind,
-        sourceContextSpan: 'daily_plan'
+        sourceContextSpan: monster.sourceContextSpan || 'daily_plan'
     }));
 }
 

@@ -3,20 +3,27 @@
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
-import { REPORT_SYSTEM_PROMPT, generateReportPrompt } from '@/lib/ai/prompts';
+import { buildReportSystemPrompt, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
 import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
 import { updatePlayerProfile } from '@/db/db';
-import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
+import {
+    formatLearningLabel,
+    objectiveTitle,
+    practicePlanStepRationale,
+    practicePlanStepTitle,
+    supportLevelLabel
+} from '@/lib/data/learningObjectives';
 import {
     currentPracticePlanStep,
     isPracticePlanComplete,
     loadPracticePlanStepLaunch,
     practicePlanProgressText
 } from '@/lib/data/practicePlanRunner';
+import { buildSessionLearningClosure } from '@/lib/data/sessionLearningClosure';
 
 import { translations } from '@/lib/translations';
 
@@ -83,6 +90,9 @@ export function MissionReport() {
     const learningClosure = useMemo(() => {
         return buildLearningClosure(userAnswers, language);
     }, [userAnswers, language]);
+    const sessionClosure = useMemo(() => {
+        return buildSessionLearningClosure(userAnswers, language);
+    }, [userAnswers, language]);
 
     const wrongDetails = useMemo(() => {
         const map = new Map(questions.map((q) => [q.id, q]));
@@ -115,7 +125,7 @@ export function MissionReport() {
         try {
             const client = new OpenRouterClient(apiKey, model, apiProvider);
             const prompt = generateReportPrompt(score, questions.length, userAnswers);
-            const jsonStr = await client.generate(prompt, REPORT_SYSTEM_PROMPT);
+            const jsonStr = await client.generate(prompt, buildReportSystemPrompt(language));
             const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
             setAnalysis(JSON.parse(cleanJson));
             setAnalysisSource('ai');
@@ -205,8 +215,8 @@ export function MissionReport() {
                             <div className="space-y-2">
                                 {runObjectiveBonuses.map((bonus) => (
                                     <div key={bonus.id} className="text-sm">
-                                        <div className="font-semibold text-emerald-300">{bonus.title}</div>
-                                        <div className="text-xs text-muted-foreground">{bonus.description}</div>
+                                        <div className="font-semibold text-emerald-300">{runBonusTitle(bonus, language)}</div>
+                                        <div className="text-xs text-muted-foreground">{runBonusDescription(bonus, language)}</div>
                                         <div className="text-xs text-emerald-400">+{bonus.xp} XP · +{bonus.gold} Gold</div>
                                     </div>
                                 ))}
@@ -224,7 +234,7 @@ export function MissionReport() {
                                 {skillEntries.map((entry) => (
                                     <div key={entry.key}>
                                         <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                                            <span>{entry.key.replace(/_/g, ' ')}</span>
+                                            <span>{formatLearningLabel(entry.key, language)}</span>
                                             <span>{Math.round(entry.accuracy * 100)}% · {entry.attempts} {t.report.attempts}</span>
                                         </div>
                                         <div className="h-2 bg-background/20 rounded-full overflow-hidden">
@@ -256,6 +266,50 @@ export function MissionReport() {
                             detail={learningClosure.nextActionDetail}
                         />
                     </div>
+
+                    {sessionClosure.objectiveEvidence.length > 0 && (
+                        <div className="mb-8 rounded-2xl border border-primary/20 bg-primary/10 p-5 text-left">
+                            <div className="mb-4 flex items-center gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+                                    <Target className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-black text-foreground">
+                                        {language === 'zh' ? '本轮证据快照' : 'Learning Evidence Snapshot'}
+                                    </p>
+                                    <p className="text-xs font-semibold text-muted-foreground">
+                                        {sessionClosure.headline}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                {sessionClosure.objectiveEvidence.map((row) => (
+                                    <div key={row.objectiveId} className="rounded-xl border border-border/60 bg-background/50 p-4">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-black text-foreground">{row.title}</p>
+                                                <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
+                                            </div>
+                                            <span className={cn(
+                                                'rounded-full px-3 py-1 text-xs font-black',
+                                                row.state === 'needs-repair'
+                                                    ? 'bg-destructive/10 text-destructive'
+                                                    : row.state === 'transfer-ready'
+                                                        ? 'bg-emerald-500/10 text-emerald-500'
+                                                        : 'bg-secondary text-muted-foreground'
+                                            )}>
+                                                {evidenceStateLabel(row.state, language)}
+                                            </span>
+                                        </div>
+                                        <p className="mt-3 text-xs font-semibold text-primary">{row.nextAction}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="mt-4 text-xs font-semibold text-muted-foreground">
+                                {sessionClosure.followUp}
+                            </p>
+                        </div>
+                    )}
 
                     {/* AI Analysis Section */}
                     {analysis ? (
@@ -382,8 +436,12 @@ export function MissionReport() {
                                         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                                             {language === 'zh' ? '下一步' : 'Next Step'}
                                         </p>
-                                        <p className="mt-1 text-sm font-black text-foreground">{nextPlanStep.title}</p>
-                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{nextPlanStep.rationale}</p>
+                                        <p className="mt-1 text-sm font-black text-foreground">
+                                            {practicePlanStepTitle(nextPlanStep.type, nextPlanStep.objectiveId, language)}
+                                        </p>
+                                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                                            {practicePlanStepRationale(nextPlanStep.type, language)}
+                                        </p>
                                     </div>
                                     {continuePlanError && (
                                         <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
@@ -431,6 +489,51 @@ function ClosureTile({ title, value, detail }: { title: string; value: string; d
     );
 }
 
+function evidenceStateLabel(state: string, language: 'en' | 'zh') {
+    if (language === 'zh') {
+        return {
+            secured: '已稳定',
+            'transfer-ready': '可迁移',
+            'needs-repair': '需修复',
+            practice: '练习中'
+        }[state] || '练习中';
+    }
+    return {
+        secured: 'Stable',
+        'transfer-ready': 'Transfer ready',
+        'needs-repair': 'Needs repair',
+        practice: 'Practicing'
+    }[state] || 'Practicing';
+}
+
+function runBonusTitle(
+    bonus: { id: string; title: string; skillTag?: string },
+    language: 'en' | 'zh'
+) {
+    if (language !== 'zh') return bonus.title;
+    if (bonus.id.startsWith('bonus_review')) return '复习完成';
+    if (bonus.id.startsWith('bonus_breakthrough')) return '薄弱点突破';
+    if (bonus.id.startsWith('bonus_transfer')) return '迁移检查点';
+    return bonus.title;
+}
+
+function runBonusDescription(
+    bonus: { id: string; description: string; skillTag?: string },
+    language: 'en' | 'zh'
+) {
+    if (language !== 'zh') return bonus.description;
+    if (bonus.id.startsWith('bonus_review')) return '完成了一轮有效的 SRS 复习。';
+    if (bonus.id.startsWith('bonus_breakthrough')) {
+        const label = bonus.skillTag ? formatLearningLabel(bonus.skillTag, language) : '相关技能';
+        return `${label} 出现明显进步。`;
+    }
+    if (bonus.id.startsWith('bonus_transfer')) {
+        const label = bonus.skillTag ? formatLearningLabel(bonus.skillTag, language) : '相关技能';
+        return `${label} 在独立回忆中保持稳定。`;
+    }
+    return bonus.description;
+}
+
 function buildLearningClosure(
     answers: ReturnType<typeof useGameStore.getState>['userAnswers'],
     language: 'en' | 'zh'
@@ -467,21 +570,29 @@ function buildLearningClosure(
         .sort((a, b) => a.accuracy - b.accuracy)[0];
 
     const masteredLabel = mastered
-        ? objectiveTitle(mastered.objectiveId)
+        ? objectiveTitle(mastered.objectiveId, language)
         : (language === 'zh' ? '还在收集证据' : 'Collecting evidence');
     const masteredDetail = mastered
-        ? `${Math.round(mastered.accuracy * 100)}% accuracy${mastered.row.transfer > 0 ? ` · ${supportLevelLabel(0)}` : ''}`
+        ? (language === 'zh'
+            ? `正确率 ${Math.round(mastered.accuracy * 100)}%${mastered.row.transfer > 0 ? ` · ${supportLevelLabel(0, language)}` : ''}`
+            : `${Math.round(mastered.accuracy * 100)}% accuracy${mastered.row.transfer > 0 ? ` · ${supportLevelLabel(0, language)}` : ''}`)
         : (language === 'zh' ? '完成更多题后会显示稳定掌握目标。' : 'Complete more answers to identify a stable objective.');
 
-    const bottleneckLabel = bottleneck?.[0] || (weakest ? objectiveTitle(weakest.objectiveId) : (language === 'zh' ? '暂无明显瓶颈' : 'No clear bottleneck'));
+    const bottleneckLabel = bottleneck
+        ? formatLearningLabel(bottleneck[0], language)
+        : (weakest ? objectiveTitle(weakest.objectiveId, language) : (language === 'zh' ? '暂无明显瓶颈' : 'No clear bottleneck'));
     const bottleneckDetail = bottleneck
-        ? `${bottleneck[1]} mistake signal${bottleneck[1] === 1 ? '' : 's'} in this run`
+        ? (language === 'zh'
+            ? `本轮 ${bottleneck[1]} 次错因信号`
+            : `${bottleneck[1]} mistake signal${bottleneck[1] === 1 ? '' : 's'} in this run`)
         : (weakest
-            ? `${Math.round(weakest.accuracy * 100)}% accuracy on ${objectiveTitle(weakest.objectiveId)}`
+            ? (language === 'zh'
+                ? `${objectiveTitle(weakest.objectiveId, language)} 正确率 ${Math.round(weakest.accuracy * 100)}%`
+                : `${Math.round(weakest.accuracy * 100)}% accuracy on ${objectiveTitle(weakest.objectiveId, language)}`)
             : (language === 'zh' ? '本局没有错因信号。' : 'No mistake cause signal in this run.'));
 
     const nextObjective = weakest?.objectiveId || mastered?.objectiveId || 'vocab_context_meaning';
-    const nextAction = objectiveTitle(nextObjective);
+    const nextAction = objectiveTitle(nextObjective, language);
     const nextActionDetail = language === 'zh'
         ? '下次从有提示练习开始，再切到填空或输入迁移。'
         : 'Start with guided practice, then move to fill-blank or typing transfer.';
@@ -509,7 +620,7 @@ function buildLocalDebrief(
 
     const formatSkill = (entry?: { key: string; accuracy: number; attempts: number }) => {
         if (!entry) return language === 'zh' ? '暂无数据' : 'N/A';
-        const label = entry.key.replace(/_/g, ' ');
+        const label = formatLearningLabel(entry.key, language);
         const percent = Math.round(entry.accuracy * 100);
         return language === 'zh'
             ? `${label} · 正确率 ${percent}%`
@@ -517,8 +628,8 @@ function buildLocalDebrief(
     };
 
     const advice = language === 'zh'
-        ? `巩固 ${best ? best.key.replace(/_/g, ' ') : '基础'}，并针对 ${weakest ? weakest.key.replace(/_/g, ' ') : '薄弱点'} 做 2-3 题复习。`
-        : `Solidify ${best ? best.key.replace(/_/g, ' ') : 'core skills'} and revisit ${weakest ? weakest.key.replace(/_/g, ' ') : 'weaker spots'} with a few focused reps.`;
+        ? `巩固 ${best ? formatLearningLabel(best.key, language) : '基础技能'}，并针对 ${weakest ? formatLearningLabel(weakest.key, language) : '薄弱点'} 做 2-3 题复习。`
+        : `Solidify ${best ? formatLearningLabel(best.key, language) : 'core skills'} and revisit ${weakest ? formatLearningLabel(weakest.key, language) : 'weaker spots'} with a few focused reps.`;
 
     return {
         mvp_skill: formatSkill(best),

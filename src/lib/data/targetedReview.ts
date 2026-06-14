@@ -1,7 +1,8 @@
 import type { Monster } from '@/store/gameStore';
 import type { MistakeRecord } from '@/db/db';
 import { getBalancedFallbackQuestions, type FallbackQuestion } from './fallbackQuestions';
-import { rebalanceQuestionModes } from './questionModes';
+import { planQuestionPack } from './questionPackPlanner';
+import { mapSkillTagToObjectiveId } from './learningObjectives';
 
 interface BuildTargetedReviewInput {
     mistakes: MistakeRecord[];
@@ -17,13 +18,15 @@ export interface TargetedReviewPack {
     fromFallback: number;
 }
 
+const REVIEW_OPTION_FILLERS = ['not the answer', 'different meaning', 'another choice', 'unrelated clue'];
+
 function buildFallbackOptions(record: MistakeRecord) {
     const base = new Set<string>();
     if (record.correctAnswer) base.add(record.correctAnswer);
     if (record.wrongAnswer) base.add(record.wrongAnswer);
-    let filler = 1;
-    while (base.size < 4) {
-        base.add(`Option ${filler++}`);
+    let filler = 0;
+    while (base.size < 4 && filler < REVIEW_OPTION_FILLERS.length) {
+        base.add(REVIEW_OPTION_FILLERS[filler++]);
     }
     return Array.from(base).slice(0, 4);
 }
@@ -41,8 +44,10 @@ function normalizeOptions(record: MistakeRecord): { options: string[]; correctIn
         }
     }
     options = Array.from(new Set(options));
-    while (options.length < 4) {
-        options.push(`Option ${options.length + 1}`);
+    let filler = 0;
+    while (options.length < 4 && filler < REVIEW_OPTION_FILLERS.length) {
+        const candidate = REVIEW_OPTION_FILLERS[filler++];
+        if (!options.includes(candidate)) options.push(candidate);
     }
     const correctIndex = options.indexOf(record.correctAnswer);
     return {
@@ -54,6 +59,11 @@ function normalizeOptions(record: MistakeRecord): { options: string[]; correctIn
 function recordToMonster(record: MistakeRecord, index: number): Monster {
     const { options, correctIndex } = normalizeOptions(record);
     const type = (record.type || (record.skillTag?.startsWith('grammar') ? 'grammar' : 'vocab')) as Monster['type'];
+    const learningObjectiveId = mapSkillTagToObjectiveId({
+        skillTag: record.skillTag,
+        type,
+        question: record.questionText
+    });
     return {
         id: (record.id || Date.now()) + index,
         type,
@@ -65,7 +75,9 @@ function recordToMonster(record: MistakeRecord, index: number): Monster {
         skillTag: record.skillTag || `${type}_review`,
         difficulty: 'medium',
         questionMode: 'choice',
-        correctAnswer: options[correctIndex]
+        correctAnswer: options[correctIndex],
+        learningObjectiveId,
+        sourceContextSpan: record.questionText
     };
 }
 
@@ -118,7 +130,7 @@ export function buildTargetedReviewPack(input: BuildTargetedReviewInput): Target
     ];
 
     return {
-        monsters: rebalanceQuestionModes(monsters) as Monster[],
+        monsters: planQuestionPack(monsters).questions,
         fromMistakes,
         fromFallback: chosenFallback.length
     };

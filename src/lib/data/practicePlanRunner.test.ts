@@ -1,8 +1,10 @@
 import {
     completeCurrentPracticePlanStep,
+    createPracticePlanRunRecord,
     createPracticePlanRun,
     currentPracticePlanStep,
     isPracticePlanComplete,
+    completePracticePlanRunRecordStep,
     practicePlanProgressText
 } from './practicePlanRunner';
 import type { PracticePlan } from './dailyPracticePlan';
@@ -64,5 +66,32 @@ describe('practice plan runner', () => {
         expect(currentPracticePlanStep(afterSecond)).toBeNull();
         expect(isPracticePlanComplete(afterSecond)).toBe(true);
         expect(practicePlanProgressText(afterSecond)).toBe('2/2');
+    });
+
+    test('creates a persistable run record with before and after evidence', () => {
+        const record = createPracticePlanRunRecord(plan, 1000);
+
+        expect(record).toEqual(expect.objectContaining({
+            planId: 'daily_test',
+            dateKey: '1970-01-01',
+            status: 'active',
+            completedStepIds: [],
+            evidenceBefore: plan.evidence,
+            startedAt: 1000,
+            updatedAt: 1000
+        }));
+
+        const afterStep = completePracticePlanRunRecordStep(record, 'review_vocab', [
+            { label: 'Mastery change', value: 'Vocabulary in Context +4%', source: 'mastery' }
+        ], 2000);
+
+        expect(afterStep.status).toBe('active');
+        expect(afterStep.completedStepIds).toEqual(['review_vocab']);
+        expect(afterStep.evidenceAfter).toHaveLength(1);
+        expect(afterStep.completedAt).toBeUndefined();
+
+        const complete = completePracticePlanRunRecordStep(afterStep, 'transfer_vocab', [], 3000);
+        expect(complete.status).toBe('completed');
+        expect(complete.completedAt).toBe(3000);
     });
 });

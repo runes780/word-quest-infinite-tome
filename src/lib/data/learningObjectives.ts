@@ -13,10 +13,12 @@ export type LearningObjectiveType = 'form' | 'meaning' | 'reference' | 'detail' 
 export type ObjectiveQuestionMode = 'choice' | 'typing' | 'fill-blank';
 export type SupportLevel = 0 | 1 | 2 | 3;
 export type AttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
+export type UiLanguage = 'en' | 'zh';
 
 export interface LearningObjective {
     objectiveId: LearningObjectiveId;
     title: string;
+    titleZh: string;
     domain: LearningObjectiveDomain;
     type: LearningObjectiveType;
     prerequisites: LearningObjectiveId[];
@@ -26,6 +28,22 @@ export interface LearningObjective {
         attempts: number;
         accuracy: number;
     };
+    transferThreshold: {
+        score: number;
+        transferAttempts: number;
+        accuracy: number;
+    };
+    reviewPolicy: {
+        maxDaysWithoutReview: number;
+        riskWeight: number;
+    };
+}
+
+export interface CanonicalLearningObjective {
+    objectiveId: LearningObjectiveId;
+    confidence: number;
+    source: 'ai' | 'fallback';
+    sourceContextSpan?: string;
 }
 
 export interface MasteryLike {
@@ -39,56 +57,74 @@ export const LEARNING_OBJECTIVES: LearningObjective[] = [
     {
         objectiveId: 'past_tense_basic',
         title: 'Basic Past Tense',
+        titleZh: '基础过去时',
         domain: 'grammar',
         type: 'form',
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
-        masteryThreshold: { score: 82, attempts: 8, accuracy: 0.8 }
+        masteryThreshold: { score: 82, attempts: 8, accuracy: 0.8 },
+        transferThreshold: { score: 78, transferAttempts: 2, accuracy: 0.75 },
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.2 }
     },
     {
         objectiveId: 'vocab_context_meaning',
         title: 'Vocabulary in Context',
+        titleZh: '语境词义',
         domain: 'vocab',
         type: 'meaning',
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
-        masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 }
+        masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 },
+        transferThreshold: { score: 76, transferAttempts: 2, accuracy: 0.74 },
+        reviewPolicy: { maxDaysWithoutReview: 4, riskWeight: 1.15 }
     },
     {
         objectiveId: 'pronoun_reference',
         title: 'Pronoun Reference',
+        titleZh: '代词指代',
         domain: 'reading',
         type: 'reference',
         prerequisites: ['reading_detail'],
         recommendedModes: ['choice', 'fill-blank'],
-        masteryThreshold: { score: 78, attempts: 6, accuracy: 0.76 }
+        masteryThreshold: { score: 78, attempts: 6, accuracy: 0.76 },
+        transferThreshold: { score: 74, transferAttempts: 2, accuracy: 0.72 },
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.1 }
     },
     {
         objectiveId: 'preposition_place_time',
         title: 'Place and Time Prepositions',
+        titleZh: '时间/地点介词',
         domain: 'grammar',
         type: 'form',
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
-        masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 }
+        masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 },
+        transferThreshold: { score: 76, transferAttempts: 2, accuracy: 0.74 },
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.15 }
     },
     {
         objectiveId: 'reading_detail',
         title: 'Reading for Details',
+        titleZh: '阅读细节',
         domain: 'reading',
         type: 'detail',
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank'],
-        masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 }
+        masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 },
+        transferThreshold: { score: 76, transferAttempts: 2, accuracy: 0.74 },
+        reviewPolicy: { maxDaysWithoutReview: 6, riskWeight: 1 }
     },
     {
         objectiveId: 'reading_inference',
         title: 'Reading Inference',
+        titleZh: '阅读推断',
         domain: 'reading',
         type: 'inference',
         prerequisites: ['reading_detail', 'vocab_context_meaning'],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
-        masteryThreshold: { score: 84, attempts: 10, accuracy: 0.82 }
+        masteryThreshold: { score: 84, attempts: 10, accuracy: 0.82 },
+        transferThreshold: { score: 80, transferAttempts: 3, accuracy: 0.78 },
+        reviewPolicy: { maxDaysWithoutReview: 4, riskWeight: 1.3 }
     }
 ];
 
@@ -102,8 +138,82 @@ export function getLearningObjective(objectiveId?: string | null): LearningObjec
     return OBJECTIVE_MAP[objectiveId as LearningObjectiveId];
 }
 
+export function canonicalizeLearningObjective(input: {
+    suggestedObjectiveId?: string | null;
+    skillTag?: string | null;
+    type?: LearningObjectiveDomain | string | null;
+    question?: string | null;
+    sourceContextSpan?: string | null;
+}): CanonicalLearningObjective {
+    const suggested = getLearningObjective(input.suggestedObjectiveId);
+    const sourceContextSpan = input.sourceContextSpan?.trim() || undefined;
+    const questionObjective = inferObjectiveFromQuestion(input);
+    if (suggested && (!questionObjective || questionObjective === suggested.objectiveId)) {
+        return {
+            objectiveId: suggested.objectiveId,
+            confidence: 0.86,
+            source: 'ai',
+            sourceContextSpan
+        };
+    }
+
+    const objectiveId = mapSkillTagToObjectiveId({
+        skillTag: input.skillTag,
+        type: input.type,
+        question: input.question
+    });
+    const hasEvidence = Boolean(input.skillTag || input.type || input.question);
+    return {
+        objectiveId,
+        confidence: hasEvidence ? 0.64 : 0.5,
+        source: 'fallback',
+        sourceContextSpan
+    };
+}
+
 function normalize(value?: string | null): string {
     return (value || '').trim().toLowerCase().replace(/[\s:-]+/g, '_');
+}
+
+function inferObjectiveFromQuestion(input: {
+    type?: LearningObjectiveDomain | string | null;
+    question?: string | null;
+}): LearningObjectiveId | undefined {
+    const question = (input.question || '').trim().toLowerCase();
+    if (!question) return undefined;
+
+    if (/\b(?:past[- ]tense|yesterday|last weekend|last week|ago|went|was|were|did)\b/.test(question)) {
+        return 'past_tense_basic';
+    }
+    if (/\b(?:pronoun|reference|refer(?:s|red|ring)?\s+to)\b/.test(question)) {
+        return 'pronoun_reference';
+    }
+    if (/\b(?:preposition|in|on|at|under|behind|between|before|after)\b/.test(question) && /\b(?:place|time|where|when|table|room|monday|week)\b/.test(question)) {
+        return 'preposition_place_time';
+    }
+    if (/\b(?:why|infer|inference|predict|imply|suggest|cause|effect|reason)\b/.test(question)) {
+        return 'reading_inference';
+    }
+    if (/\b(?:what does|mean|meaning|synonym|antonym|word|vocabulary|best word)\b/.test(question)) {
+        return 'vocab_context_meaning';
+    }
+    if (input.type === 'reading' || /\b(?:weather|stated|directly|detail|main idea|what|where|when|who|which|how)\b/.test(question)) {
+        return 'reading_detail';
+    }
+
+    return undefined;
+}
+
+function inferObjectiveFromSkillTag(skillTag?: string | null): LearningObjectiveId | undefined {
+    const rawSkill = normalize(skillTag);
+    if (!rawSkill) return undefined;
+    if (/(past|past_simple|past_tense|ed_form|yesterday|went|was|were)/.test(rawSkill)) return 'past_tense_basic';
+    if (/(pronoun|reference|refer|he_|she_|they_|it_)/.test(rawSkill)) return 'pronoun_reference';
+    if (/(preposition|place|time|in_on_at|under|behind|between|before|after)/.test(rawSkill)) return 'preposition_place_time';
+    if (/(infer|inference|why|cause_effect|predict|imply)/.test(rawSkill)) return 'reading_inference';
+    if (/(vocab|vocabulary|meaning|context_meaning|word|synonym|happy|big|temperature|friends|life)/.test(rawSkill)) return 'vocab_context_meaning';
+    if (/(detail|main_idea|reading)/.test(rawSkill)) return 'reading_detail';
+    return undefined;
 }
 
 export function mapSkillTagToObjectiveId(input: {
@@ -111,28 +221,11 @@ export function mapSkillTagToObjectiveId(input: {
     type?: LearningObjectiveDomain | string | null;
     question?: string | null;
 }): LearningObjectiveId {
-    const rawSkill = normalize(input.skillTag);
-    const rawQuestion = normalize(input.question);
-    const combined = `${rawSkill}_${rawQuestion}`;
+    const questionObjective = inferObjectiveFromQuestion(input);
+    if (questionObjective) return questionObjective;
 
-    if (/(past|past_simple|past_tense|ed_form|yesterday|went|was|were)/.test(combined)) {
-        return 'past_tense_basic';
-    }
-    if (/(pronoun|reference|refer|he_|she_|they_|it_)/.test(combined)) {
-        return 'pronoun_reference';
-    }
-    if (/(preposition|place|time|in_on_at|under|behind|between|before|after)/.test(combined)) {
-        return 'preposition_place_time';
-    }
-    if (/(infer|inference|why|cause_effect|predict|imply)/.test(combined)) {
-        return 'reading_inference';
-    }
-    if (/(vocab|vocabulary|meaning|context_meaning|word|synonym|happy|big|temperature|friends|life)/.test(combined)) {
-        return 'vocab_context_meaning';
-    }
-    if (/(detail|main_idea|reading)/.test(combined)) {
-        return 'reading_detail';
-    }
+    const skillObjective = inferObjectiveFromSkillTag(input.skillTag);
+    if (skillObjective) return skillObjective;
 
     if (input.type === 'vocab') return 'vocab_context_meaning';
     if (input.type === 'grammar') return 'past_tense_basic';
@@ -154,7 +247,13 @@ export function modeForSupportLevel(level: SupportLevel): ObjectiveQuestionMode 
     return 'typing';
 }
 
-export function supportLevelLabel(level: SupportLevel): string {
+export function supportLevelLabel(level: SupportLevel, language: UiLanguage = 'en'): string {
+    if (language === 'zh') {
+        if (level === 3) return '有提示';
+        if (level === 2) return '支架练习';
+        if (level === 1) return '独立练习';
+        return '迁移应用';
+    }
     if (level === 3) return 'guided';
     if (level === 2) return 'scaffolded';
     if (level === 1) return 'independent';
@@ -173,6 +272,133 @@ export function normalizeCauseTag(value?: string | null): string | undefined {
     return normalized;
 }
 
-export function objectiveTitle(objectiveId?: string | null): string {
-    return getLearningObjective(objectiveId)?.title || 'Core English Skill';
+export function objectiveTitle(objectiveId?: string | null, language: UiLanguage = 'en'): string {
+    const objective = getLearningObjective(objectiveId);
+    if (!objective) return language === 'zh' ? '核心英语技能' : 'Core English Skill';
+    return language === 'zh' ? objective.titleZh : objective.title;
+}
+
+const ZH_LEARNING_LABELS: Record<string, string> = {
+    core_skill: '核心技能',
+    core_skills: '核心技能',
+    review: '复习',
+    skill: '技能',
+    vocab: '词汇',
+    vocabulary: '词汇',
+    vocab_core: '基础词汇',
+    vocab_basic: '基础词汇',
+    vocab_daily: '词汇练习',
+    vocab_review: '词汇复习',
+    vocab_meaning: '词义理解',
+    vocabulary_meaning: '词义理解',
+    vocab_context: '语境词汇',
+    vocab_context_meaning: '语境词义',
+    vocabulary_in_context: '语境词义',
+    reading_vocabulary_in_context: '语境词义',
+    grammar: '语法',
+    grammar_core: '语法基础',
+    grammar_review: '语法复习',
+    grammar_tense: '时态语法',
+    grammar_past_simple: '一般过去时',
+    past_simple: '一般过去时',
+    past_tense: '过去时',
+    past_tense_basic: '基础过去时',
+    tense_confusion: '时态混淆',
+    verb_form: '动词形式',
+    preposition: '介词',
+    preposition_under: '介词 under',
+    preposition_place_time: '时间/地点介词',
+    pronoun: '代词',
+    pronoun_reference: '代词指代',
+    reading: '阅读',
+    reading_detail: '阅读细节',
+    reading_details: '阅读细节',
+    detail: '细节理解',
+    reading_inference: '阅读推断',
+    inference: '推断',
+    inference_gap: '推断断点',
+    reading_comprehension: '阅读理解',
+    reading_main: '主旨理解',
+    reading_main_idea: '主旨大意',
+    main_idea: '主旨大意',
+    cause_effect: '因果推断',
+    distractor_trap: '选项干扰',
+    spelling_or_form: '拼写/形式',
+    collocation_mixup: '搭配混淆'
+};
+
+const EN_LEARNING_LABELS: Record<string, string> = {
+    vocab: 'Vocabulary',
+    vocab_core: 'Vocab Core',
+    vocab_meaning: 'Vocabulary Meaning',
+    vocab_context_meaning: 'Vocabulary in Context',
+    reading_vocabulary_in_context: 'Vocabulary in Context',
+    grammar_past_simple: 'Past Simple',
+    tense_confusion: 'Tense Confusion',
+    pronoun_reference: 'Pronoun Reference',
+    preposition_place_time: 'Place and Time Prepositions',
+    reading_detail: 'Reading Details',
+    reading_inference: 'Reading Inference',
+    inference_gap: 'Inference Gap',
+    cause_effect: 'Cause and Effect',
+    distractor_trap: 'Distractor Trap',
+    spelling_or_form: 'Spelling or Form',
+    core_skill: 'Core Skill',
+    core_skills: 'Core Skills'
+};
+
+function titleCaseLearningLabel(normalized: string) {
+    return normalized
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function formatLearningLabel(value?: string | null, language: UiLanguage = 'en'): string {
+    const normalized = normalize(value);
+    if (!normalized) return language === 'zh' ? '暂无数据' : 'N/A';
+
+    const objective = getLearningObjective(normalized);
+    if (objective) return objectiveTitle(objective.objectiveId, language);
+
+    if (language === 'zh') {
+        if (ZH_LEARNING_LABELS[normalized]) return ZH_LEARNING_LABELS[normalized];
+        if (normalized.startsWith('vocab_')) return `词汇：${titleCaseLearningLabel(normalized.replace(/^vocab_/, ''))}`;
+        if (normalized.startsWith('vocabulary_')) return `词汇：${titleCaseLearningLabel(normalized.replace(/^vocabulary_/, ''))}`;
+        if (normalized.startsWith('grammar_')) return `语法：${titleCaseLearningLabel(normalized.replace(/^grammar_/, ''))}`;
+        if (normalized.startsWith('reading_')) return `阅读：${titleCaseLearningLabel(normalized.replace(/^reading_/, ''))}`;
+        if (normalized.startsWith('preposition_')) return `介词：${titleCaseLearningLabel(normalized.replace(/^preposition_/, ''))}`;
+        return titleCaseLearningLabel(normalized);
+    }
+
+    return EN_LEARNING_LABELS[normalized] || titleCaseLearningLabel(normalized);
+}
+
+export function practicePlanStepTitle(
+    type: 'review' | 'practice' | 'transfer',
+    objectiveId?: string | null,
+    language: UiLanguage = 'en'
+): string {
+    const objective = objectiveTitle(objectiveId, language);
+    if (language === 'zh') {
+        if (type === 'review') return `复习${objective}`;
+        if (type === 'transfer') return `迁移${objective}`;
+        return `巩固${objective}`;
+    }
+    if (type === 'review') return `Review ${objective}`;
+    if (type === 'transfer') return `Transfer ${objective}`;
+    return `Consolidate ${objective}`;
+}
+
+export function practicePlanStepRationale(
+    type: 'review' | 'practice' | 'transfer',
+    language: UiLanguage = 'en'
+): string {
+    if (language === 'zh') {
+        if (type === 'review') return '到期复习优先，先稳住最容易遗忘的内容。';
+        if (type === 'transfer') return '接近掌握的内容用新语境或主动回忆检查。';
+        return '近期错题先带支架回炉，再逐步撤掉提示。';
+    }
+    if (type === 'review') return 'Due review comes first because it has the highest forgetting risk.';
+    if (type === 'transfer') return 'Near-mastered skills are checked through recall or a new context.';
+    return 'Recent mistakes return with scaffolding before support is removed.';
 }

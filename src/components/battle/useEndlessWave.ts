@@ -51,6 +51,10 @@ function mapCachedQuestionToMonster(item: {
     explanation: string;
     hint?: string;
     skillTag?: string;
+    learningObjectiveId?: string;
+    sourceContextSpan?: string;
+    questionMode?: 'choice' | 'typing' | 'fill-blank';
+    correctAnswer?: string;
 }): Monster {
     return {
         id: item.id || Date.now(),
@@ -62,8 +66,10 @@ function mapCachedQuestionToMonster(item: {
         hint: item.hint,
         skillTag: item.skillTag || 'vocab_core',
         difficulty: 'easy',
-        questionMode: 'choice',
-        correctAnswer: item.options[item.correct_index] || ''
+        questionMode: item.questionMode || 'choice',
+        correctAnswer: item.correctAnswer || item.options[item.correct_index] || '',
+        learningObjectiveId: item.learningObjectiveId,
+        sourceContextSpan: item.sourceContextSpan
     };
 }
 
@@ -136,6 +142,10 @@ export function useEndlessWave({
                             explanation: monster.explanation,
                             hint: monster.hint,
                             skillTag: monster.skillTag,
+                            learningObjectiveId: monster.learningObjectiveId,
+                            sourceContextSpan: monster.sourceContextSpan,
+                            questionMode: monster.questionMode,
+                            correctAnswer: monster.correctAnswer,
                             contextHash,
                             timestamp: Date.now(),
                             used: false

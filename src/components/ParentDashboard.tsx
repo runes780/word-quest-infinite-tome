@@ -64,13 +64,15 @@ import type {
     StudyActionStatus,
     SessionRecoverySnapshot,
     LearningTask,
-    MasteryAggregateSnapshot
+    MasteryAggregateSnapshot,
+    ObjectiveMasteryAggregateSnapshot
 } from '@/db/db';
 import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import type { Monster } from '@/store/gameStore';
-import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
+import type { PracticePlan, PracticePlanEvidence } from '@/lib/data/dailyPracticePlan';
 import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
+import { formatLearningLabel } from '@/lib/data/learningObjectives';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -102,6 +104,9 @@ interface TonightActionItem {
     estimatedMinutes: number;
     evidence: string;
     evidenceRows: Array<{ label: string; value: string; }>;
+    expectedImpact: string;
+    followUp: string;
+    resultAfterCompletion?: string;
     ctaLabel?: string;
     onCta?: () => void;
 }
@@ -136,6 +141,7 @@ export function ParentDashboard() {
     const [dueCards, setDueCards] = useState<FSRSCard[]>([]);
     const [srsDueCount, setSrsDueCount] = useState(0);
     const [masterySnapshot, setMasterySnapshot] = useState<MasteryAggregateSnapshot | null>(null);
+    const [objectiveMasterySnapshot, setObjectiveMasterySnapshot] = useState<ObjectiveMasteryAggregateSnapshot | null>(null);
     const [learningTasks, setLearningTasks] = useState<LearningTask[]>([]);
     const [studyActionExecutions, setStudyActionExecutions] = useState<StudyActionExecution[]>([]);
     const [studyActionSummary, setStudyActionSummary] = useState<StudyActionExecutionSummary | null>(null);
@@ -257,6 +263,7 @@ export function ParentDashboard() {
             setDueCards(dashboard.dueCards);
             setSrsDueCount(dashboard.srsStats.due);
             setMasterySnapshot(dashboard.mastery);
+            setObjectiveMasterySnapshot(dashboard.objectiveMastery ?? null);
             setLearningTasks(dashboard.learningTasks);
             setStudyActionExecutions(dashboard.studyActionExecutions);
             setStudyActionSummary(dashboard.studyActionSummary);
@@ -294,6 +301,17 @@ export function ParentDashboard() {
     }, [isOpen]);
 
     useEffect(() => {
+        if (!isOpen || typeof window === 'undefined') return;
+        const handleEvidenceUpdate = () => {
+            loadData();
+        };
+        window.addEventListener('wordquest:learning-evidence-updated', handleEvidenceUpdate);
+        return () => {
+            window.removeEventListener('wordquest:learning-evidence-updated', handleEvidenceUpdate);
+        };
+    }, [isOpen, loadData]);
+
+    useEffect(() => {
         if (isOpen) return;
         setExportSnapshotMounted(false);
     }, [isOpen]);
@@ -312,7 +330,9 @@ export function ParentDashboard() {
     const profileMasteryAverage = playerProfile
         ? Math.round((playerProfile.vocabMastery + playerProfile.grammarMastery + playerProfile.readingMastery) / 3)
         : null;
-    const masteryAverage = profileMasteryAverage ??
+    const masteryAverage = objectiveMasterySnapshot && objectiveMasterySnapshot.byObjective.length > 0
+        ? objectiveMasterySnapshot.averageScore
+        : profileMasteryAverage ??
         (masterySnapshot && masterySnapshot.totalAttempts > 0
             ? Math.round((masterySnapshot.totalCorrect / masterySnapshot.totalAttempts) * 100)
             : averageAccuracy);
@@ -333,12 +353,21 @@ export function ParentDashboard() {
         ? new Date(snapshot.totals.lastActive).toLocaleDateString()
         : (t.dashboard.noHistoryShort || 'No runs yet');
 
-    const actionStatusById = useMemo(() => {
+    const actionExecutionById = useMemo(() => {
         return studyActionExecutions.reduce((acc, row) => {
-            acc[row.actionId] = row.status;
+            const existing = acc[row.actionId];
+            if (!existing || row.updatedAt >= existing.updatedAt) {
+                acc[row.actionId] = row;
+            }
+            return acc;
+        }, {} as Record<string, StudyActionExecution>);
+    }, [studyActionExecutions]);
+    const actionStatusById = useMemo(() => {
+        return Object.entries(actionExecutionById).reduce((acc, [actionId, row]) => {
+            acc[actionId] = row.status;
             return acc;
         }, {} as Record<string, StudyActionStatus>);
-    }, [studyActionExecutions]);
+    }, [actionExecutionById]);
 
     const actionSummary = studyActionSummary ?? computeStudyActionExecutionSummaryFromRows(studyActionExecutions, 14);
     const repeatedGoal = repeatedCauseBaselineGoal ?? FALLBACK_REPEATED_GOAL;
@@ -358,9 +387,14 @@ export function ParentDashboard() {
         });
         if (pack.monsters.length === 0) return;
         void logGuardianDashboardEvent('session_launch');
-        startGame(pack.monsters, `Targeted Review: ${repeatedAction.focusCauseTag || 'core_skills'}`, 'battle');
+        startGame(pack.monsters.map((monster) => ({
+            ...monster,
+            sourceActionId: 'targeted_pack',
+            sourceActionPriority: repeatedAction.status === 'not_met' ? 'urgent' : 'important',
+            sourceActionEstimatedMinutes: Math.max(8, repeatedAction.recommendedQuestions * 2)
+        })), `Targeted Review: ${repeatedAction.focusCauseTag || 'core_skills'}`, 'battle');
         setIsOpen(false);
-    }, [mistakes, repeatedAction.focusCauseTag, repeatedAction.recommendedQuestions, startGame, weakestSkill?.skill]);
+    }, [mistakes, repeatedAction.focusCauseTag, repeatedAction.recommendedQuestions, repeatedAction.status, startGame, weakestSkill?.skill]);
 
     const handleStartSrsFocus = useCallback(() => {
         const reviewCards = dueCards.slice(0, Math.min(8, dueCards.length));
@@ -381,14 +415,19 @@ export function ParentDashboard() {
                 hint: card.hint,
                 skillTag: card.skillTag || `${fallbackType}_srs`,
                 difficulty: 'medium',
-                questionMode: 'choice',
-                correctAnswer: options[safeIndex]
+                questionMode: card.questionMode || 'choice',
+                correctAnswer: card.correctAnswer || options[safeIndex],
+                learningObjectiveId: card.learningObjectiveId,
+                sourceContextSpan: card.sourceContextSpan,
+                sourceActionId: 'srs_focus',
+                sourceActionPriority: srsDueCount >= 5 ? 'urgent' : 'important',
+                sourceActionEstimatedMinutes: Math.max(6, Math.min(20, srsDueCount * 2))
             };
         });
         void logGuardianDashboardEvent('session_launch');
         startGame(monsters, `SRS Focus: ${reviewCards.length} cards`, 'srs');
         setIsOpen(false);
-    }, [dueCards, startGame]);
+    }, [dueCards, srsDueCount, startGame]);
 
     const handleSetActionStatus = useCallback(async (
         actionId: string,
@@ -415,20 +454,27 @@ export function ParentDashboard() {
             ? `${primaryMistake.questionText.slice(0, 54)} · ${primaryMistake.wrongAnswer} -> ${primaryMistake.correctAnswer}`
             : (isZh ? '暂无错题样本' : 'No recent mistake sample');
         const fsrsEvidence = primaryDueCard
-            ? `${primaryDueCard.skillTag || primaryDueCard.type || 'skill'} · ${dueStatus?.statusText.en || 'due'}`
+            ? `${formatSkillLabel(primaryDueCard.skillTag || primaryDueCard.type || 'skill', isZh)} · ${isZh ? dueStatus?.statusText.zh || '到期' : dueStatus?.statusText.en || 'due'}`
             : (isZh ? '暂无到期复习卡' : 'No due SRS cards');
         return [
             {
                 id: 'targeted_pack',
                 title: isZh ? '聚焦重复错因' : 'Focus on Repeated Cause',
                 description: isZh
-                    ? `围绕 ${formatSkillLabel(repeatedAction.focusCauseTag || 'core_skills')} 完成 ${repeatedAction.recommendedQuestions} 题。`
+                    ? `围绕 ${formatSkillLabel(repeatedAction.focusCauseTag || 'core_skills', true)} 完成 ${repeatedAction.recommendedQuestions} 题。`
                     : `Run ${repeatedAction.recommendedQuestions} questions on ${formatSkillLabel(repeatedAction.focusCauseTag || 'core_skills')}.`,
                 priority: repeatedAction.status === 'not_met' ? 'urgent' : 'important',
                 estimatedMinutes: Math.max(8, repeatedAction.recommendedQuestions * 2),
                 evidence: isZh
                     ? `重复错因率 ${formatPercent(repeatedCauseSnapshot?.repeatRate || 0)}`
                     : `Repeated-cause rate ${formatPercent(repeatedCauseSnapshot?.repeatRate || 0)}`,
+                expectedImpact: isZh
+                    ? '预期降低重复错因，并把错误原因转成可迁移练习。'
+                    : 'Expected to reduce repeated causes and turn the error pattern into transfer practice.',
+                followUp: isZh
+                    ? '完成后追踪重复错因率和本轮定向正确率。'
+                    : 'After completion, track repeated-cause rate and targeted accuracy.',
+                resultAfterCompletion: actionResultAfterCompletion(actionExecutionById.targeted_pack, isZh),
                 evidenceRows: [
                     { label: isZh ? '错题证据' : 'Mistake evidence', value: mistakeEvidence },
                     { label: isZh ? '复习证据' : 'Review evidence', value: fsrsEvidence }
@@ -445,6 +491,13 @@ export function ParentDashboard() {
                 priority: srsDueCount >= 5 ? 'urgent' : 'important',
                 estimatedMinutes: Math.max(6, Math.min(20, srsDueCount * 2)),
                 evidence: isZh ? `当前到期 ${srsDueCount} 张` : `${srsDueCount} cards due now`,
+                expectedImpact: isZh
+                    ? '预期降低遗忘风险，保护已学知识点。'
+                    : 'Expected to lower forgetting risk and protect learned objectives.',
+                followUp: isZh
+                    ? '完成后追踪到期卡数量和下一次复习时间。'
+                    : 'After completion, track due-card count and next review dates.',
+                resultAfterCompletion: actionResultAfterCompletion(actionExecutionById.srs_focus, isZh),
                 evidenceRows: [
                     { label: isZh ? '错题证据' : 'Mistake evidence', value: mistakeEvidence },
                     { label: isZh ? '复习证据' : 'Review evidence', value: fsrsEvidence }
@@ -463,6 +516,13 @@ export function ParentDashboard() {
                 evidence: isZh
                     ? `任务完成率 ${formatPercent(engagementSnapshot?.weeklyTaskCompletion.currentRate || 0)}`
                     : `Quest completion ${formatPercent(engagementSnapshot?.weeklyTaskCompletion.currentRate || 0)}`,
+                expectedImpact: isZh
+                    ? '预期提升稳定练习量，让系统获得更多诊断证据。'
+                    : 'Expected to increase steady practice volume and collect better diagnostic evidence.',
+                followUp: isZh
+                    ? '完成后追踪周任务进度和次日回访。'
+                    : 'After completion, track weekly task progress and next-day return.',
+                resultAfterCompletion: actionResultAfterCompletion(actionExecutionById.questline_push, isZh),
                 evidenceRows: [
                     { label: isZh ? '错题证据' : 'Mistake evidence', value: mistakeEvidence },
                     { label: isZh ? '复习证据' : 'Review evidence', value: fsrsEvidence }
@@ -470,8 +530,10 @@ export function ParentDashboard() {
             }
         ];
     }, [
+        actionExecutionById,
         dueCards.length,
         dueStatus?.statusText.en,
+        dueStatus?.statusText.zh,
         engagementSnapshot?.weeklyTaskCompletion.currentRate,
         handleStartSrsFocus,
         handleStartTargetedReview,
@@ -499,7 +561,7 @@ export function ParentDashboard() {
 
     const learningEvents = useMemo(() => {
         return activityFeed.map((event) => ({
-            ...event,
+            ...localizeGuardianActivity(event, isZh),
             icon: activityIconForKind(event.kind)
         })) as Array<{
             id: string;
@@ -509,7 +571,7 @@ export function ParentDashboard() {
             detail: string;
             meta: string;
         }>;
-    }, [activityFeed]);
+    }, [activityFeed, isZh]);
 
     const prepareExportSnapshot = useCallback(async () => {
         const nextTimestamp = Date.now();
@@ -772,7 +834,7 @@ export function ParentDashboard() {
                                             {skillRows.length > 0 ? (
                                                 <div className="space-y-4">
                                                     {skillRows.map((skill, index) => (
-                                                        <SkillProgressRow key={skill.skill} row={skill} tone={progressTones[index % progressTones.length]} />
+                                                        <SkillProgressRow key={skill.skill} row={skill} tone={progressTones[index % progressTones.length]} isZh={isZh} />
                                                     ))}
                                                 </div>
                                             ) : (
@@ -780,11 +842,11 @@ export function ParentDashboard() {
                                             )}
                                         </Panel>
 
-                                        <Panel title="Review Queue" subtitle={isZh ? '需要优先关注的复习项目' : 'Items that need attention'} icon={ShieldCheck} badge={String(srsDueCount)} sectionRef={registerSection('review')}>
+                                        <Panel title={isZh ? '复习队列' : 'Review Queue'} subtitle={isZh ? '需要优先关注的复习项目' : 'Items that need attention'} icon={ShieldCheck} badge={String(srsDueCount)} sectionRef={registerSection('review')}>
                                             {dueCards.length > 0 ? (
                                                 <div className="space-y-3">
                                                     {dueCards.slice(0, 4).map((card, index) => (
-                                                        <ReviewQueueRow key={card.id || index} card={card} index={index} />
+                                                        <ReviewQueueRow key={card.id || index} card={card} index={index} isZh={isZh} />
                                                     ))}
                                                 </div>
                                             ) : (
@@ -792,7 +854,7 @@ export function ParentDashboard() {
                                             )}
                                         </Panel>
 
-                                        <Panel title="Learning Events" subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
+                                        <Panel title={isZh ? '学习事件' : 'Learning Events'} subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
                                             {learningEvents.length > 0 ? (
                                                 <div className="space-y-4">
                                                     {learningEvents.map((event) => (
@@ -807,10 +869,10 @@ export function ParentDashboard() {
 
                                     <section className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
                                         <Panel title={isZh ? '每周趋势' : 'Weekly Trend'} subtitle={isZh ? '正确率与任务量走势' : 'Accuracy and mission volume'} icon={BarChart3} sectionRef={registerSection('trend')}>
-                                            <WeeklyTrend rows={dailyRows} />
+                                            <WeeklyTrend rows={dailyRows} isZh={isZh} />
                                         </Panel>
 
-                                        <Panel title="Guardian Recommendations" subtitle={isZh ? '基于证据的今晚行动' : 'Personalized tips to help learners grow'} icon={Sparkles} sectionRef={registerSection('recommendations')}>
+                                        <Panel title={isZh ? '守护者建议' : 'Guardian Recommendations'} subtitle={isZh ? '基于证据的今晚行动' : 'Personalized tips to help learners grow'} icon={Sparkles} sectionRef={registerSection('recommendations')}>
                                             {dailyPracticePlan && (
                                                 <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -822,12 +884,12 @@ export function ParentDashboard() {
                                                         </span>
                                                     </div>
                                                     <p className="text-xs leading-relaxed text-blue-800">
-                                                        {dailyPracticePlan.rationale}
+                                                        {practicePlanRationaleText(dailyPracticePlan, isZh)}
                                                     </p>
                                                     <div className="mt-2 flex flex-wrap gap-1.5">
                                                         {dailyPracticePlan.evidence.slice(0, 3).map((row, index) => (
                                                             <span key={`${row.label}-${index}`} className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-blue-700">
-                                                                {row.label}: {row.value}
+                                                                {practicePlanEvidenceLabel(row.label, isZh)}: {practicePlanEvidenceValue(row, isZh)}
                                                             </span>
                                                         ))}
                                                     </div>
@@ -840,6 +902,7 @@ export function ParentDashboard() {
                                                         action={action}
                                                         status={actionStatusById[action.id] || 'pending'}
                                                         onSetStatus={handleSetActionStatus}
+                                                        isZh={isZh}
                                                     />
                                                 ))}
                                             </div>
@@ -1139,6 +1202,7 @@ function ExportReportSnapshot({
                                             key={`${skill.skill}-${index}`}
                                             row={skill}
                                             tone={progressTones[index % progressTones.length]}
+                                            isZh={isZh}
                                         />
                                     ))}
                                 </div>
@@ -1181,7 +1245,7 @@ function ExportReportSnapshot({
 
                         <ExportSection
                             title={isZh ? '今晚建议' : 'Recommended Next Actions'}
-                            subtitle={dailyPracticePlan?.rationale || (isZh ? '基于近期证据生成' : 'Based on recent evidence')}
+                            subtitle={dailyPracticePlan ? practicePlanRationaleText(dailyPracticePlan, isZh) : (isZh ? '基于近期证据生成' : 'Based on recent evidence')}
                             icon={Sparkles}
                             badge={dailyPracticePlan ? `${dailyPracticePlan.estimatedMinutes}m` : undefined}
                         >
@@ -1189,7 +1253,7 @@ function ExportReportSnapshot({
                                 <div className="mb-4 flex flex-wrap gap-2">
                                     {dailyPracticePlan.evidence.slice(0, 3).map((row, index) => (
                                         <span key={`${row.label}-${index}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                                            {row.label}: {row.value}
+                                            {practicePlanEvidenceLabel(row.label, isZh)}: {practicePlanEvidenceValue(row, isZh)}
                                         </span>
                                     ))}
                                 </div>
@@ -1317,14 +1381,14 @@ function ExportSection({
     );
 }
 
-function ExportSkillRow({ row, tone }: { row: SkillAccuracyRow; tone: Tone; }) {
+function ExportSkillRow({ row, tone, isZh }: { row: SkillAccuracyRow; tone: Tone; isZh: boolean; }) {
     const percentage = Math.round(row.accuracy * 100);
     const toneClass = progressToneClass(tone);
     return (
         <div className="grid grid-cols-[minmax(0,1fr)_190px_48px] items-center gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
             <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(row.skill)}</p>
-                <p className="text-xs font-semibold text-slate-500">{row.correct}/{row.total} correct</p>
+                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(row.skill, isZh)}</p>
+                <p className="text-xs font-semibold text-slate-500">{row.correct}/{row.total} {isZh ? '正确' : 'correct'}</p>
             </div>
             <div className="h-2.5 rounded-full bg-slate-100">
                 <div
@@ -1348,7 +1412,7 @@ function ExportReviewRow({ card, index, isZh }: { card: FSRSCard; index: number;
                 <BookOpen className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review')}</p>
+                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review', isZh)}</p>
                 <p className="truncate text-xs font-semibold text-slate-500">{card.question}</p>
             </div>
             <div className="shrink-0 text-right">
@@ -1563,7 +1627,7 @@ function Panel({
 
 const progressTones: Tone[] = ['blue', 'green', 'purple', 'amber', 'slate'];
 
-function SkillProgressRow({ row, tone }: { row: SkillAccuracyRow; tone: Tone; }) {
+function SkillProgressRow({ row, tone, isZh }: { row: SkillAccuracyRow; tone: Tone; isZh: boolean; }) {
     const toneClass = progressToneClass(tone);
     const percentage = Math.round(row.accuracy * 100);
     return (
@@ -1573,8 +1637,8 @@ function SkillProgressRow({ row, tone }: { row: SkillAccuracyRow; tone: Tone; })
                     <BookOpen className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-800">{formatSkillLabel(row.skill)}</p>
-                    <p className="text-xs text-slate-500">{row.correct}/{row.total} correct</p>
+                    <p className="truncate text-sm font-bold text-slate-800">{formatSkillLabel(row.skill, isZh)}</p>
+                    <p className="text-xs text-slate-500">{row.correct}/{row.total} {isZh ? '正确' : 'correct'}</p>
                 </div>
             </div>
             <div className="h-2.5 rounded-full bg-slate-100">
@@ -1585,9 +1649,12 @@ function SkillProgressRow({ row, tone }: { row: SkillAccuracyRow; tone: Tone; })
     );
 }
 
-function ReviewQueueRow({ card, index }: { card: FSRSCard; index: number; }) {
+function ReviewQueueRow({ card, index, isZh }: { card: FSRSCard; index: number; isZh: boolean; }) {
     const status = getMemoryStatus(card);
     const priority = index === 0 ? 'High' : index < 3 ? 'Medium' : 'Low';
+    const priorityLabel = isZh
+        ? (priority === 'High' ? '高' : priority === 'Medium' ? '中' : '低')
+        : priority;
     const tone = priority === 'High' ? 'red' : priority === 'Medium' ? 'amber' : 'blue';
     return (
         <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
@@ -1595,15 +1662,66 @@ function ReviewQueueRow({ card, index }: { card: FSRSCard; index: number; }) {
                 <BookOpen className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review')}</p>
+                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review', isZh)}</p>
                 <p className="truncate text-xs text-slate-500">{card.question}</p>
             </div>
             <div className="shrink-0 text-right">
-                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priority}</span>
-                <p className="mt-1 text-xs text-slate-500">{status.statusText.en}</p>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priorityLabel}</span>
+                <p className="mt-1 text-xs text-slate-500">{isZh ? status.statusText.zh : status.statusText.en}</p>
             </div>
         </div>
     );
+}
+
+function localizeGuardianActivity(event: GuardianActivityFeedItem, isZh: boolean): GuardianActivityFeedItem {
+    if (!isZh) return event;
+    return {
+        ...event,
+        title: localizeActivityTitle(event),
+        detail: localizeActivityDetail(event.detail),
+        meta: localizeActivityMeta(event.meta)
+    };
+}
+
+function localizeActivityTitle(event: GuardianActivityFeedItem) {
+    if (event.kind === 'mission') return '任务完成';
+    if (event.kind === 'session') return '学习场次完成';
+    if (event.kind === 'hint') return '使用提示';
+    if (event.kind === 'mistake') return '发现复习信号';
+    if (event.kind === 'task') return '任务线更新';
+    if (event.kind === 'answer') {
+        if (/^Correct/i.test(event.title)) return '答对一题';
+        if (/^Wrong/i.test(event.title)) return '答错一题';
+        return '记录答题';
+    }
+    return event.title;
+}
+
+function localizeActivityDetail(value: string) {
+    const fixed: Record<string, string> = {
+        'Learning session recorded': '已记录学习场次',
+        'Hint evidence logged': '已记录提示证据',
+        'Question evidence logged': '已记录答题证据',
+        'Custom Mission': '自定义任务'
+    };
+    if (fixed[value]) return fixed[value];
+    return formatSkillLabel(value, true);
+}
+
+function localizeActivityMeta(value: string) {
+    if (value === 'Now') return '刚刚';
+    const minuteMatch = /^(\d+)m ago$/.exec(value);
+    if (minuteMatch) return `${minuteMatch[1]} 分钟前`;
+    const hourMatch = /^(\d+)h ago$/.exec(value);
+    if (hourMatch) return `${hourMatch[1]} 小时前`;
+    const dayMatch = /^(\d+)d ago$/.exec(value);
+    if (dayMatch) return `${dayMatch[1]} 天前`;
+    const accuracyMatch = /^(\d+)% accuracy$/.exec(value);
+    if (accuracyMatch) return `${accuracyMatch[1]}% 正确率`;
+    if (value === 'completed') return '已完成';
+    if (value === 'active') return '进行中';
+    if (value === 'paused') return '已暂停';
+    return value;
 }
 
 function activityIconForKind(kind: GuardianActivityKind): typeof CheckCircle2 {
@@ -1655,16 +1773,16 @@ function TimelineRow({
     );
 }
 
-function WeeklyTrend({ rows }: { rows: DailyAccuracyRow[]; }) {
-    if (rows.length === 0) return <EmptyState message="No weekly trend yet." />;
+function WeeklyTrend({ rows, isZh }: { rows: DailyAccuracyRow[]; isZh: boolean; }) {
+    if (rows.length === 0) return <EmptyState message={isZh ? '暂无每周趋势。' : 'No weekly trend yet.'} />;
     const accuracyPath = buildSparkPath(rows.map((row) => row.accuracy), 320, 130);
     const missionPath = buildSparkPath(rows.map((row) => row.missions), 320, 130);
     const labelStep = Math.max(1, Math.ceil(rows.length / 6));
     return (
         <div>
             <div className="mb-3 flex items-center justify-end gap-4 text-xs font-semibold">
-                <span className="inline-flex items-center gap-1 text-blue-700"><span className="h-2 w-2 rounded-full bg-blue-600" /> Accuracy</span>
-                <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Missions</span>
+                <span className="inline-flex items-center gap-1 text-blue-700"><span className="h-2 w-2 rounded-full bg-blue-600" /> {isZh ? '正确率' : 'Accuracy'}</span>
+                <span className="inline-flex items-center gap-1 text-emerald-700"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {isZh ? '任务数' : 'Missions'}</span>
             </div>
             <svg viewBox="0 0 360 170" className="h-48 w-full overflow-visible">
                 {[0, 1, 2, 3].map((line) => (
@@ -1693,11 +1811,13 @@ function WeeklyTrend({ rows }: { rows: DailyAccuracyRow[]; }) {
 function RecommendationRow({
     action,
     status,
-    onSetStatus
+    onSetStatus,
+    isZh
 }: {
     action: TonightActionItem;
     status: StudyActionStatus;
     onSetStatus: (actionId: string, status: StudyActionStatus, priority: StudyActionPriority, estimatedMinutes: number) => void;
+    isZh: boolean;
 }) {
     return (
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
@@ -1712,11 +1832,18 @@ function RecommendationRow({
                     </div>
                     <p className="mt-1 text-xs leading-relaxed text-slate-500">{action.description}</p>
                     <p className="mt-2 text-xs font-semibold text-slate-600">{action.evidence}</p>
+                    <div className="mt-2 grid gap-1 rounded-xl bg-white px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-100">
+                        <p><span className="font-black text-slate-800">{isZh ? '预期效果' : 'Expected impact'}:</span> {action.expectedImpact}</p>
+                        <p><span className="font-black text-slate-800">{isZh ? '完成后追踪' : 'Follow-up'}:</span> {action.followUp}</p>
+                        {action.resultAfterCompletion && (
+                            <p><span className="font-black text-slate-800">{isZh ? '完成后结果' : 'Result after completion'}:</span> {action.resultAfterCompletion}</p>
+                        )}
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                         {action.ctaLabel && action.onCta && (
                             <button
                                 onClick={action.onCta}
-                                aria-label={`Start ${action.title}`}
+                                aria-label={isZh ? `开始${action.title}` : `Start ${action.title}`}
                                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-black text-white hover:bg-blue-700"
                             >
                                 {action.ctaLabel}
@@ -1724,23 +1851,36 @@ function RecommendationRow({
                         )}
                         <button
                             onClick={() => onSetStatus(action.id, 'completed', action.priority, action.estimatedMinutes)}
-                            aria-label={`Mark ${action.title} done`}
+                            aria-label={isZh ? `标记${action.title}完成` : `Mark ${action.title} done`}
                             className={`rounded-lg px-3 py-1.5 text-xs font-black ${status === 'completed' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
                         >
-                            Done
+                            {isZh ? '完成' : 'Done'}
                         </button>
                         <button
                             onClick={() => onSetStatus(action.id, 'skipped', action.priority, action.estimatedMinutes)}
-                            aria-label={`Skip ${action.title}`}
+                            aria-label={isZh ? `跳过${action.title}` : `Skip ${action.title}`}
                             className={`rounded-lg px-3 py-1.5 text-xs font-black ${status === 'skipped' ? 'bg-slate-700 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200'}`}
                         >
-                            Skip
+                            {isZh ? '跳过' : 'Skip'}
                         </button>
                     </div>
                 </div>
             </div>
         </div>
     );
+}
+
+function actionResultAfterCompletion(row: StudyActionExecution | undefined, isZh: boolean) {
+    if (!row) return undefined;
+    const minutes = Math.max(1, row.estimatedMinutes);
+    if (isZh) {
+        if (row.status === 'completed') return `今天已完成 · 已记录 ${minutes} 分钟`;
+        if (row.status === 'skipped') return `今天已跳过 · ${minutes} 分钟建议未执行`;
+        return `今天待执行 · 预计 ${minutes} 分钟`;
+    }
+    if (row.status === 'completed') return `Completed today · ${minutes} min tracked`;
+    if (row.status === 'skipped') return `Skipped today · ${minutes} min not executed`;
+    return `Pending today · ${minutes} min planned`;
 }
 
 function StabilityMetric({
@@ -1896,8 +2036,36 @@ function buildSparkPath(values: number[], width: number, height: number) {
     }).join(' ');
 }
 
-function formatSkillLabel(value: string) {
-    return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+function formatSkillLabel(value: string, isZh = false) {
+    return formatLearningLabel(value, isZh ? 'zh' : 'en');
+}
+
+function practicePlanRationaleText(plan: PracticePlan, isZh: boolean) {
+    if (!isZh) return plan.rationale;
+    if (plan.planId.includes('starter')) return '暂无本地学习证据时，先用短路径建立词汇和阅读基线。';
+    return '综合到期复习、近期错题、掌握状态和任务线证据，安排 10-15 分钟学习路径。';
+}
+
+function practicePlanEvidenceLabel(label: string, isZh: boolean) {
+    if (!isZh) return label;
+    const normalized = label.trim().toLowerCase();
+    if (normalized === 'due review') return '到期复习';
+    if (normalized === 'recent mistake') return '近期错题';
+    if (normalized === 'mastery') return '掌握证据';
+    if (normalized === 'transfer ready') return '可迁移';
+    if (normalized === 'questline') return '任务线';
+    if (normalized === 'starter path') return '起步路径';
+    return label;
+}
+
+function practicePlanEvidenceValue(row: PracticePlanEvidence, isZh: boolean) {
+    if (!isZh) return row.value;
+    if (row.source === 'srs') return '有到期卡片需要优先复习';
+    if (row.source === 'mistake') return '近期错因需要带支架回炉';
+    if (row.source === 'mastery') return '掌握度证据提示需要短练习';
+    if (row.source === 'task') return row.value.replace(' - ', ' · ');
+    if (row.source === 'starter') return '先收集第一轮本地学习证据';
+    return row.value;
 }
 
 function formatPercent(value: number) {

@@ -65,28 +65,32 @@ export function SettingsModal() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50"
+                        className="fixed inset-0 z-50 overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:p-4"
                         onClick={() => setSettingsOpen(false)}
                     >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-card border border-border p-6 rounded-2xl w-full max-w-md m-4 shadow-2xl"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-primary">{t.settings.title}</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setSettingsOpen(false)}
-                                    aria-label={language === 'zh' ? '关闭设置' : 'Close settings'}
-                                >
-                                    <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
-                                </button>
-                            </div>
+                        <div className="flex min-h-full items-start justify-center py-3 sm:items-center sm:py-4">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                role="dialog"
+                                aria-modal="true"
+                                aria-labelledby="settings-modal-title"
+                                className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex shrink-0 items-center justify-between border-b border-border/60 p-4 sm:p-6">
+                                    <h2 id="settings-modal-title" className="text-2xl font-bold text-primary">{t.settings.title}</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettingsOpen(false)}
+                                        aria-label={language === 'zh' ? '关闭设置' : 'Close settings'}
+                                    >
+                                        <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
+                                    </button>
+                                </div>
 
-                            <div className="space-y-4">
+                                <div data-testid="settings-modal-body" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
                                 <div>
                                     <label className="block text-sm font-medium mb-2 text-muted-foreground">
                                         {t.settings.language}
@@ -138,7 +142,9 @@ export function SettingsModal() {
                                         className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${soundEnabled ? 'bg-primary/20 border-primary text-primary' : 'bg-secondary/50 border-input text-muted-foreground'}`}
                                     >
                                         {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-                                        <span className="font-medium">{soundEnabled ? 'On' : 'Off'}</span>
+                                        <span className="font-medium">
+                                            {language === 'zh' ? (soundEnabled ? '开' : '关') : (soundEnabled ? 'On' : 'Off')}
+                                        </span>
                                     </button>
                                 </div>
 
@@ -151,7 +157,9 @@ export function SettingsModal() {
                                         className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${ttsEnabled ? 'bg-primary/20 border-primary text-primary' : 'bg-secondary/50 border-input text-muted-foreground'}`}
                                     >
                                         {ttsEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
-                                        <span className="font-medium">{ttsEnabled ? 'On' : 'Off'}</span>
+                                        <span className="font-medium">
+                                            {language === 'zh' ? (ttsEnabled ? '开' : '关') : (ttsEnabled ? 'On' : 'Off')}
+                                        </span>
                                     </button>
                                 </div>
 
@@ -202,7 +210,7 @@ export function SettingsModal() {
                                             ? (language === 'zh'
                                                 ? '使用 DeepSeek 官方 OpenAI 兼容接口。'
                                                 : 'Uses the official DeepSeek OpenAI-compatible endpoint.')
-                                            : 'Enter key to load available models.'}
+                                            : (language === 'zh' ? '输入密钥以加载可用模型。' : 'Enter key to load available models.')}
                                     </p>
                                     <div className="mt-3 text-xs text-muted-foreground bg-secondary/40 border border-secondary/60 rounded-lg p-3">
                                         {apiProvider === 'deepseek'
@@ -228,7 +236,7 @@ export function SettingsModal() {
                                                 ) : (
                                                     <ToggleLeft className="w-4 h-4" />
                                                 )}
-                                                Free Models Only
+                                                {language === 'zh' ? '仅免费模型' : 'Free Models Only'}
                                             </button>
                                         )}
                                     </div>
@@ -241,7 +249,7 @@ export function SettingsModal() {
                                         >
                                             {displayModels.map((m) => (
                                                 <option key={m.id} value={m.id}>
-                                                    {m.name || m.id} {m.id.endsWith(':free') ? '(Free)' : ''}
+                                                    {m.name || m.id} {m.id.endsWith(':free') ? (language === 'zh' ? '(免费)' : '(Free)') : ''}
                                                 </option>
                                             ))}
                                         </select>
@@ -259,21 +267,22 @@ export function SettingsModal() {
                                                 ? 'DeepSeek 官方模型，直接请求 api.deepseek.com。'
                                                 : 'Official DeepSeek models, sent directly to api.deepseek.com.')
                                             : showFreeOnly
-                                            ? "Showing only free models (ending in :free)"
-                                            : "Select a neural model for mission generation."}
+                                            ? (language === 'zh' ? '当前仅显示免费模型（以 :free 结尾）。' : 'Showing only free models (ending in :free).')
+                                            : (language === 'zh' ? '选择用于生成任务的 AI 模型。' : 'Select a neural model for mission generation.')}
                                     </p>
                                 </div>
-                            </div>
+                                </div>
 
-                            <div className="mt-8 flex justify-end">
-                                <button
-                                    onClick={() => setSettingsOpen(false)}
-                                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                                >
-                                    {t.settings.save}
-                                </button>
-                            </div>
-                        </motion.div>
+                                <div data-testid="settings-modal-footer" className="flex shrink-0 justify-end border-t border-border/60 p-4 sm:px-6">
+                                    <button
+                                        onClick={() => setSettingsOpen(false)}
+                                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                                    >
+                                        {t.settings.save}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

@@ -12,6 +12,8 @@ import {
     SkillMasteryRecord,
     MasteryState,
     updateSkillMastery,
+    updateObjectiveMastery,
+    upsertStudyActionExecution,
     seedSkillMasteryFromLearningEvents,
     getSkillMasteryMap,
     getSkillReviewRiskMap,
@@ -21,6 +23,7 @@ import {
 import {
     applyQuestionDefaults,
     applyLearningMetadataForSource,
+    buildImmediateRepairQuestion,
     buildRunObjectiveBonuses,
     expandBossGateQuestions,
     computeSkillPriority as computeSkillPriorityFromModule,
@@ -34,6 +37,7 @@ import {
 import {
     completeCurrentPracticePlanStep,
     currentPracticePlanStep,
+    markPracticePlanRunStepComplete,
     type PracticePlanRun
 } from '@/lib/data/practicePlanRunner';
 import {
@@ -136,12 +140,17 @@ export interface Monster {
     questionMode: QuestionMode; // Productive recall mode
     correctAnswer: string; // For typing/fill-blank questions
     learningObjectiveId?: string;
+    objectiveConfidence?: number;
     supportLevel?: SupportLevel;
     attemptKind?: AttemptKind;
     causeTag?: string;
+    isImmediateRepair?: boolean;
     bossStage?: number;
     bossTotalStages?: number;
     sourceContextSpan?: string;
+    sourceActionId?: string;
+    sourceActionPriority?: 'urgent' | 'important' | 'optional';
+    sourceActionEstimatedMinutes?: number;
 }
 
 export interface PlayerStats {
@@ -264,7 +273,15 @@ interface GameState {
 
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource, practicePlanRun?: PracticePlanRun | null) => void;
-    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => { correct: boolean; explanation: string; damageDealt: number; isCritical: boolean; isSuperEffective: boolean };
+    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => {
+        correct: boolean;
+        explanation: string;
+        damageDealt: number;
+        isCritical: boolean;
+        isSuperEffective: boolean;
+        repairQueued?: boolean;
+        feedbackFocus?: string;
+    };
     nextQuestion: () => void;
     addQuestions: (newQuestions: QuestionInput[]) => void;
     injectQuestion: (question: QuestionInput) => void;
@@ -421,6 +438,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         let damageDealt = 0;
         let isCritical = false;
         let isSuperEffective = false; // Simplified for now
+        let repairQueued = false;
         let nextBossShieldProgress = bossShieldProgress;
         let nextMonsterHp = currentMonsterHp;
 
@@ -520,13 +538,29 @@ export const useGameStore = create<GameState>((set, get) => ({
                 questionHash: hashQuestion(currentQuestion.question),
                 skillTag: currentQuestion.skillTag,
                 learningObjectiveId: currentQuestion.learningObjectiveId,
+                objectiveConfidence: currentQuestion.objectiveConfidence,
+                sourceContextSpan: currentQuestion.sourceContextSpan,
                 attemptKind: currentQuestion.attemptKind,
                 supportLevel: currentQuestion.supportLevel,
                 causeTag: currentQuestion.causeTag,
                 mode: currentQuestion.questionMode,
                 result: 'correct',
+                hintUsed: false,
                 latencyMs: responseLatencyMs,
                 source: sessionSource
+            }).catch(console.error);
+
+            updateObjectiveMastery({
+                objectiveId: currentQuestion.learningObjectiveId,
+                skillTag: currentQuestion.skillTag,
+                type: currentQuestion.type,
+                question: currentQuestion.question,
+                result: 'correct',
+                mode: currentQuestion.questionMode,
+                attemptKind: currentQuestion.attemptKind,
+                supportLevel: currentQuestion.supportLevel,
+                hintUsed: false,
+                latencyMs: responseLatencyMs
             }).catch(console.error);
 
             // Update FSRS card scheduling (mark as 'good' for correct answer)
@@ -538,7 +572,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 type: currentQuestion.type,
                 explanation: currentQuestion.explanation,
                 hint: currentQuestion.hint,
-                skillTag: currentQuestion.skillTag
+                skillTag: currentQuestion.skillTag,
+                learningObjectiveId: currentQuestion.learningObjectiveId,
+                sourceContextSpan: currentQuestion.sourceContextSpan,
+                questionMode: currentQuestion.questionMode,
+                correctAnswer: currentQuestion.correctAnswer
             }).catch(console.error);
 
             updateSkillMastery(skillKey, 'correct')
@@ -605,6 +643,21 @@ export const useGameStore = create<GameState>((set, get) => ({
                 bossShieldProgress
             });
 
+            let nextQuestions = reorderedQuestions;
+            if (!wrongOutcome.isGameOver && !currentQuestion.isImmediateRepair && !currentQuestion.isBoss) {
+                const repairQuestion = applyLearningMetadataForSource(
+                    buildImmediateRepairQuestion(currentQuestion, selectedOption, currentIndex + 1),
+                    sessionSource,
+                    masteryBySkill[skillKey]
+                );
+                nextQuestions = [
+                    ...reorderedQuestions.slice(0, currentIndex + 1),
+                    repairQuestion,
+                    ...reorderedQuestions.slice(currentIndex + 1)
+                ];
+                repairQueued = true;
+            }
+
             set({
                 health: wrongOutcome.newHealth,
                 isGameOver: wrongOutcome.isGameOver,
@@ -615,7 +668,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                     xp: wrongOutcome.nextXp
                 },
                 skillStats: updatedSkillStats,
-                questions: reorderedQuestions,
+                questions: nextQuestions,
                 bossShieldProgress: wrongOutcome.nextBossShieldProgress,
                 recentMistakeBySkill: {
                     ...recentMistakeBySkill,
@@ -651,7 +704,11 @@ export const useGameStore = create<GameState>((set, get) => ({
                 type: currentQuestion.type,
                 explanation: currentQuestion.explanation,
                 hint: currentQuestion.hint,
-                skillTag: currentQuestion.skillTag
+                skillTag: currentQuestion.skillTag,
+                learningObjectiveId: currentQuestion.learningObjectiveId,
+                sourceContextSpan: currentQuestion.sourceContextSpan,
+                questionMode: currentQuestion.questionMode,
+                correctAnswer: currentQuestion.correctAnswer
             }).catch(console.error);
 
             updateSkillMastery(skillKey, 'wrong')
@@ -671,13 +728,29 @@ export const useGameStore = create<GameState>((set, get) => ({
                 questionHash: hashQuestion(currentQuestion.question),
                 skillTag: currentQuestion.skillTag,
                 learningObjectiveId: currentQuestion.learningObjectiveId,
+                objectiveConfidence: currentQuestion.objectiveConfidence,
+                sourceContextSpan: currentQuestion.sourceContextSpan,
                 attemptKind: currentQuestion.attemptKind,
                 supportLevel: currentQuestion.supportLevel,
                 causeTag: currentQuestion.causeTag,
                 mode: currentQuestion.questionMode,
                 result: 'wrong',
+                hintUsed: false,
                 latencyMs: responseLatencyMs,
                 source: sessionSource
+            }).catch(console.error);
+
+            updateObjectiveMastery({
+                objectiveId: currentQuestion.learningObjectiveId,
+                skillTag: currentQuestion.skillTag,
+                type: currentQuestion.type,
+                question: currentQuestion.question,
+                result: 'wrong',
+                mode: currentQuestion.questionMode,
+                attemptKind: currentQuestion.attemptKind,
+                supportLevel: currentQuestion.supportLevel,
+                hintUsed: false,
+                latencyMs: responseLatencyMs
             }).catch(console.error);
         }
 
@@ -686,7 +759,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             explanation: currentQuestion.explanation,
             damageDealt,
             isCritical,
-            isSuperEffective
+            isSuperEffective,
+            repairQueued,
+            feedbackFocus: repairQueued ? 'immediate_repair' : undefined
         };
     },
 
@@ -1013,10 +1088,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             questionHash: hashQuestion(currentQuestion.question),
             skillTag: currentQuestion.skillTag,
             learningObjectiveId: currentQuestion.learningObjectiveId,
+            objectiveConfidence: currentQuestion.objectiveConfidence,
+            sourceContextSpan: currentQuestion.sourceContextSpan,
             attemptKind: currentQuestion.attemptKind,
             supportLevel: currentQuestion.supportLevel,
             causeTag: currentQuestion.causeTag,
             mode: currentQuestion.questionMode,
+            hintUsed: true,
             source: state.sessionSource
         }).catch(console.error);
     },
@@ -1062,10 +1140,30 @@ export const useGameStore = create<GameState>((set, get) => ({
                 activePracticePlanRun: completeCurrentPracticePlanStep(state.activePracticePlanRun),
                 activePracticePlanStepId: null
             });
+            markPracticePlanRunStepComplete(state.activePracticePlanRun.planId, activeStep.id, [
+                {
+                    label: 'Session complete',
+                    value: `${totalCorrect}/${Math.max(1, totalAnswers)} correct`,
+                    source: 'mastery'
+                }
+            ]).catch(console.error);
+        }
+        const sourceActionQuestion = state.questions.find((question) => question.sourceActionId);
+        if (sourceActionQuestion?.sourceActionId) {
+            upsertStudyActionExecution({
+                actionId: sourceActionQuestion.sourceActionId,
+                status: 'completed',
+                priority: sourceActionQuestion.sourceActionPriority || 'important',
+                estimatedMinutes: sourceActionQuestion.sourceActionEstimatedMinutes || Math.max(6, Math.round(state.questions.length * 1.5))
+            }).catch(console.error);
         }
         logLearningEvent({
             eventType: 'session_complete',
             source: state.sessionSource
+        }).then(() => {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('wordquest:learning-evidence-updated'));
+            }
         }).catch(console.error);
     },
     addToRevengeQueue: (question) => {
