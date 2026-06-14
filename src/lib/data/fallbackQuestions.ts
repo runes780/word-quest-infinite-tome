@@ -15,7 +15,8 @@ export interface FallbackQuestion {
     passageId: string;
     sourceSpan: string;
     target: string;
-    domain: PlanDomain;
+    type: PlanDomain; // consumer-compatible (Monster.type uses the same union)
+    skillTag: string;
     readingSkill?: PlanReadingSkill;
     role: PlanRole;
     questionMode: QuestionMode;
@@ -57,7 +58,7 @@ FALLBACK_PASSAGES.forEach((p) => {
 
 export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
     {
-        id: 1, passageId: 'garden', domain: 'grammar', role: 'cloze', questionMode: 'fill-blank',
+        id: 1, passageId: 'garden', type: 'grammar', skillTag: 'grammar:present_simple', role: 'cloze', questionMode: 'fill-blank',
         sourceSpan: 'Every morning she waters the plants.', target: 'waters',
         question: 'Read: "Every morning she ___ the plants."',
         options: ['waters', 'water', 'watering', 'watered'],
@@ -67,7 +68,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         learningObjectiveId: 'present_simple', supportLevel: 2
     },
     {
-        id: 2, passageId: 'garden', domain: 'vocab', role: 'recognition', questionMode: 'choice',
+        id: 2, passageId: 'garden', type: 'vocab', skillTag: 'vocab:context_meaning', role: 'recognition', questionMode: 'choice',
         readingSkill: 'contextual_meaning',
         sourceSpan: 'Today the tomatoes are red, so she picks them.', target: 'red',
         question: 'Read: "Today the tomatoes are red". Here "red" means the tomatoes are ___.',
@@ -78,7 +79,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         learningObjectiveId: 'vocab_context_meaning', supportLevel: 3
     },
     {
-        id: 3, passageId: 'garden', domain: 'reading', role: 'recall', questionMode: 'choice',
+        id: 3, passageId: 'garden', type: 'reading', skillTag: 'reading:pronoun_reference', role: 'recall', questionMode: 'choice',
         readingSkill: 'pronoun_reference',
         sourceSpan: 'Today the tomatoes are red, so she picks them.', target: 'them',
         question: 'Read: "so she picks them." What does "them" refer to?',
@@ -89,7 +90,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         learningObjectiveId: 'pronoun_reference', supportLevel: 3
     },
     {
-        id: 4, passageId: 'garden', domain: 'reading', role: 'transfer', questionMode: 'choice',
+        id: 4, passageId: 'garden', type: 'reading', skillTag: 'reading:inference', role: 'transfer', questionMode: 'choice',
         readingSkill: 'inference',
         sourceSpan: 'Every morning she waters the plants.', target: 'waters',
         question: 'Read: "Every morning she waters the plants." What does this show about Mia?',
@@ -100,7 +101,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         learningObjectiveId: 'reading_inference', supportLevel: 0
     },
     {
-        id: 5, passageId: 'rain', domain: 'grammar', role: 'cloze', questionMode: 'fill-blank',
+        id: 5, passageId: 'rain', type: 'grammar', skillTag: 'grammar:present_simple', role: 'cloze', questionMode: 'fill-blank',
         sourceSpan: 'He walks to school in the rain.', target: 'walks',
         question: 'Read: "He ___ to school in the rain."',
         options: ['walks', 'walk', 'walking', 'walked'],
@@ -110,7 +111,7 @@ export const FALLBACK_QUESTIONS: FallbackQuestion[] = [
         learningObjectiveId: 'present_simple', supportLevel: 2
     },
     {
-        id: 6, passageId: 'rain', domain: 'reading', role: 'recall', questionMode: 'choice',
+        id: 6, passageId: 'rain', type: 'reading', skillTag: 'reading:inference', role: 'recall', questionMode: 'choice',
         readingSkill: 'inference',
         sourceSpan: 'Tom takes his umbrella because he does not want to get wet.', target: 'umbrella',
         question: 'Read: "Tom takes his umbrella because he does not want to get wet." Why does Tom take an umbrella?',

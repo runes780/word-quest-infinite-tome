@@ -32,7 +32,7 @@ describe('fallback bank 1T compliance', () => {
                     allowedSet: allowed,
                     material: passage.text,
                     target: question.target,
-                    domain: question.domain,
+                    domain: question.type,
                     readingSkill: question.readingSkill
                 }
             );

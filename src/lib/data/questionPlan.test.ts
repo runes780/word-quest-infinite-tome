@@ -30,8 +30,8 @@ function sixValidItems(): QuestionPlanItem[] {
         item({ role: 'recognition', domain: 'vocab', sourceSpan: 'Mia has a small garden.', target: 'garden', targetKind: 'word', allowedWords: ['mia', 'small', 'garden'] }),
         item({ role: 'cloze' }),
         item({ role: 'recall', domain: 'grammar', sourceSpan: 'Mia has a small garden.', target: 'has', targetKind: 'grammar_form', allowedWords: ['mia', 'garden', 'has'] }),
-        item({ role: 'reading', domain: 'reading', readingSkill: 'pronoun_reference', sourceSpan: 'She waters the plants.', target: 'She', targetKind: 'reference', allowedWords: ['mia', 'plant'] }),
-        item({ role: 'reading', domain: 'reading', readingSkill: 'inference', sourceSpan: 'Today the tomatoes are red.', target: 'red', targetKind: 'inference', allowedWords: ['tomato', 'red'] }),
+        item({ role: 'recall', domain: 'reading', readingSkill: 'pronoun_reference', sourceSpan: 'She waters the plants.', target: 'She', targetKind: 'reference', allowedWords: ['mia', 'plant'] }),
+        item({ role: 'recall', domain: 'reading', readingSkill: 'inference', sourceSpan: 'Today the tomatoes are red.', target: 'red', targetKind: 'inference', allowedWords: ['tomato', 'red'] }),
         item({ role: 'transfer', supportLevel: 0 })
     ];
 }
