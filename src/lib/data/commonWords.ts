@@ -71,7 +71,7 @@ const RAW_COMMON_WORDS = [
 ];
 
 export const COMMON_WORD_LIST: string[] = Array.from(
-  new Set(RAW_COMMON_WORDS.map(w => normalizeWord(normalizeWord(w))))
+  new Set(RAW_COMMON_WORDS.map(normalizeWord))
 );
 
 export const COMMON_WORD_SET: Set<string> = new Set(COMMON_WORD_LIST);
