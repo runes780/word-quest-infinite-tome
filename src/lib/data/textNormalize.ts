@@ -7,22 +7,29 @@
  * Conservative inflection stripping: going -> go, watered -> water, cats -> cat.
  * Irregular forms (went/gone) must appear in COMMON_WORD_LIST explicitly.
  */
-export function normalizeWord(input: string): string {
-  const cleaned = input.toLowerCase().replace(/[^a-z]/g, '');
-  if (cleaned.length === 0) return cleaned;
-  // Strip '-ing' only when the remaining stem has a vowel. This prevents
-  // over-stemming base words (thing -> th, bring -> br) while still aligning
-  // inflected forms (going -> go, watering -> water), and keeps the function
-  // idempotent (things -> thing -> thing, not -> th).
-  if (cleaned.length >= 5 && cleaned.endsWith('ing')) {
-    const stem = cleaned.slice(0, -3);
+function normalizeStep(w: string): string {
+  // Strip '-ing' only when the remaining stem has a vowel, so base words
+  // (thing, bring) are not over-stemmed while inflected forms align (going -> go).
+  if (w.length >= 5 && w.endsWith('ing')) {
+    const stem = w.slice(0, -3);
     if (stem.length >= 2 && /[aeiou]/.test(stem)) return stem;
   }
-  if (cleaned.length > 4 && cleaned.endsWith('ed')) return cleaned.slice(0, -2);
-  if (cleaned.length > 3 && cleaned.endsWith('s') && !cleaned.endsWith('ss')) {
-    return cleaned.slice(0, -1);
+  if (w.length > 4 && w.endsWith('ed')) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+export function normalizeWord(input: string): string {
+  let w = input.toLowerCase().replace(/[^a-z]/g, '');
+  // Apply rules repeatedly until stable (fixed point). This guarantees the
+  // function is idempotent even when one rule's output feeds another
+  // (e.g. closed -> clos -> clo), which matters for set-membership checks.
+  for (let i = 0; i < 3 && w.length > 0; i += 1) {
+    const next = normalizeStep(w);
+    if (next === w) break;
+    w = next;
   }
-  return cleaned;
+  return w;
 }
 
 /**
