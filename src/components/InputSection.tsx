@@ -5,9 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useGameStore, Monster } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { translations } from '@/lib/translations';
-import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
+import { generateQuestionPack } from '@/lib/ai/questionPipeline';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Sparkles,
@@ -292,9 +291,8 @@ export function InputSection() {
                 throw new Error('Invalid data format received from AI');
             }
 
-            // Store questions and show blessing selection
-            const normalizedMonsters = normalizeMissionMonsters(data.monsters, { sourceText: input });
-            setPendingQuestions({ monsters: normalizedMonsters, context: input });
+            // Monsters are already normalized by the orchestrator (plan -> generate -> critique).
+            setPendingQuestions({ monsters: data.monsters as Monster[], context: input });
             setShowBlessingSelection(true);
             setFallbackLevel(null);
             setError('');
@@ -856,63 +854,20 @@ function PracticePlanPanel({
     );
 }
 
-const safeParseMission = (payload: string) => {
-    const trimmed = payload.trim();
-    if (!trimmed) {
-        console.warn('Mission JSON parse skipped (empty payload). Will retry.');
-        throw new Error('MISSION_EMPTY');
-    }
-
-    try {
-        return JSON.parse(trimmed);
-    } catch (error) {
-        const fallback = extractJsonBlock(trimmed);
-        if (fallback) {
-            try {
-                return JSON.parse(fallback);
-            } catch (inner) {
-                console.warn('Mission JSON fallback parse failed. Will retry.', { fallback, inner });
-            }
-        }
-        console.warn('Mission JSON parse failed. Will retry.', { error });
-        throw new Error('MISSION_PARSE_FAILED');
-    }
-};
-
-const extractJsonBlock = (input: string) => {
-    const start = input.indexOf('{');
-    const end = input.lastIndexOf('}');
-    if (start === -1 || end === -1 || end <= start) {
-        return null;
-    }
-    return input.slice(start, end + 1);
-};
-
 const fetchMissionWithRetry = async (text: string, apiKey: string, model: string, apiProvider: AIProvider, learnerLevel?: number) => {
-    const client = new OpenRouterClient(apiKey, model, apiProvider);
-    const parseRetryLimit = 1;
-    let lastError: Error | null = null;
-
-    // OpenRouterClient already has built-in retry/backoff.
-    // Keep only a lightweight retry here for parse-only failures.
-    for (let attempt = 0; attempt <= parseRetryLimit; attempt++) {
-        try {
-            const prompt = generateLevelPrompt(text, { learnerLevel });
-            const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
-            const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
-            return safeParseMission(cleanJson);
-        } catch (error) {
-            lastError = error as Error;
-            const isParseError = lastError.message === 'MISSION_EMPTY' || lastError.message === 'MISSION_PARSE_FAILED';
-            if (isParseError && attempt < parseRetryLimit) {
-                await wait(500);
-                continue;
-            }
-            break;
-        }
+    // The plan -> generate -> critique orchestrator handles LLM calls, normalization,
+    // lexical-grounding/1T/reading-skill gating, and graceful degradation. The
+    // monsters it returns are already normalized, so the caller uses them directly.
+    const result = await generateQuestionPack(text, {
+        apiKey,
+        model,
+        apiProvider,
+        learnerLevel,
+        criticEnabled: true,
+        material: text
+    });
+    if (result.monsters.length >= 5) {
+        return { level_title: result.plan?.levelTitle ?? 'Mission', monsters: result.monsters };
     }
-
-    throw lastError || new Error('MISSION_UNKNOWN');
+    throw new Error('MISSION_EMPTY');
 };
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

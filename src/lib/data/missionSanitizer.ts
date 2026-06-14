@@ -8,6 +8,7 @@ import {
 } from '@/lib/ai/materialProfile';
 import type { MaterialDifficulty } from '@/lib/ai/materialProfile';
 import { planQuestionPack } from '@/lib/data/questionPackPlanner';
+import type { QuestionPlan } from '@/lib/data/questionPlan';
 
 const DEFAULT_MODE_SEQUENCE: QuestionMode[] = [
     'choice', 'choice', 'choice', 'choice', 'choice',
@@ -44,6 +45,9 @@ const EASY_FALLBACK_POOL = FALLBACK_QUESTIONS.filter((item) => item.difficulty =
 interface MissionSanitizerOptions {
     sourceText?: string;
     maxDifficulty?: MaterialDifficulty;
+    allowedSet?: Set<string>;
+    material?: string;
+    plan?: QuestionPlan;
 }
 
 function asMode(value: unknown): QuestionMode | null {

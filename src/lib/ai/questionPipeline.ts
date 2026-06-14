@@ -115,9 +115,12 @@ export async function generateQuestionPack(
         return { monsters: [], plan, degradedPath: 'fallback_bank' };
     }
     const genParsed = parseJson(genRaw) as { monsters?: unknown[] } | null;
-    // Task 7 uses only the existing { sourceText } sanitizer option (compiles today).
-    // Task 9 will swap in the rich { allowedSet, material, plan } options.
-    const monsters = normalizeMissionMonsters(genParsed?.monsters ?? [], { sourceText: text });
+    const monsters = normalizeMissionMonsters(genParsed?.monsters ?? [], {
+        sourceText: text,
+        allowedSet: profile.vocabulary.allowed,
+        material: text,
+        plan
+    });
 
     // --- Stage 3: critique + repair ---
     let criticReport: CriticReport | undefined;
@@ -147,7 +150,12 @@ export async function generateQuestionPack(
                             `\n# Previous attempt rejected. Offending words: ${verdict.offendingWords.join(', ')}. Fix: ${verdict.suggestedFix}`;
                         const fixRaw = await mainClient.generate(fixPrompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
                         const fixedParsed = parseJson(fixRaw) as { monsters?: unknown[] } | null;
-                        const fixed = normalizeMissionMonsters(fixedParsed?.monsters ?? [], { sourceText: text });
+                        const fixed = normalizeMissionMonsters(fixedParsed?.monsters ?? [], {
+                            sourceText: text,
+                            allowedSet: profile.vocabulary.allowed,
+                            material: text,
+                            plan
+                        });
                         const candidate = fixed[0];
                         if (candidate && assessQuestionQuality(candidate, {
                             maxDifficulty: profile.maxQuestionDifficulty,
