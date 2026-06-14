@@ -97,3 +97,67 @@ describe('question quality assessment', () => {
         expect(hasVisibleQuestionBlank('She went home.')).toBe(false);
     });
 });
+
+import { COMMON_WORD_SET } from './commonWords';
+import { normalizeWord } from './textNormalize';
+
+describe('assessQuestionQuality lexical grounding', () => {
+    const MATERIAL = 'The cat sat on the mat.';
+    const ALLOWED = new Set([...COMMON_WORD_SET, ...['cat', 'sat', 'mat', 'on'].map(normalizeWord)]);
+
+    function baseMonster(overrides: Partial<Record<string, unknown>> = {}) {
+        return {
+            question: 'Read: "The cat sat on the ___."',
+            options: ['mat', 'cat', 'sat', 'on'],
+            correct_index: 0,
+            correctAnswer: 'mat',
+            questionMode: 'fill-blank',
+            difficulty: 'easy',
+            learningObjectiveId: 'present_simple',
+            sourceContextSpan: 'The cat sat on the mat.',
+            supportLevel: 2,
+            attemptKind: 'practice',
+            ...overrides
+        };
+    }
+
+    test('flags an above-material word in explanation', () => {
+        const report = assessQuestionQuality(
+            baseMonster({ explanation: 'The cat is enormous.' }) as Parameters<typeof assessQuestionQuality>[0],
+            { maxDifficulty: 'easy', allowedSet: ALLOWED, material: MATERIAL, target: 'mat' }
+        );
+        expect(report.rejectReasons).toContain('above_material_vocabulary');
+    });
+
+    test('accepts when all words are in allowedSet', () => {
+        const report = assessQuestionQuality(
+            baseMonster({ explanation: 'The cat sat on the mat.' }) as Parameters<typeof assessQuestionQuality>[0],
+            { maxDifficulty: 'easy', allowedSet: ALLOWED, material: MATERIAL, target: 'mat' }
+        );
+        expect(report.rejectReasons).not.toContain('above_material_vocabulary');
+    });
+
+    test('flags a question not grounded in material', () => {
+        const report = assessQuestionQuality(
+            baseMonster({ question: 'What color is the sky?', sourceContextSpan: 'xyz', questionMode: 'choice' }) as Parameters<typeof assessQuestionQuality>[0],
+            { maxDifficulty: 'easy', allowedSet: ALLOWED, material: MATERIAL, target: 'sky', domain: 'reading', readingSkill: 'inference' }
+        );
+        expect(report.rejectReasons).toContain('not_grounded_in_material');
+    });
+
+    test('flags a reading item whose stem does not match its readingSkill', () => {
+        const report = assessQuestionQuality(
+            baseMonster({ question: 'Read: "The cat sat on the mat." What does the cat do?', questionMode: 'choice' }) as Parameters<typeof assessQuestionQuality>[0],
+            { maxDifficulty: 'easy', allowedSet: ALLOWED, material: MATERIAL, target: 'cat', domain: 'reading', readingSkill: 'inference' }
+        );
+        expect(report.rejectReasons).toContain('reading_skill_mismatch');
+    });
+
+    test('backward-compatible: no allowedSet/material/domain -> legacy path runs', () => {
+        const report = assessQuestionQuality(
+            baseMonster() as Parameters<typeof assessQuestionQuality>[0],
+            { maxDifficulty: 'easy' }
+        );
+        expect(typeof report.score).toBe('number');
+    });
+});
