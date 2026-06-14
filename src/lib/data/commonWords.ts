@@ -68,6 +68,13 @@ const RAW_COMMON_WORDS = [
   'what', 'does', 'mean', 'meaning', 'refer', 'sentence', 'line', 'passage',
   'read', 'best', 'near', 'choose', 'correct', 'answer', 'question',
   'why', 'how', 'inference', 'infer', 'suggest', 'imply', 'probably',
+  // grammar instruction terms (used in hints/explanations; allowed regardless of passage)
+  'verb', 'verbs', 'noun', 'nouns', 'tense', 'tenses', 'singular', 'plural',
+  'subject', 'object', 'article', 'articles', 'base', 'negative', 'statement',
+  'clause', 'grammar', 'comparative', 'superlative', 'regular', 'irregular',
+  'conjunction', 'adjective', 'adjectives', 'adverb', 'adverbs', 'form',
+  'letter', 'spell', 'spelling', 'capital', 'comma', 'period', 'pronoun',
+  'preposition', 'add', 'adds', 'third', 'second', 'first', 'person',
 ];
 
 export const COMMON_WORD_LIST: string[] = Array.from(
