@@ -4,7 +4,7 @@ import {
     isTextAtOrBelowDifficulty,
     type MaterialDifficulty
 } from '@/lib/ai/materialProfile';
-import { contentWords } from './textNormalize';
+import { contentWords, normalizeWord } from './textNormalize';
 import { READING_SKILLS, type PlanDomain, type PlanReadingSkill } from './questionPlan';
 
 export type QuestionQualityFlag =
@@ -44,11 +44,11 @@ const INTERNAL_FIELD_REGEX = /\b(?:questionMode|skillTag|correct_index|correctIn
 const META_CONTENT_REGEX = /\b(?:api\s+(?:key|provider)|api\s+provider|model\s+name|openrouter|deepseek|gemini|claude|guardian\s+dashboard|system\s+status|json\s+schema|field\s+name)\b/i;
 
 const READING_SKILL_SIGNALS: Record<PlanReadingSkill, RegExp> = {
-    pronoun_reference: /\b(refer(?:s|red|ring)? to|what does ['"]?(?:he|she|it|they|this|that)['"]? (?:mean|refer))\b/i,
-    inference: /\b(why|infer|because|suggest|imply|probably|how (?:do|can|did)|show)\b/i,
-    contextual_meaning: /\b(in this (?:sentence|line)|here|most nearly mean|closest (?:in )?meaning)\b/i,
-    discourse: /\b(however|then|next|first|finally|transition|connect|in contrast)\b/i,
-    pragmatic: /\b(purpose|intend|trying to|tone|feel|attitude|the writer|the author)\b/i
+    pronoun_reference: /\b(refer(?:s|red|ring)? to|what does ['"]?(?:he|she|it|they|them|this|that)['"]? (?:mean|refer))\b/i,
+    inference: /\b(why|infer(?:s|red|ring)?|because|suggest(?:s|ed|ing)?|impl(?:y|ies|ied)|probably|how (?:do|does|can|did)|show(?:s|ed|ing)?|indicate(?:s|d)?)\b/i,
+    contextual_meaning: /\b(in this (?:sentence|line|story|passage)|here|most nearly mean(?:s)?|closest (?:in )?meaning)\b/i,
+    discourse: /\b(however|then|next|first|finally|transition|connect(?:s|ed|ing)?|in contrast|on the other hand)\b/i,
+    pragmatic: /\b(purpose|intend(?:s|ed|ing)?|trying to|tone|feel(?:s|ing)?|attitude|the writer|the author)\b/i
 };
 
 export function hasVisibleQuestionBlank(question: string): boolean {
@@ -91,7 +91,7 @@ function checkLexicalFit(
     allowedSet: Set<string>,
     target: string | undefined
 ): { ok: boolean; offending: string[] } {
-    const targetNorm = target ? target.toLowerCase().replace(/[^a-z]/g, '') : '';
+    const targetNorm = target ? normalizeWord(target) : '';
     const offending = new Set<string>();
     for (const text of texts) {
         for (const word of contentWords(text)) {
