@@ -1,5 +1,21 @@
-import { inferVerbFromMode, blankTargetInSpan, pickDistractors } from './questionTemplates';
+import { inferVerbFromMode, blankTargetInSpan, pickDistractors, buildMonsterFromPlanItem, planRoleToVerb } from './questionTemplates';
 import type { Verb } from '@/store/gameStore';
+import type { QuestionPlanItem } from './questionPlan';
+
+function item(over: Partial<QuestionPlanItem>): QuestionPlanItem {
+    return {
+        role: 'cloze',
+        domain: 'grammar',
+        learningObjectiveId: 'present_simple',
+        sourceSpan: 'She waters the plants.',
+        target: 'waters',
+        targetKind: 'word',
+        allowedWords: [],
+        supportLevel: 2,
+        difficulty: 'easy',
+        ...over,
+    };
+}
 
 describe('inferVerbFromMode', () => {
     test('choice maps to recognize', () => {
@@ -57,5 +73,64 @@ describe('pickDistractors', () => {
     test('is deterministic (same inputs → same output)', () => {
         const set = new Set(['plants', 'morning', 'today', 'garden', 'picks']);
         expect(pickDistractors('red', set, 3)).toEqual(pickDistractors('red', set, 3));
+    });
+});
+
+describe('planRoleToVerb', () => {
+    test('recognition -> recognize, cloze/recall -> recall, transfer -> null', () => {
+        expect(planRoleToVerb('recognition')).toBe('recognize');
+        expect(planRoleToVerb('cloze')).toBe('recall');
+        expect(planRoleToVerb('recall')).toBe('recall');
+        expect(planRoleToVerb('transfer')).toBeNull();
+    });
+});
+
+describe('buildMonsterFromPlanItem', () => {
+    test('cloze role -> fill-blank monster, blank present, correctAnswer set', () => {
+        const m = buildMonsterFromPlanItem(item({ role: 'cloze' }), { id: 7 });
+        expect(m).not.toBeNull();
+        expect(m!.verb).toBe('recall');
+        expect(m!.questionMode).toBe('fill-blank');
+        expect(m!.question).toContain('___');
+        expect(m!.correctAnswer).toBe('waters');
+        expect(m!.sourceContextSpan).toBe('She waters the plants.');
+        expect(m!.id).toBe(7);
+    });
+
+    test('recall role -> typing monster', () => {
+        const m = buildMonsterFromPlanItem(item({ role: 'recall' }), { id: 1 });
+        expect(m!.questionMode).toBe('typing');
+        expect(m!.correctAnswer).toBe('waters');
+    });
+
+    test('recognition role -> choice monster with 4 options, correct at correct_index', () => {
+        const allowed = new Set(['plants', 'morning', 'today', 'garden', 'picks']);
+        const m = buildMonsterFromPlanItem(
+            item({ role: 'recognition', target: 'waters' }),
+            { id: 2, allowedSet: allowed }
+        );
+        expect(m).not.toBeNull();
+        expect(m!.questionMode).toBe('choice');
+        expect(m!.options).toHaveLength(4);
+        expect(m!.options[m!.correct_index]).toBe('waters');
+        expect(new Set(m!.options).size).toBe(4); // no duplicates
+    });
+
+    test('recognition with too few distractors -> null (let bank handle)', () => {
+        const m = buildMonsterFromPlanItem(
+            item({ role: 'recognition' }),
+            { id: 1, allowedSet: new Set(['plants']) }
+        );
+        expect(m).toBeNull();
+    });
+
+    test('transfer role -> null (apply verb is P3)', () => {
+        expect(buildMonsterFromPlanItem(item({ role: 'transfer' }), { id: 1 })).toBeNull();
+    });
+
+    test('target not in span -> null (defensive)', () => {
+        expect(
+            buildMonsterFromPlanItem(item({ sourceSpan: 'She runs fast.', target: 'waters' }), { id: 1 })
+        ).toBeNull();
     });
 });
