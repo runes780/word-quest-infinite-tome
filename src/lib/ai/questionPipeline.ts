@@ -19,6 +19,7 @@ import {
 import { assessQuestionQuality } from '@/lib/data/questionQuality';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import { fallbackToMonster, getBalancedFallbackQuestions } from '@/lib/data/fallbackQuestions';
+import { replaceFailedMonsters } from '@/lib/data/safetyNet';
 import type { Monster } from '@/store/gameStore';
 
 /** Minimal LLM interface so tests can inject a fake client. */
@@ -184,18 +185,16 @@ export async function generateQuestionPack(
             }
 
             // SAFETY NET: a critic-rejected question that repair could not fix must
-            // never ship. Replace it with a known-good, 1T-grounded fallback-bank
-            // question (self-contained English practice). If the bank runs out, fall
-            // back to flagging the slot lowConfidence as a last resort.
+            // never ship. Replace it with a material-grounded template (preferred),
+            // falling back to a known-good fallback-bank question if the template fails.
             if (failedIndices.length > 0) {
-                const replacements = getBalancedFallbackQuestions(failedIndices.length, profile.maxQuestionDifficulty);
-                failedIndices.forEach((idx, i) => {
-                    const fb = replacements[i];
-                    if (fb) {
-                        monsters[idx] = fallbackToMonster(fb, monsters[idx].id);
-                    } else {
-                        (monsters[idx] as Monster & { lowConfidence?: boolean }).lowConfidence = true;
-                    }
+                const replaced = replaceFailedMonsters(monsters, failedIndices, plan, {
+                    allowedSet: profile.vocabulary.allowed,
+                    material: text,
+                    maxDifficulty: profile.maxQuestionDifficulty,
+                });
+                replaced.forEach((m, i) => {
+                    monsters[i] = m;
                 });
             }
         }

@@ -163,10 +163,11 @@ export function assessQuestionQuality(
         addReject(rejectReasons, 'fill_blank_missing_visible_blank');
     }
 
-    if (!Array.isArray(question.options) || question.options.length !== 4) {
+    // fill-blank and typing modes don't require options; choice mode requires exactly 4
+    if (question.questionMode === 'choice' && (!Array.isArray(question.options) || question.options.length !== 4)) {
         addFlag(flags, 'weak_options');
         addReject(rejectReasons, 'option_count_not_four');
-    } else {
+    } else if (question.questionMode === 'choice') {
         const optionSet = uniqueLower(question.options);
         if (optionSet.size !== question.options.length) {
             addFlag(flags, 'weak_options');

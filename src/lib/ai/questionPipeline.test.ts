@@ -102,10 +102,13 @@ describe('generateQuestionPack', () => {
         expect(result.degradedPath).toBe('none');
         const replaced = result.monsters.find((m) => m.id === 2) as (Monster & { lowConfidence?: boolean }) | undefined;
         expect(replaced).toBeDefined();
-        // The rejected question was replaced with a known-good fallback-bank question,
+        // The rejected question was replaced with a material-grounded template or fallback-bank question,
         // never shipped as-is or flagged lowConfidence.
-        expect(FALLBACK_QUESTIONS.some((fb) => fb.question === replaced!.question)).toBe(true);
         expect(replaced!.sourceContextSpan).toBeTruthy();
+        // Template-first: either a template (verb set) or fallback-bank question
+        const isTemplate = replaced!.verb != null;
+        const isFallback = FALLBACK_QUESTIONS.some((fb) => fb.question === replaced!.question);
+        expect(isTemplate || isFallback).toBe(true);
         expect(replaced!.lowConfidence).toBeUndefined();
     });
 });
