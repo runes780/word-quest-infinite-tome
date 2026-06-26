@@ -20,6 +20,10 @@ export interface QuestionPlanItem {
     target: string;
     targetKind: PlanTargetKind;
     allowedWords: string[];
+    /** 易混词，供 correct 动词（P3）使用；P1 仅 schema 预留。 */
+    confusables?: string[];
+    /** 同义/反义，供 match 动词（P3）使用；P1 仅 schema 预留。 */
+    synonyms?: string[];
     supportLevel: 0 | 1 | 2 | 3;
     difficulty: 'easy' | 'medium' | 'hard';
 }

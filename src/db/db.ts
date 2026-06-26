@@ -1,5 +1,6 @@
 
 import Dexie, { Table } from 'dexie';
+import type { Verb } from '@/store/gameStore';
 import { createEmptyCard, fsrs, generatorParameters, Rating, State, Card as FSRSCardType, RecordLogItem } from 'ts-fsrs';
 import {
     DEFAULT_QUESTION_CACHE_POLICY,
@@ -70,6 +71,7 @@ export interface CachedQuestion {
     sourceContextSpan?: string;
     questionMode?: 'choice' | 'typing' | 'fill-blank';
     correctAnswer?: string;
+    verb?: Verb;
     contextHash: string; // Hash of the source context
     timestamp: number;
     used: boolean;  // Whether this question has been used in a game
