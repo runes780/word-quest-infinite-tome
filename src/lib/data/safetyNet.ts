@@ -43,6 +43,16 @@ export function replaceFailedMonsters(
             next[idx] = templated;
             return;
         }
+
+        // Template could not build or failed the gate: replace with a known-good
+        // 1T-grounded fallback-bank question so the rejected one never ships as-is.
+        const [fb] = getBalancedFallbackQuestions(1, ctx.maxDifficulty);
+        if (fb) {
+            next[idx] = fallbackToMonster(fb, original.id);
+        } else {
+            // Bank exhausted (defensive last resort): flag rather than ship junk.
+            (next[idx] as Monster & { lowConfidence?: boolean }).lowConfidence = true;
+        }
     });
     return next;
 }
