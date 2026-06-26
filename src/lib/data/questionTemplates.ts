@@ -98,7 +98,7 @@ export function buildMonsterFromPlanItem(
         attemptKind: item.role === 'transfer' ? ('transfer' as const) : ('practice' as const),
         sourceContextSpan: item.sourceSpan,
         explanation: `The word is "${blanked.correctAnswer}". Full sentence: "${item.sourceSpan}".`,
-        hint: 'Think about what fits the blank.',
+        hint: 'Think about the word.',
         verb,
     };
 
