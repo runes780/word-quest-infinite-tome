@@ -69,4 +69,27 @@ describe('replaceFailedMonsters', () => {
         });
         expect(out).toHaveLength(2);
     });
+
+    test('falls back to the question bank when the template cannot build (transfer role)', () => {
+        const transferPlan: QuestionPlan = {
+            ...plan,
+            items: [
+                {
+                    role: 'transfer', domain: 'reading', learningObjectiveId: 'reading_inference',
+                    sourceSpan: 'She waters the plants.', target: 'waters', targetKind: 'inference',
+                    allowedWords: [], supportLevel: 0, difficulty: 'easy',
+                },
+                plan.items[1],
+            ],
+        };
+        const monsters = [monster(1, 'reading'), monster(2, 'vocab')];
+        const out = replaceFailedMonsters(monsters, [0], transferPlan, {
+            allowedSet: new Set(['she', 'waters', 'the', 'plants']),
+            material: 'She waters the plants.',
+            maxDifficulty: 'easy',
+        });
+        // template returns null for transfer -> bank replacement; never ships the original
+        expect(out[0].id).toBe(1);
+        expect(out[0].question).not.toBe('bad unfaithful');
+    });
 });
