@@ -151,7 +151,10 @@ export async function generateQuestionPack(
                 const idx = monsters.findIndex((m) => m.id === verdict.id);
                 if (idx === -1) continue;
                 let repaired = false;
-                const fallbackItem: QuestionPlanItem = plan.items[idx] ?? plan.items[0];
+                // verdict.id is the rejected monster's id = its true plan-item index. Monsters
+                // are role-reordered (>=5 items), so array position `idx` is NOT the plan index;
+                // look the item up by id so repair targets the same material span as the reject.
+                const fallbackItem: QuestionPlanItem = plan.items[verdict.id] ?? plan.items[idx] ?? plan.items[0];
                 for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                     try {
                         const fixPrompt =
