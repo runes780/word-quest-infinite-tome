@@ -18,7 +18,6 @@ import {
 } from '@/lib/data/questionPlan';
 import { assessQuestionQuality } from '@/lib/data/questionQuality';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
-import { fallbackToMonster, getBalancedFallbackQuestions } from '@/lib/data/fallbackQuestions';
 import { replaceFailedMonsters } from '@/lib/data/safetyNet';
 import type { Monster } from '@/store/gameStore';
 
