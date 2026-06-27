@@ -275,6 +275,10 @@ interface GameState {
     activePracticePlanRun: PracticePlanRun | null;
     activePracticePlanStepId: string | null;
 
+    // P2: Unlocked verbs state
+    unlockedVerbs: Verb[];
+    pendingUnlock: Verb[];
+
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource, practicePlanRun?: PracticePlanRun | null) => void;
     answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => {
@@ -306,6 +310,11 @@ interface GameState {
     resumeGame: () => boolean;
     clearSavedGame: () => void;
     dismissMasteryCelebration: (id: string) => void;
+
+    // P2: Unlocked verbs actions
+    setUnlockedVerbs: (verbs: Verb[]) => void;
+    syncUnlocksFromProfile: (profile: { unlockedVerbs?: Verb[] }) => void;
+    clearPendingUnlock: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -345,6 +354,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     runObjectiveBonuses: [],
     activePracticePlanRun: null,
     activePracticePlanStepId: null,
+    unlockedVerbs: ['recognize', 'recall'],
+    pendingUnlock: [],
 
     startGame: (questions, context, source = 'battle', practicePlanRun = null) => {
         const revengeEntries = [...get().revengeQueue];
@@ -534,6 +545,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 updateAchievementStats({
                     consecutiveDays: profile.dailyStreak
                 });
+                // P2: sync newly-unlocked verbs from profile
+                get().syncUnlocksFromProfile(profile);
             }).catch(console.error);
 
             logLearningEvent({
@@ -621,6 +634,9 @@ export const useGameStore = create<GameState>((set, get) => ({
                             totalXp: rewardPayload.xp,
                             totalGold: rewardPayload.gold,
                             dailyXpEarned: rewardPayload.xp
+                        }).then((profile) => {
+                            // P2: sync newly-unlocked verbs from profile
+                            get().syncUnlocksFromProfile(profile);
                         }).catch(console.error);
                     }
                 })
@@ -1267,7 +1283,26 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     dismissMasteryCelebration: (id) => set((state) => ({
         masteryCelebrations: state.masteryCelebrations.filter((entry) => entry.id !== id)
-    }))
+    })),
+
+    // P2: silent set of unlocked verbs (used at profile load — no toast)
+    setUnlockedVerbs: (verbs: Verb[]) => set({ unlockedVerbs: verbs }),
+
+    // P2: diff the profile's unlocked verbs vs the store; queue any newly-unlocked
+    // for the toast. Used after answer-time profile updates.
+    syncUnlocksFromProfile: (profile: { unlockedVerbs?: Verb[] }) => {
+        const previous = get().unlockedVerbs;
+        const next = profile.unlockedVerbs ?? previous;
+        const fresh = next.filter((v) => !previous.includes(v));
+        if (fresh.length > 0) {
+            set({ unlockedVerbs: next, pendingUnlock: fresh });
+        } else if (next !== previous) {
+            set({ unlockedVerbs: next });
+        }
+    },
+
+    // P2: dismiss the unlock toast
+    clearPendingUnlock: () => set({ pendingUnlock: [] })
 }));
 
 // Auto-save game state after every action that modifies important state

@@ -286,6 +286,8 @@ export function InputSection() {
 
         try {
             const profile = await getPlayerProfile();
+            // P2: load unlocked verbs into store
+            useGameStore.getState().setUnlockedVerbs(profile.unlockedVerbs ?? ['recognize', 'recall']);
             const data = await fetchMissionWithRetry(input, apiKey, model, apiProvider, profile.globalLevel);
             if (!data.monsters || !Array.isArray(data.monsters)) {
                 throw new Error('Invalid data format received from AI');
