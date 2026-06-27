@@ -17,6 +17,7 @@ const baseProfile: GlobalPlayerProfile = {
     grammarMastery: 20,
     readingMastery: 10,
     ownedRelics: [],
+    unlockedVerbs: ['recognize', 'recall'],
     createdAt: 1,
     updatedAt: 1
 };

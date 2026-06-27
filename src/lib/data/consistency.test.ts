@@ -18,6 +18,7 @@ function profile(overrides: Partial<GlobalPlayerProfile>): GlobalPlayerProfile {
         grammarMastery: 0,
         readingMastery: 0,
         ownedRelics: [],
+        unlockedVerbs: ['recognize', 'recall'],
         createdAt: 0,
         updatedAt: 0,
         ...overrides
