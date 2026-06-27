@@ -2,6 +2,7 @@
 import Dexie, { Table } from 'dexie';
 import type { Verb } from '@/store/gameStore';
 import { createEmptyCard, fsrs, generatorParameters, Rating, State, Card as FSRSCardType, RecordLogItem } from 'ts-fsrs';
+import { computeUnlockedVerbs } from '@/lib/data/verbProgression';
 import {
     DEFAULT_QUESTION_CACHE_POLICY,
     mergeQuestionCache
@@ -874,6 +875,12 @@ export async function updatePlayerProfile(updates: PlayerProfileUpdates): Promis
         nextUpdates.totalXp = newXp;
         nextUpdates.globalLevel = calculateLevel(newXp);
     }
+
+    // Recompute unlocked verbs from the effective level (P2 unlock hook).
+    // Covers both XP-changes (globalLevel just recomputed) and non-XP updates
+    // (globalLevel unchanged) via the ?? fallback to the stored level.
+    const effectiveLevel = nextUpdates.globalLevel ?? profile.globalLevel;
+    nextUpdates.unlockedVerbs = computeUnlockedVerbs(effectiveLevel);
 
     // Add gold (don't replace)
     if (nextUpdates.totalGold !== undefined) {
