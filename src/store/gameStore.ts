@@ -191,7 +191,7 @@ export interface Monster {
     sourceActionId?: string;
     sourceActionPriority?: 'urgent' | 'important' | 'optional';
     sourceActionEstimatedMinutes?: number;
-    verb?: Verb; // 认知动词；缺失时由 questionMode 经 inferVerbFromMode 推导（P1）
+    verb?: Verb; // 认知动词；P1 模板会显式设置，老题/缓存题缺失时由 P2 渲染层用 inferVerbFromMode 推导
 }
 
 export interface PlayerStats {
