@@ -25,7 +25,12 @@ export function replaceFailedMonsters(
     failedIndices.forEach((idx) => {
         const original = next[idx];
         if (!original) return;
-        const planItem = plan.items[idx] ?? plan.items[0];
+        // Monsters are role-reordered (≥5 items) after generation, so array position
+        // `idx` is NOT the plan index. Each monster's `id` is its true plan-item index
+        // (per the generator contract), so look the plan item up by id — otherwise the
+        // replacement would be built from a different material span than the rejected
+        // question. Fall back to position/0 only if the id is out of range.
+        const planItem = plan.items[original.id] ?? plan.items[idx] ?? plan.items[0];
 
         const templated = buildMonsterFromPlanItem(planItem, {
             id: original.id,
