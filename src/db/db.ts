@@ -135,6 +135,9 @@ export interface GlobalPlayerProfile {
     // Inventory persisted
     ownedRelics: string[];  // Relic IDs owned permanently
 
+    // 动词解锁（P2）：开局 ['recognize','recall']，按 globalLevel 解锁更多
+    unlockedVerbs: Verb[];
+
     createdAt: number;
     updatedAt: number;
 }
@@ -806,6 +809,7 @@ function getDefaultProfile(): GlobalPlayerProfile {
         grammarMastery: 0,
         readingMastery: 0,
         ownedRelics: [],
+        unlockedVerbs: ['recognize', 'recall'],
         createdAt: Date.now(),
         updatedAt: Date.now()
     };
@@ -813,7 +817,10 @@ function getDefaultProfile(): GlobalPlayerProfile {
 
 export async function getPlayerProfile(): Promise<GlobalPlayerProfile> {
     const existing = await db.playerProfile.toCollection().first();
-    if (existing) return existing;
+    if (existing) {
+        // 老存档无 unlockedVerbs 字段，回填为基础动词（无需 Dexie schema 版本升级）
+        return { ...existing, unlockedVerbs: existing.unlockedVerbs ?? ['recognize', 'recall'] };
+    }
 
     // Create new profile
     const profile = getDefaultProfile();
