@@ -6,7 +6,9 @@ import { cn } from '@/lib/utils';
 import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
 import { VoiceInput } from '@/components/VoiceInput';
-import type { Monster } from '@/store/gameStore';
+import { ListenQuestion } from '@/components/ListenQuestion';
+import { inferVerbFromMode } from '@/lib/data/questionTemplates';
+import type { Monster, Verb } from '@/store/gameStore';
 import type { translations } from '@/lib/translations';
 import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
 
@@ -60,6 +62,7 @@ export function BattleQuestionPanel({
     onNext
 }: BattleQuestionPanelProps) {
     const uiLanguage = language === 'zh' ? 'zh' : 'en';
+    const verb: Verb = currentQuestion.verb ?? inferVerbFromMode(currentQuestion.questionMode || 'choice');
     const bossGateLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
         ? (uiLanguage === 'zh'
             ? `首领关卡 ${currentQuestion.bossStage}/${currentQuestion.bossTotalStages}`
@@ -154,7 +157,21 @@ export function BattleQuestionPanel({
                     )}
                 </AnimatePresence>
 
-                {(!currentQuestion.questionMode || currentQuestion.questionMode === 'choice') ? (
+                {verb === 'listen' ? (
+                    <ListenQuestion
+                        question={currentQuestion}
+                        selectedOption={selectedOption}
+                        isCorrect={isCorrect}
+                        showResult={showResult}
+                        disabled={showResult}
+                        onAnswer={onChoiceSelect}
+                        hiddenOptions={
+                            clarityEffect && clarityEffect.questionId === currentQuestion.id
+                                ? clarityEffect.hiddenOptions
+                                : undefined
+                        }
+                    />
+                ) : (!currentQuestion.questionMode || currentQuestion.questionMode === 'choice') ? (
                     <div className="grid grid-cols-1 gap-3">
                         {currentQuestion.options.map((option, index) => {
                             const clarityDisabled = !!(clarityEffect && clarityEffect.questionId === currentQuestion.id && clarityEffect.hiddenOptions.includes(index));
