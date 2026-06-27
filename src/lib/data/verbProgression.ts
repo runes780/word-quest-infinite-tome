@@ -1,4 +1,4 @@
-import type { Verb } from '@/store/gameStore';
+import type { Verb, Monster } from '@/store/gameStore';
 
 /** 玩家开局即拥有的动词。 */
 export const BASE_VERBS: Verb[] = ['recognize', 'recall'];
@@ -27,4 +27,19 @@ export function computeUnlockedVerbs(globalLevel: number): Verb[] {
 export function newlyUnlockedVerbs(fromLevel: number, toLevel: number): Verb[] {
     const before = new Set(computeUnlockedVerbs(fromLevel));
     return computeUnlockedVerbs(toLevel).filter((v) => !before.has(v));
+}
+
+/**
+ * 对已解锁 listen 的玩家，把 choice 题按确定规则翻转一部分为 listen（听音辨词），
+ * 引入新模态（语音回路）带来的交错多样性。非 choice 题不动；未解锁 listen 则原样返回。
+ * 确定性（无 RNG）：按数组下标翻转，便于测试与稳定体验。
+ */
+export function applyUnlockedVerbs<T extends Monster>(questions: T[], unlockedVerbs: Verb[]): T[] {
+    if (!unlockedVerbs.includes('listen')) return questions;
+    return questions.map((q, i) => {
+        if (q.questionMode === 'choice' && i % 2 === 0) {
+            return { ...q, verb: 'listen' as Verb };
+        }
+        return q;
+    });
 }
