@@ -50,7 +50,9 @@ export function BattleInterface() {
         reviewRiskBySkill,
         recentMistakeBySkill,
         masteryCelebrations,
-        dismissMasteryCelebration
+        dismissMasteryCelebration,
+        pendingUnlock,
+        clearPendingUnlock
 
     } = useGameStore();
 
@@ -365,6 +367,35 @@ export function BattleInterface() {
                     >
                         <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                         {t.battle.summoning}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Unlock Toast */}
+            <AnimatePresence>
+                {pendingUnlock.length > 0 && (
+                    <motion.div
+                        initial={{ y: -40, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: -40, opacity: 0 }}
+                        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl bg-purple-600 text-white shadow-xl flex items-center gap-3"
+                    >
+                        <span className="text-2xl">🔓</span>
+                        <div>
+                            <p className="font-bold">
+                                {language === 'zh' ? '解锁新题型！' : 'New question type unlocked!'}
+                            </p>
+                            <p className="text-sm opacity-90 capitalize">
+                                {pendingUnlock.join(', ')}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={clearPendingUnlock}
+                            className="ml-2 text-white/80 hover:text-white"
+                        >
+                            ✕
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>
