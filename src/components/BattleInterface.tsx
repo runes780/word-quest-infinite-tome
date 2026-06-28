@@ -158,12 +158,16 @@ export function BattleInterface() {
         });
     };
 
-    const resultExplanation = (result: { explanation: string; repairQueued?: boolean }) => {
-        if (!result.repairQueued) return result.explanation;
+    const resultExplanation = (result: { explanation: string; repairQueued?: boolean; isLucky?: boolean }) => {
+        const luckyPrefix = result.isLucky
+            ? (language === 'zh' ? '🍀 幸运！奖励 +50% — ' : '🍀 Lucky! +50% rewards — ')
+            : '';
+        const base = `${luckyPrefix}${result.explanation}`;
+        if (!result.repairQueued) return base;
         const repairMessage = language === 'zh'
             ? '下一题已自动加入同一逻辑的修复练习，先补错因再继续。'
             : 'A same-pattern repair question has been added next, so you can fix the mistake before moving on.';
-        return `${result.explanation}\n\n${repairMessage}`;
+        return `${base}\n\n${repairMessage}`;
     };
 
     const triggerCorrectCombatFeedback = (result: { damageDealt: number; isCritical: boolean; isSuperEffective: boolean; }) => {

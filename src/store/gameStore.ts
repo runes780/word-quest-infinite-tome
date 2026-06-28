@@ -288,6 +288,7 @@ interface GameState {
         damageDealt: number;
         isCritical: boolean;
         isSuperEffective: boolean;
+        isLucky: boolean;
         repairQueued?: boolean;
         feedbackFocus?: string;
     };
@@ -456,6 +457,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         let damageDealt = 0;
         let isCritical = false;
         let isSuperEffective = false; // Simplified for now
+        let isLucky = false;
         let repairQueued = false;
         let nextBossShieldProgress = bossShieldProgress;
         let nextMonsterHp = currentMonsterHp;
@@ -481,12 +483,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             damageDealt = combatOutcome.damageDealt;
             isCritical = combatOutcome.isCritical;
             isSuperEffective = combatOutcome.isSuperEffective;
+            isLucky = combatOutcome.isLucky;
             nextBossShieldProgress = combatOutcome.nextBossShieldProgress;
             nextMonsterHp = combatOutcome.nextMonsterHp;
 
             // XP Calculation with blessing multiplier
             const xpBase = 20 + (isCritical ? 10 : 0);
-            const xpGain = Math.floor(applyXpBonus(xpBase, inventory) * blessing.xpMultiplier);
+            const xpGain = Math.floor(applyXpBonus(xpBase, inventory) * blessing.xpMultiplier * (isLucky ? 1.5 : 1));
             let newXp = playerStats.xp + xpGain;
             let newLevel = playerStats.level;
             let newMaxXp = playerStats.maxXp;
@@ -502,7 +505,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
             // Gold calculation with blessing multiplier
             const goldBase = 15 + (isCritical ? 10 : 0);
-            const goldGain = Math.floor(applyGoldBonus(goldBase, inventory) * blessing.goldMultiplier);
+            const goldGain = Math.floor(applyGoldBonus(goldBase, inventory) * blessing.goldMultiplier * (isLucky ? 1.5 : 1));
             const newStreak = playerStats.streak + 1;
 
             set({
@@ -783,6 +786,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             damageDealt,
             isCritical,
             isSuperEffective,
+            isLucky,
             repairQueued,
             feedbackFocus: repairQueued ? 'immediate_repair' : undefined
         };
