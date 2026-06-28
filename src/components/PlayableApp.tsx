@@ -9,6 +9,7 @@ import { ParentDashboard } from '@/components/ParentDashboard';
 import { SettingsModal } from '@/components/SettingsModal';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { getPlayerProfile } from '@/db/db';
 
 export function PlayableApp() {
   const { questions } = useGameStore();
@@ -19,6 +20,12 @@ export function PlayableApp() {
       setSettingsOpen(true);
     }
   }, [apiKey, setSettingsOpen]);
+
+  useEffect(() => {
+    getPlayerProfile()
+      .then((p) => useGameStore.getState().setUnlockedVerbs(p.unlockedVerbs ?? ['recognize', 'recall']))
+      .catch(() => { /* profile load is best-effort for unlock hydration */ });
+  }, []);
 
   return (
     <main className="min-h-screen bg-background text-foreground overflow-hidden relative">

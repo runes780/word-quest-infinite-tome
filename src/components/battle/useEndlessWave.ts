@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Monster } from '@/store/gameStore';
-import { useGameStore } from '@/store/gameStore';
 import { OpenRouterClient } from '@/lib/ai/openrouter';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
-import { applyUnlockedVerbs } from '@/lib/data/verbProgression';
 import type { AIProvider } from '@/lib/ai/modelOptions';
 
 interface UseEndlessWaveParams {
@@ -158,9 +156,8 @@ export function useEndlessWave({
                         console.warn('[Cache] Failed to cache questions:', cacheError);
                     }
 
-                    // Apply verb-progression transform for players who unlocked 'listen'.
-                    const transformedWave = applyUnlockedVerbs(normalizedWave, useGameStore.getState().unlockedVerbs);
-                    setTimeout(() => addQuestions(transformedWave), 500);
+                    // (choice->listen flipping is applied centrally in addQuestions.)
+                    setTimeout(() => addQuestions(normalizedWave), 500);
                 }
             } catch (error) {
                 console.error('API failed, trying cache/fallback', error);
@@ -169,14 +166,12 @@ export function useEndlessWave({
                 if (cached.length > 0) {
                     console.log(`[Cache] Using ${cached.length} cached questions`);
                     const normalizedCached = normalizeMissionMonsters(cached.map(mapCachedQuestionToMonster), { sourceText: context });
-                    const transformedCached = applyUnlockedVerbs(normalizedCached, useGameStore.getState().unlockedVerbs);
-                    setTimeout(() => addQuestions(transformedCached), 500);
+                    setTimeout(() => addQuestions(normalizedCached), 500);
                 } else {
                     console.log('[Fallback] Using local question bank');
                     const fallback = getRandomFallbackQuestions(5, 'easy');
                     const normalizedFallback = normalizeMissionMonsters(fallback.map(mapFallbackQuestionToMonster), { sourceText: context });
-                    const transformedFallback = applyUnlockedVerbs(normalizedFallback, useGameStore.getState().unlockedVerbs);
-                    setTimeout(() => addQuestions(transformedFallback), 500);
+                    setTimeout(() => addQuestions(normalizedFallback), 500);
                 }
             } finally {
                 setIsGeneratingMore(false);

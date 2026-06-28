@@ -34,6 +34,7 @@ import {
     type QuestionInput,
     reorderQuestionsBySkill
 } from '@/store/modules/questionFlow';
+import { applyUnlockedVerbs } from '@/lib/data/verbProgression';
 import {
     completeCurrentPracticePlanStep,
     currentPracticePlanStep,
@@ -365,7 +366,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 source
             )
         );
-        const preparedIncoming = questions.map((q, idx) =>
+        const incomingFlipped = applyUnlockedVerbs(questions, get().unlockedVerbs);
+        const preparedIncoming = incomingFlipped.map((q, idx) =>
             applyLearningMetadataForSource(applyQuestionDefaults(q, preparedRevenge.length + idx), source)
         );
         const combined = expandBossGateQuestions([...preparedRevenge, ...preparedIncoming]);
@@ -793,7 +795,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             const prepared = applyQuestionDefaults(q, questions.length + idx);
             return applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)]);
         });
-        set({ questions: [...questions, ...processedQuestions] });
+        // choice->listen flip applied after processing (operates on Monster[], type-safe);
+        // index basis is identical to the input order.
+        const flipped = applyUnlockedVerbs(processedQuestions, get().unlockedVerbs);
+        set({ questions: [...questions, ...flipped] });
     },
 
     nextQuestion: () => {
@@ -1082,6 +1087,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                     totalXp: payload.xp,
                     totalGold: payload.gold,
                     dailyXpEarned: payload.xp
+                }).then((profile) => {
+                    get().syncUnlocksFromProfile(profile);
                 }).catch(console.error);
             }
         }
@@ -1150,6 +1157,8 @@ export const useGameStore = create<GameState>((set, get) => ({
                 totalXp: totalObjectiveXp,
                 totalGold: totalObjectiveGold,
                 dailyXpEarned: totalObjectiveXp
+            }).then((profile) => {
+                get().syncUnlocksFromProfile(profile);
             }).catch(console.error);
         } else {
             set({ runObjectiveBonuses: [] });

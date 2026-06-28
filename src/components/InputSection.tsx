@@ -32,7 +32,6 @@ import { DailyChallenge } from './DailyChallenge';
 import { SRSDashboard } from './SRSDashboard';
 import { FSRSCard, getPlayerProfile } from '@/db/db';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
-import { applyUnlockedVerbs } from '@/lib/data/verbProgression';
 import { getDailyPracticePlan, PracticePlan, PracticePlanStep } from '@/lib/data/dailyPracticePlan';
 import { buildDailyFlameStatus, DailyFlameStatus } from '@/lib/data/dailyFlame';
 import {
@@ -295,10 +294,8 @@ export function InputSection() {
             }
 
             // Monsters are already normalized by the orchestrator (plan -> generate -> critique).
-            // Apply verb-progression transform for players who unlocked 'listen'.
-            const unlockedVerbs = useGameStore.getState().unlockedVerbs;
-            const monsters = applyUnlockedVerbs(data.monsters as Monster[], unlockedVerbs);
-            setPendingQuestions({ monsters, context: input });
+            // (choice->listen flipping is applied centrally in startGame for all entry paths.)
+            setPendingQuestions({ monsters: data.monsters as Monster[], context: input });
             setShowBlessingSelection(true);
             setFallbackLevel(null);
             setError('');
