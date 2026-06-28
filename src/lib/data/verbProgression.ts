@@ -59,3 +59,26 @@ export function applyBuildVerb<T extends Monster>(questions: T[], unlockedVerbs:
         return built ?? q;
     });
 }
+
+/** 每个动词的展示元数据（名称/中文名/简介/中文简介/图标）。供 VerbCodex 等展示层使用。 */
+export const VERB_INFO: Record<Verb, { name: string; nameZh: string; desc: string; descZh: string; icon: string }> = {
+    recognize: { name: 'Recognize', nameZh: '识别', desc: 'Match the word to its meaning', descZh: '识别词义', icon: '👁' },
+    recall: { name: 'Recall', nameZh: '回忆', desc: 'Spell the word from memory', descZh: '拼写回忆', icon: '✍️' },
+    listen: { name: 'Listen', nameZh: '听音', desc: 'Hear the word and choose', descZh: '听音辨词', icon: '🔊' },
+    build: { name: 'Build', nameZh: '造句', desc: 'Rebuild the sentence', descZh: '词序造句', icon: '🧱' },
+    match: { name: 'Match', nameZh: '配对', desc: 'Pair synonyms and antonyms', descZh: '同义反义配对', icon: '🔗' },
+    correct: { name: 'Correct', nameZh: '改错', desc: 'Spot and fix the error', descZh: '找错改错', icon: '🔍' },
+    apply: { name: 'Apply', nameZh: '应用', desc: 'Use the word in context', descZh: '情境应用', icon: '🎯' },
+};
+
+/** 某动词的解锁等级。基础动词=1；里程碑动词=其 level；未发布动词=Infinity。 */
+export function verbUnlockLevel(verb: Verb): number {
+    if (BASE_VERBS.includes(verb)) return 1;
+    const m = VERB_UNLOCK_MILESTONES.find((entry) => entry.verb === verb);
+    return m ? m.level : Infinity;
+}
+
+/** 所有动词，按解锁等级排序（基础在前，未发布在后）。 */
+export const ALL_VERBS_ORDERED: Verb[] = (
+    ['recognize', 'recall', 'listen', 'build', 'match', 'correct', 'apply'] as Verb[]
+).sort((a, b) => verbUnlockLevel(a) - verbUnlockLevel(b));

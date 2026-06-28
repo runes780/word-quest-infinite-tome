@@ -1,5 +1,5 @@
-import { computeUnlockedVerbs, newlyUnlockedVerbs, BASE_VERBS, VERB_UNLOCK_MILESTONES, applyUnlockedVerbs, applyBuildVerb } from './verbProgression';
-import type { Monster } from '@/store/gameStore';
+import { computeUnlockedVerbs, newlyUnlockedVerbs, BASE_VERBS, VERB_UNLOCK_MILESTONES, applyUnlockedVerbs, applyBuildVerb, VERB_INFO, verbUnlockLevel, ALL_VERBS_ORDERED } from './verbProgression';
+import type { Monster, Verb } from '@/store/gameStore';
 
 function choiceMonster(id: number): Monster {
     return {
@@ -117,5 +117,46 @@ describe('applyBuildVerb', () => {
         const qs = [withSpan(0, 'sanitized_fallback')];
         const out = applyBuildVerb(qs, ['recognize', 'recall', 'listen', 'build']);
         expect(out[0].verb === 'build').toBe(false);
+    });
+});
+
+const ALL_VERBS: Verb[] = ['recognize', 'recall', 'listen', 'build', 'match', 'correct', 'apply'];
+
+describe('VERB_INFO', () => {
+    test('has metadata for every verb', () => {
+        for (const v of ALL_VERBS) {
+            expect(VERB_INFO[v]).toBeDefined();
+            expect(VERB_INFO[v].name).toBeTruthy();
+            expect(VERB_INFO[v].icon).toBeTruthy();
+        }
+    });
+});
+
+describe('verbUnlockLevel', () => {
+    test('base verbs unlock at level 1', () => {
+        expect(verbUnlockLevel('recognize')).toBe(1);
+        expect(verbUnlockLevel('recall')).toBe(1);
+    });
+    test('milestone verbs unlock at their level', () => {
+        expect(verbUnlockLevel('listen')).toBe(3);
+        expect(verbUnlockLevel('build')).toBe(5);
+    });
+    test('unreleased verbs have no unlock level (Infinity)', () => {
+        expect(verbUnlockLevel('match')).toBe(Infinity);
+        expect(verbUnlockLevel('correct')).toBe(Infinity);
+        expect(verbUnlockLevel('apply')).toBe(Infinity);
+    });
+});
+
+describe('ALL_VERBS_ORDERED', () => {
+    test('contains all verbs', () => {
+        expect(ALL_VERBS_ORDERED.slice().sort()).toEqual(ALL_VERBS.slice().sort());
+    });
+    test('is sorted by unlock level (base first, unreleased last)', () => {
+        const levels = ALL_VERBS_ORDERED.map((v) => verbUnlockLevel(v));
+        for (let i = 1; i < levels.length; i += 1) {
+            expect(levels[i]).toBeGreaterThanOrEqual(levels[i - 1]);
+        }
+        expect(ALL_VERBS_ORDERED[0]).toBe('recognize');
     });
 });
