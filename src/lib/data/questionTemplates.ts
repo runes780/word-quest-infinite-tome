@@ -176,7 +176,7 @@ const MIN_BUILD_WORDS = 4;
  * 只换 verb/questionMode/options/correctAnswer/question。返回 null 表示该题不适合 build
  * （无 span / 词太少 / 占位符 span）。零 LLM、零幻觉（句子就是原文 span）。
  */
-export function toBuildMonster(question: Monster): Monster | null {
+export function toBuildMonster<T extends Monster>(question: T): T | null {
     const span = question.sourceContextSpan;
     if (!span || span === 'sanitized_fallback') return null;
     const words = span.match(/\S+/g);
