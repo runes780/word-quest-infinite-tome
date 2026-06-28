@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { BookOpen } from 'lucide-react';
 import { BattleInterface } from '@/components/BattleInterface';
 import { InputSection } from '@/components/InputSection';
 import { MistakeNotebook } from '@/components/MistakeNotebook';
 import { ParentDashboard } from '@/components/ParentDashboard';
 import { SettingsModal } from '@/components/SettingsModal';
+import { VerbCodex } from '@/components/VerbCodex';
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { getPlayerProfile } from '@/db/db';
@@ -14,6 +16,7 @@ import { getPlayerProfile } from '@/db/db';
 export function PlayableApp() {
   const { questions } = useGameStore();
   const { apiKey, language, setSettingsOpen } = useSettingsStore();
+  const [codexOpen, setCodexOpen] = useState(false);
 
   useEffect(() => {
     if (!apiKey) {
@@ -36,6 +39,7 @@ export function PlayableApp() {
       <SettingsModal />
       <MistakeNotebook />
       <ParentDashboard />
+      <VerbCodex isOpen={codexOpen} onClose={() => setCodexOpen(false)} />
 
       <div className="relative z-10 container mx-auto px-4 py-8 min-h-screen flex flex-col">
         <header className="text-center mb-12 pt-8">
@@ -54,6 +58,16 @@ export function PlayableApp() {
           >
             INFINITE TOME PROTOCOL
           </motion.p>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setCodexOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary text-sm font-bold hover:bg-primary/20 transition-colors"
+            >
+              <BookOpen className="w-4 h-4" />
+              {language === 'zh' ? '动词典籍' : 'Verb Codex'}
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 flex flex-col justify-center">
