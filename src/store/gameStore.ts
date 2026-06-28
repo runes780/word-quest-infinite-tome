@@ -34,7 +34,7 @@ import {
     type QuestionInput,
     reorderQuestionsBySkill
 } from '@/store/modules/questionFlow';
-import { applyUnlockedVerbs } from '@/lib/data/verbProgression';
+import { applyUnlockedVerbs, applyBuildVerb } from '@/lib/data/verbProgression';
 import {
     completeCurrentPracticePlanStep,
     currentPracticePlanStep,
@@ -367,7 +367,8 @@ export const useGameStore = create<GameState>((set, get) => ({
             )
         );
         const incomingFlipped = applyUnlockedVerbs(questions, get().unlockedVerbs);
-        const preparedIncoming = incomingFlipped.map((q, idx) =>
+        const incomingBuilt = applyBuildVerb(incomingFlipped, get().unlockedVerbs);
+        const preparedIncoming = incomingBuilt.map((q, idx) =>
             applyLearningMetadataForSource(applyQuestionDefaults(q, preparedRevenge.length + idx), source)
         );
         const combined = expandBossGateQuestions([...preparedRevenge, ...preparedIncoming]);
@@ -798,7 +799,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         // choice->listen flip applied after processing (operates on Monster[], type-safe);
         // index basis is identical to the input order.
         const flipped = applyUnlockedVerbs(processedQuestions, get().unlockedVerbs);
-        set({ questions: [...questions, ...flipped] });
+        const built = applyBuildVerb(flipped, get().unlockedVerbs);
+        set({ questions: [...questions, ...built] });
     },
 
     nextQuestion: () => {
