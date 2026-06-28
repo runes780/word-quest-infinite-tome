@@ -144,3 +144,56 @@ export function buildMonsterFromPlanItem(
         correctAnswer: blanked.correctAnswer,
     };
 }
+
+/** 确定性 PRNG（mulberry32）——给 shuffle 一个可复现的种子，避免 Math.random。 */
+function mulberry32(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+        a |= 0;
+        a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/** Fisher-Yates 洗牌，种子确定则结果确定（无 Math.random）。不修改原数组。 */
+export function seededShuffle<T>(items: T[], seed: number): T[] {
+    const out = [...items];
+    const rng = mulberry32(seed || 1);
+    for (let i = out.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rng() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+}
+
+const MIN_BUILD_WORDS = 4;
+
+/**
+ * 把一道题改造成 build（词序造句）题：用 sourceContextSpan 的词作为可拖拽词块，
+ * 正确排列 = 原句。继承原题的 id/skillTag/domain/objective/supportLevel 等元数据，
+ * 只换 verb/questionMode/options/correctAnswer/question。返回 null 表示该题不适合 build
+ * （无 span / 词太少 / 占位符 span）。零 LLM、零幻觉（句子就是原文 span）。
+ */
+export function toBuildMonster(question: Monster): Monster | null {
+    const span = question.sourceContextSpan;
+    if (!span || span === 'sanitized_fallback') return null;
+    const words = span.match(/\S+/g);
+    if (!words || words.length < MIN_BUILD_WORDS) return null;
+
+    let tiles = seededShuffle(words, question.id);
+    // 确保打乱后不等于原序（否则直接给出答案）
+    if (tiles.join(' ') === words.join(' ')) {
+        tiles = [...tiles.slice(1), tiles[0]];
+    }
+    return {
+        ...question,
+        verb: 'build',
+        questionMode: 'typing', // 避免触发 choice 专属 VoiceInput；build 题不经过质量门
+        options: tiles,
+        correct_index: 0,
+        correctAnswer: span,
+        question: 'Rebuild the sentence.',
+    };
+}

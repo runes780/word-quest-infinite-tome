@@ -1,5 +1,5 @@
-import { inferVerbFromMode, blankTargetInSpan, pickDistractors, buildMonsterFromPlanItem, planRoleToVerb } from './questionTemplates';
-import type { Verb } from '@/store/gameStore';
+import { inferVerbFromMode, blankTargetInSpan, pickDistractors, buildMonsterFromPlanItem, planRoleToVerb, seededShuffle, toBuildMonster } from './questionTemplates';
+import type { Verb, Monster } from '@/store/gameStore';
 import type { QuestionPlanItem } from './questionPlan';
 
 function item(over: Partial<QuestionPlanItem>): QuestionPlanItem {
@@ -132,5 +132,56 @@ describe('buildMonsterFromPlanItem', () => {
         expect(
             buildMonsterFromPlanItem(item({ sourceSpan: 'She runs fast.', target: 'waters' }), { id: 1 })
         ).toBeNull();
+    });
+});
+
+describe('seededShuffle', () => {
+    test('is deterministic (same seed -> same order)', () => {
+        const a = ['a', 'b', 'c', 'd', 'e'];
+        expect(seededShuffle(a, 7)).toEqual(seededShuffle(a, 7));
+    });
+    test('contains the same elements', () => {
+        const a = ['a', 'b', 'c', 'd', 'e'];
+        const out = seededShuffle(a, 7);
+        expect(out.slice().sort()).toEqual(a.slice().sort());
+    });
+    test('different seeds can produce different orders', () => {
+        const a = ['a', 'b', 'c', 'd', 'e'];
+        const orders = new Set([seededShuffle(a, 1).join(','), seededShuffle(a, 2).join(','), seededShuffle(a, 3).join(',')]);
+        expect(orders.size).toBeGreaterThan(1);
+    });
+});
+
+describe('toBuildMonster', () => {
+    const base: Monster = {
+        id: 5, type: 'vocab', question: 'q', options: ['a', 'b', 'c', 'd'],
+        correct_index: 0, explanation: '', skillTag: 'vocab:x', difficulty: 'easy',
+        questionMode: 'choice', correctAnswer: 'a', sourceContextSpan: 'She waters the plants today.',
+        learningObjectiveId: 'vocab_context_meaning', supportLevel: 3,
+    };
+
+    test('builds a build monster with shuffled tiles and the original sentence as correctAnswer', () => {
+        const m = toBuildMonster(base);
+        expect(m).not.toBeNull();
+        expect(m!.verb).toBe('build');
+        expect(m!.questionMode).toBe('typing');
+        expect(m!.correctAnswer).toBe('She waters the plants today.');
+        expect(m!.options.slice().sort()).toEqual(['She', 'waters', 'the', 'plants', 'today.'].sort());
+        expect(m!.options.join(' ')).not.toBe('She waters the plants today.');
+        expect(m!.id).toBe(5);
+        expect(m!.skillTag).toBe('vocab:x');
+        expect(m!.sourceContextSpan).toBe('She waters the plants today.');
+    });
+
+    test('returns null when span is missing', () => {
+        expect(toBuildMonster({ ...base, sourceContextSpan: undefined })).toBeNull();
+    });
+
+    test('returns null when span is too short (<4 words)', () => {
+        expect(toBuildMonster({ ...base, sourceContextSpan: 'She runs.' })).toBeNull();
+    });
+
+    test('returns null for the sanitized_fallback placeholder span', () => {
+        expect(toBuildMonster({ ...base, sourceContextSpan: 'sanitized_fallback' })).toBeNull();
     });
 });
