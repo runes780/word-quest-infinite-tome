@@ -7,6 +7,7 @@ import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
 import { VoiceInput } from '@/components/VoiceInput';
 import { ListenQuestion } from '@/components/ListenQuestion';
+import { BuildQuestion } from '@/components/BuildQuestion';
 import { inferVerbFromMode } from '@/lib/data/questionTemplates';
 import type { Monster, Verb } from '@/store/gameStore';
 import type { translations } from '@/lib/translations';
@@ -157,7 +158,13 @@ export function BattleQuestionPanel({
                     )}
                 </AnimatePresence>
 
-                {verb === 'listen' ? (
+                {verb === 'build' ? (
+                    <BuildQuestion
+                        question={currentQuestion}
+                        onAnswer={onTypingAnswer}
+                        disabled={showResult}
+                    />
+                ) : verb === 'listen' ? (
                     <ListenQuestion
                         question={currentQuestion}
                         selectedOption={selectedOption}
