@@ -1,4 +1,4 @@
-import { computeUnlockedVerbs, newlyUnlockedVerbs, BASE_VERBS, VERB_UNLOCK_MILESTONES, applyUnlockedVerbs } from './verbProgression';
+import { computeUnlockedVerbs, newlyUnlockedVerbs, BASE_VERBS, VERB_UNLOCK_MILESTONES, applyUnlockedVerbs, applyBuildVerb } from './verbProgression';
 import type { Monster } from '@/store/gameStore';
 
 function choiceMonster(id: number): Monster {
@@ -75,5 +75,47 @@ describe('applyUnlockedVerbs', () => {
         const out = applyUnlockedVerbs([typing], ['recognize', 'recall', 'listen']);
         expect(out[0].questionMode).toBe('typing');
         expect(out[0].verb === 'listen').toBe(false);
+    });
+});
+
+describe('applyBuildVerb', () => {
+    function withSpan(id: number, span: string): Monster {
+        return {
+            id, type: 'vocab', question: 'q', options: ['a', 'b', 'c', 'd'],
+            correct_index: 0, explanation: '', skillTag: 'x', difficulty: 'easy',
+            questionMode: 'choice', correctAnswer: 'a', sourceContextSpan: span,
+        };
+    }
+
+    test('does nothing when build is not unlocked', () => {
+        const qs = [withSpan(0, 'She waters the plants today.')];
+        const out = applyBuildVerb(qs, ['recognize', 'recall', 'listen']);
+        expect(out[0].verb === 'build').toBe(false);
+    });
+
+    test('converts a subset to build when build is unlocked', () => {
+        const qs = [
+            withSpan(0, 'She waters the plants today.'),
+            withSpan(1, 'He walks to school in the rain.'),
+            withSpan(2, 'The tomatoes are red and ready.'),
+        ];
+        const out = applyBuildVerb(qs, ['recognize', 'recall', 'listen', 'build']);
+        const buildCount = out.filter((q) => q.verb === 'build').length;
+        expect(buildCount).toBeGreaterThan(0);
+        expect(buildCount).toBeLessThan(qs.length);
+        expect(applyBuildVerb(qs, ['recognize', 'recall', 'listen', 'build']).map((q) => q.verb))
+            .toEqual(out.map((q) => q.verb));
+    });
+
+    test('skips questions already turned into listen', () => {
+        const listenQ: Monster = { ...withSpan(0, 'She waters the plants today.'), verb: 'listen' };
+        const out = applyBuildVerb([listenQ], ['recognize', 'recall', 'listen', 'build']);
+        expect(out[0].verb).toBe('listen');
+    });
+
+    test('leaves questions with unusable spans untouched', () => {
+        const qs = [withSpan(0, 'sanitized_fallback')];
+        const out = applyBuildVerb(qs, ['recognize', 'recall', 'listen', 'build']);
+        expect(out[0].verb === 'build').toBe(false);
     });
 });

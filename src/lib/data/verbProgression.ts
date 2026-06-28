@@ -1,4 +1,5 @@
 import type { Verb, Monster } from '@/store/gameStore';
+import { toBuildMonster } from './questionTemplates';
 
 /** 玩家开局即拥有的动词。 */
 export const BASE_VERBS: Verb[] = ['recognize', 'recall'];
@@ -10,6 +11,7 @@ export const BASE_VERBS: Verb[] = ['recognize', 'recall'];
  */
 export const VERB_UNLOCK_MILESTONES: Array<{ level: number; verb: Verb }> = [
     { level: 3, verb: 'listen' },
+    { level: 5, verb: 'build' },
 ];
 
 /**
@@ -41,5 +43,19 @@ export function applyUnlockedVerbs<T extends Monster>(questions: T[], unlockedVe
             return { ...q, verb: 'listen' as Verb };
         }
         return q;
+    });
+}
+
+/**
+ * 对已解锁 build 的玩家，把一部分题（有可用 sourceContextSpan、且未被翻成 listen）
+ * 改造成 build（词序造句）题。确定性（按数组下标选子集）。未解锁 build 或无可用题则原样返回。
+ */
+export function applyBuildVerb<T extends Monster>(questions: T[], unlockedVerbs: Verb[]): T[] {
+    if (!unlockedVerbs.includes('build')) return questions;
+    return questions.map((q, i) => {
+        if (q.verb === 'listen') return q;          // don't override listen
+        if (i % 3 !== 0) return q;                   // deterministic subset (~1/3)
+        const built = toBuildMonster(q);
+        return built ?? q;
     });
 }
