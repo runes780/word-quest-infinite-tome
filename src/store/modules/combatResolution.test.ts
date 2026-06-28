@@ -47,7 +47,7 @@ describe('combatResolution', () => {
         expect(outcome.damageDealt).toBe(3);
         expect(outcome.nextMonsterHp).toBe(0);
         expect(outcome.nextBossShieldProgress).toBe(0);
-        expect(outcome.scoreGain).toBe(20);
+        expect(outcome.scoreGain).toBe(25); // 10 base + 5 critical + 5 superEffective + 5 lucky (0.9 > 0.85)
     });
 
     it('resolves boss shield accumulation and break', () => {
@@ -95,5 +95,44 @@ describe('combatResolution', () => {
         expect(outcome.nextGold).toBe(6);
         expect(outcome.nextXp).toBe(7);
         expect(outcome.nextBossShieldProgress).toBe(0);
+    });
+
+    describe('resolveCorrectCombat — lucky', () => {
+        const baseInput = {
+            playerStats: { level: 1, xp: 0, maxXp: 100, streak: 0, gold: 0 },
+            currentMonsterHp: 5,
+            bossShieldProgress: 0,
+            isBoss: false,
+            damageMultiplier: 1,
+            bossComboThreshold: 2,
+        };
+
+        test('isLucky is true when randomFn > 0.85', () => {
+            const out = resolveCorrectCombat({ ...baseInput, randomFn: () => 0.9 });
+            expect(out.isLucky).toBe(true);
+        });
+
+        test('isLucky is false when randomFn <= 0.85', () => {
+            const out = resolveCorrectCombat({ ...baseInput, randomFn: () => 0.5 });
+            expect(out.isLucky).toBe(false);
+        });
+
+        test('lucky grants a score bonus', () => {
+            const lucky = resolveCorrectCombat({ ...baseInput, randomFn: () => 0.9 });
+            const normal = resolveCorrectCombat({ ...baseInput, randomFn: () => 0.5 });
+            expect(lucky.scoreGain).toBeGreaterThan(normal.scoreGain);
+        });
+
+        test('lucky does not change damage (reward bonus, not a damage event)', () => {
+            // Compare 0.9 (lucky + superEffective) vs 0.82 (not-lucky + superEffective)
+            // Both have superEffective so both do +1 damage, proving lucky doesn't affect damage
+            const lucky = resolveCorrectCombat({ ...baseInput, randomFn: () => 0.9 });
+            const notLucky = resolveCorrectCombat({ ...baseInput, randomFn: () => 0.82 });
+            expect(lucky.damageDealt).toBe(notLucky.damageDealt); // Both: 1 base + 1 superEffective = 2
+            expect(lucky.isLucky).toBe(true);
+            expect(notLucky.isLucky).toBe(false);
+            expect(lucky.isSuperEffective).toBe(true);
+            expect(notLucky.isSuperEffective).toBe(true);
+        });
     });
 });

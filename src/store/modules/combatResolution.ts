@@ -31,6 +31,7 @@ export interface CorrectCombatOutcome {
     damageDealt: number;
     isCritical: boolean;
     isSuperEffective: boolean;
+    isLucky: boolean;
     nextBossShieldProgress: number;
     nextMonsterHp: number;
     scoreGain: number;
@@ -104,6 +105,7 @@ export function resolveCorrectCombat(input: ResolveCorrectCombatInput): CorrectC
     } = input;
     const isCritical = playerStats.streak >= 2;
     const isSuperEffective = randomFn() > 0.8;
+    const isLucky = randomFn() > 0.85; // ~15% chance — variable reward (Octalysis Unpredictability)
 
     let damageDealt = 0;
     let nextBossShieldProgress = bossShieldProgress;
@@ -128,9 +130,10 @@ export function resolveCorrectCombat(input: ResolveCorrectCombatInput): CorrectC
         damageDealt,
         isCritical,
         isSuperEffective,
+        isLucky,
         nextBossShieldProgress,
         nextMonsterHp,
-        scoreGain: 10 + (isCritical ? 5 : 0) + (isSuperEffective ? 5 : 0)
+        scoreGain: 10 + (isCritical ? 5 : 0) + (isSuperEffective ? 5 : 0) + (isLucky ? 5 : 0)
     };
 }
 
