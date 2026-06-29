@@ -264,3 +264,37 @@
 - 周节奏：每周一冻结目标、周三中检、周五验收
 - 文档约定：路线图更新在 `ROADMAP.md`，执行项在 `TODO.md`
 - 变更原则：任何功能上线前必须有验收指标与回归测试
+
+---
+
+## 6. 动词-成长解锁树（Verb-Progression 重构，2026-06 起）
+
+### 背景
+用户反馈：玩法单一、缺乏升级等游戏化、出题质量与灵活度不够。根因（理论诊断，见 `docs/superpowers/specs/2026-06-26-verb-progression-design.md`）：系统在“后台”扎实（FSRS / 掌握度 / AI 管线 / 经济），但“前台”单薄——核心动词同构（每题都汇流到 `answerQuestion(index)`）、空心升级（`level++` 只加数值）、题型仅 3 种。后台的 Octalysis 白帽核心（成就质变、未知、探索、拥有）未被点亮。
+
+### 设计原则
+- 把认知 `verb`（recognize / recall / listen / build / match / correct / apply）从渲染格式 `questionMode` 里拆出来，正交二维（动词 × 格式）。
+- 升级解锁新动词（质变成长，SDT-Competence / MDA-Narrative），不是数值被动。
+- 确定性模板承载新动词：planner 决定“测什么”，模板决定“怎么拼”（零幻觉，且是减少 fallback 的真正杠杆）。
+
+### 阶段（每阶段一份 spec + plan，位于 `docs/superpowers/`）
+| 阶段 | 主题 | 状态 |
+| --- | --- | --- |
+| P1 | 确定性出题模板 + 模板优先安全网（被拒题换成扎根玩家材料的题，而非预制句） | ✅ 已交付 |
+| P2 | listen 动词（听音辨词）+ 升级解锁机制（globalLevel 3 解锁）+ 解锁 toast | ✅ 已交付 |
+| P2b | build 动词（词序造句）解锁于 globalLevel 5 | ✅ 已交付 |
+| P4a | 动词典籍（Verb Codex）——成长可视化面板（等级 + 解锁树 + 下一目标） | ✅ 已交付 |
+| P4b | Lucky 可变奖励（≈15% 触发 ×1.5 XP/金币，点亮 Unpredictability） | ✅ 已交付 |
+| P3 | match / correct / apply 深层动词（需 planner 产出 confusables / synonyms，schema 已预留） | ⏳ 待启动 |
+| P4 剩余 | Boss 稀有掉落、章节叙事皮肤 | ⏳ 待启动 |
+
+### 玩家体验
+globalLevel 1–2（识别 / 拼写）→ 3 级解锁 listen 🔓 → 5 级解锁 build 🔓；随时打开“动词典籍”查看成长地图与下一目标；答题中偶尔 🍀 Lucky 翻倍奖励。后台 FSRS / 掌握度 / AI 管线原样保留。
+
+### 验收与质量
+- 每阶段均以「subagent 实现 + spec 评审 + 代码质量评审 + 全量回归 + 构建」收尾；全量测试与 `npm run build` 类型检查均通过。
+- 评审闸口多次抓到关键 bug（安全网漏 fallback、id 与数组位置错位、泛型类型错等——其中类型错 Jest 未抓到、由 build 抓到），证明流程有效。
+
+### 关联文档
+- 设计 spec：`docs/superpowers/specs/2026-06-26-verb-progression-design.md`
+- 各阶段 plan：`docs/superpowers/plans/2026-06-27-verb-progression-p1-templates.md`、`2026-06-27-verb-progression-p2-listen-unlock.md`、`2026-06-28-verb-progression-p2b-build.md`、`2026-06-28-verb-progression-p4-codex.md`、`2026-06-28-verb-progression-p4b-lucky.md`

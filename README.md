@@ -156,6 +156,7 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 ├── src/store/                  # Zustand game/settings stores and domain modules
 ├── src/e2e/                    # Learning main-flow regression test
 ├── docs/assets/                # README visuals and screenshots
+├── docs/superpowers/           # Design specs + implementation plans (per-phase workflow)
 ├── ROADMAP.md                  # Product and engineering roadmap
 └── TODO.md                     # Execution checklist
 ```
@@ -183,6 +184,8 @@ When updating learning data logic:
 - Prefer small pure helpers for scheduling, mastery, rewards, and consistency checks.
 - Re-run `npm test` and `npm run build`.
 
+For non-trivial features, this project uses a **spec → plan → implement** workflow: write a design spec in [`docs/superpowers/specs/`](docs/superpowers/specs), an implementation plan in [`docs/superpowers/plans/`](docs/superpowers/plans), then implement task-by-task with tests and review. Existing specs/plans there (for example, the verb-progression redesign) are reference examples.
+
 ## Roadmap
 
 The detailed roadmap lives in [ROADMAP.md](ROADMAP.md). Current public-facing priorities are:
@@ -191,6 +194,7 @@ The detailed roadmap lives in [ROADMAP.md](ROADMAP.md). Current public-facing pr
 - **Learning Questline:** evolve daily challenges and weekly tasks into clearer learning questlines with evidence and goal-based rewards.
 - **Guardian Intelligence:** make dashboard recommendations more actionable, evidence-backed, and measurable through accepted/completed study actions.
 - **Foundation for Scale:** keep splitting large UI/store modules, strengthen E2E coverage, improve local data consistency checks, and prepare clean seams for future account or sync features.
+- **Verb-Progression redesign:** split cognitive verbs (recognize / recall / listen / build / …) from render format, make leveling unlock new verbs, and carry new verbs via deterministic templates. `listen`, `build`, the unlock system, a Verb Codex growth panel, and Lucky variable rewards are delivered; `match` / `correct` / `apply` remain. See [ROADMAP.md §6](ROADMAP.md).
 
 ## Responsible AI and Safety
 
