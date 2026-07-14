@@ -1,0 +1,160 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { SkillMasteryRecord } from '@/db/db';
+import type { GameState, Monster } from '@/store/gameStore';
+import type { Language } from '@/store/settingsStore';
+import {
+    formatBattleResultExplanation,
+    resolveVoiceAnswerIndex,
+    shouldAutoOpenMentor
+} from './battleInterfaceLogic';
+
+type AnswerResult = ReturnType<GameState['answerQuestion']>;
+
+interface BattleAnswerFlowOptions {
+    currentQuestion?: Monster;
+    language: Language;
+    health: number;
+    masteryBySkill: Record<string, SkillMasteryRecord>;
+    reviewRiskBySkill: Record<string, number>;
+    recentMistakeBySkill: Record<string, number>;
+    answerQuestion: GameState['answerQuestion'];
+    recordHintUsed: GameState['recordHintUsed'];
+    onAnswerRecorded: () => void;
+    markWrongFeedback: () => void;
+    triggerCorrectFeedback: (result: AnswerResult) => void;
+}
+
+export function useBattleAnswerFlow({
+    currentQuestion,
+    language,
+    health,
+    masteryBySkill,
+    reviewRiskBySkill,
+    recentMistakeBySkill,
+    answerQuestion,
+    recordHintUsed,
+    onAnswerRecorded,
+    markWrongFeedback,
+    triggerCorrectFeedback
+}: BattleAnswerFlowOptions) {
+    const [selectedOption, setSelectedOption] = useState<number | null>(null);
+    const [showResult, setShowResult] = useState(false);
+    const [resultMessage, setResultMessage] = useState('');
+    const [isCorrect, setIsCorrect] = useState(false);
+    const [showMentor, setShowMentor] = useState(false);
+    const [wrongAnswerText, setWrongAnswerText] = useState('');
+    const [showHint, setShowHint] = useState(false);
+    const consecutiveWrong = useRef(0);
+    const mentorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => () => {
+        if (mentorTimer.current) clearTimeout(mentorTimer.current);
+    }, []);
+
+    const markWrongAndMaybeMentor = useCallback((wrongText: string) => {
+        setWrongAnswerText(wrongText);
+        markWrongFeedback();
+        consecutiveWrong.current += 1;
+
+        if (!currentQuestion) return;
+        const skillTag = currentQuestion.skillTag;
+        const shouldOpen = shouldAutoOpenMentor({
+            nextWrongCount: consecutiveWrong.current,
+            health,
+            difficulty: currentQuestion.difficulty,
+            masteryState: masteryBySkill[skillTag]?.state,
+            reviewRisk: reviewRiskBySkill[skillTag] || 0,
+            repeatedMistakes: recentMistakeBySkill[skillTag] || 0
+        });
+
+        if (shouldOpen) {
+            if (mentorTimer.current) clearTimeout(mentorTimer.current);
+            mentorTimer.current = setTimeout(() => {
+                setShowMentor(true);
+                mentorTimer.current = null;
+            }, 1500);
+        }
+    }, [
+        currentQuestion,
+        health,
+        markWrongFeedback,
+        masteryBySkill,
+        recentMistakeBySkill,
+        reviewRiskBySkill
+    ]);
+
+    const recordResult = useCallback((result: AnswerResult, correct: boolean, wrongText: string) => {
+        setIsCorrect(correct);
+        setShowResult(true);
+        setResultMessage(formatBattleResultExplanation(result, language));
+        onAnswerRecorded();
+
+        if (correct) {
+            triggerCorrectFeedback(result);
+            consecutiveWrong.current = 0;
+        } else {
+            markWrongAndMaybeMentor(wrongText);
+        }
+    }, [language, markWrongAndMaybeMentor, onAnswerRecorded, triggerCorrectFeedback]);
+
+    const handleOptionClick = useCallback((index: number) => {
+        if (!currentQuestion || showResult) return;
+
+        setSelectedOption(index);
+        const result = answerQuestion(index);
+        recordResult(result, result.correct, currentQuestion.options[index] || '');
+    }, [answerQuestion, currentQuestion, recordResult, showResult]);
+
+    const handleTextQuestionAnswer = useCallback((correct: boolean, input: string) => {
+        if (!currentQuestion) return;
+
+        const answerIndex = correct ? currentQuestion.correct_index : -1;
+        setSelectedOption(answerIndex);
+        const result = answerQuestion(answerIndex, { userResponse: input });
+        recordResult(result, correct, input);
+    }, [answerQuestion, currentQuestion, recordResult]);
+
+    const handleVoiceAnswer = useCallback((correct: boolean, spokenText: string) => {
+        if (!currentQuestion) return;
+
+        const answerIndex = resolveVoiceAnswerIndex({
+            options: currentQuestion.options,
+            correctIndex: currentQuestion.correct_index,
+            correct,
+            spokenText
+        });
+        setSelectedOption(answerIndex);
+        const result = answerQuestion(answerIndex, { userResponse: spokenText });
+        recordResult(result, correct, spokenText);
+    }, [answerQuestion, currentQuestion, recordResult]);
+
+    const toggleHint = useCallback(() => {
+        if (!showHint) recordHintUsed();
+        setShowHint((visible) => !visible);
+    }, [recordHintUsed, showHint]);
+
+    const resetAnswerState = useCallback(() => {
+        setSelectedOption(null);
+        setShowResult(false);
+        setShowHint(false);
+    }, []);
+
+    return {
+        selectedOption,
+        showResult,
+        resultMessage,
+        isCorrect,
+        showMentor,
+        setShowMentor,
+        wrongAnswerText,
+        showHint,
+        handleOptionClick,
+        handleTextQuestionAnswer,
+        handleVoiceAnswer,
+        toggleHint,
+        resetAnswerState
+    };
+}
+
