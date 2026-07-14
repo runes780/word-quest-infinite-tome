@@ -22,6 +22,22 @@ describe('settings store defaults', () => {
         expect(state.model).toBe('deepseek-v4-flash');
     });
 
+    test('clears the previous provider credential when switching to OpenAI', () => {
+        useSettingsStore.setState({
+            apiKey: 'synthetic-deepseek-key',
+            apiProvider: 'deepseek',
+            model: 'deepseek-v4-flash'
+        });
+
+        useSettingsStore.getState().setApiProvider('openai');
+
+        expect(useSettingsStore.getState()).toEqual(expect.objectContaining({
+            apiKey: '',
+            apiProvider: 'openai',
+            model: 'gpt-5.6-luna'
+        }));
+    });
+
     test('migrates older settings without a provider to official DeepSeek', () => {
         const migrate = useSettingsStore.persist.getOptions().migrate;
         expect(typeof migrate).toBe('function');

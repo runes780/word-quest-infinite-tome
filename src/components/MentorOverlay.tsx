@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, Zap, ArrowRight, X } from 'lucide-react';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
+import { createAIClient } from '@/lib/ai/providerClient';
 import { MENTOR_SYSTEM_PROMPT, generateMentorPrompt } from '@/lib/ai/prompts';
 import { useSettingsStore } from '@/store/settingsStore';
 import { Monster, useGameStore } from '@/store/gameStore';
@@ -135,7 +135,7 @@ export function MentorOverlay({ isOpen, onClose, question, wrongAnswer, onReveng
             }
 
             try {
-                const client = new OpenRouterClient(apiKey, model, apiProvider);
+                const client = createAIClient({ apiKey, model, provider: apiProvider });
                 const prompt = generateMentorPrompt(
                     question.question,
                     wrongAnswer,

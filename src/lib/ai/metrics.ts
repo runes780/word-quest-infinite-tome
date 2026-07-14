@@ -1,6 +1,6 @@
 import type { AIProvider } from './modelOptions';
 
-export interface OpenRouterMetricInput {
+export interface AIProviderMetricInput {
     provider: AIProvider;
     model: string;
     isFreeModel: boolean;
@@ -14,7 +14,7 @@ export interface OpenRouterMetricInput {
     timestamp?: number;
 }
 
-export async function logOpenRouterMetric(input: OpenRouterMetricInput): Promise<void> {
+export async function logAIProviderMetric(input: AIProviderMetricInput): Promise<void> {
     if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return;
     try {
         const { logAIRequestMetric } = await import('@/db/db');
@@ -32,6 +32,9 @@ export async function logOpenRouterMetric(input: OpenRouterMetricInput): Promise
             timestamp: input.timestamp
         });
     } catch (error) {
-        console.error('logOpenRouterMetric error', error);
+        console.error('logAIProviderMetric error', error);
     }
 }
+
+// Backwards-compatible name for the existing chat-completions client and tests.
+export const logOpenRouterMetric = logAIProviderMetric;

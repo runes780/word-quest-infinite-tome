@@ -68,6 +68,7 @@ export const useSettingsStore = create<SettingsState>()(
             setApiKey: (apiKey) => set({ apiKey }),
             setApiProvider: (apiProvider) => set((state) => ({
                 apiProvider,
+                apiKey: apiProvider === state.apiProvider ? state.apiKey : '',
                 model: isModelAvailableForProvider(apiProvider, state.model)
                     ? state.model
                     : getDefaultModelForProvider(apiProvider)

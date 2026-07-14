@@ -1,5 +1,5 @@
 import type { AIProvider } from './modelOptions';
-import { OpenRouterClient } from './openrouter';
+import { createAIClient, type AITextClient } from './providerClient';
 import { analyzeMaterialProfile } from './materialProfile';
 import type { MaterialProfile } from './materialProfile';
 import {
@@ -23,9 +23,7 @@ import { fallbackToMonster, getBalancedFallbackQuestions } from '@/lib/data/fall
 import type { Monster } from '@/store/gameStore';
 
 /** Minimal LLM interface so tests can inject a fake client. */
-export interface LlmClient {
-    generate(prompt: string, systemPrompt?: string): Promise<string>;
-}
+export type LlmClient = AITextClient;
 
 export interface QuestionPipelineOptions {
     /** Provide `client` (test/fake) OR apiKey+model+provider (production). */
@@ -179,10 +177,11 @@ export async function generateQuestionPack(
     text: string,
     opts: QuestionPipelineOptions
 ): Promise<QuestionPipelineResult> {
+    const provider = opts.apiProvider ?? 'openrouter';
     const mainClient: LlmClient = opts.client
-        ?? new OpenRouterClient(opts.apiKey as string, opts.model as string, opts.apiProvider);
+        ?? createAIClient({ apiKey: opts.apiKey as string, model: opts.model as string, provider });
     const criticClient: LlmClient = opts.client
-        ?? new OpenRouterClient(opts.apiKey as string, opts.criticModel ?? (opts.model as string), opts.apiProvider);
+        ?? createAIClient({ apiKey: opts.apiKey as string, model: opts.criticModel ?? (opts.model as string), provider });
 
     const profile = analyzeMaterialProfile(text);
 

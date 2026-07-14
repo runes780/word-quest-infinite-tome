@@ -113,6 +113,7 @@
 - [x] `gameStore` 第三阶段拆分：抽离 `sessionRecovery`（存档保存/恢复/清理）
 - [x] `gameStore` 第四阶段拆分：抽离 `combatResolution`（答题战斗结算纯逻辑）
 - [x] `gameStore` 按领域拆分（learning/combat/economy 状态与领域内动作；跨域流程保留编排层）
+- [x] 建立统一 AI Provider 适配接口，并增加 OpenAI Responses API 维护者实验选项（`store=false`、合成请求测试、本地回退）
 - [ ] `BattleInterface` 拆分子模块
 - [x] 建立学习主流程浏览器 E2E（provider fallback -> mission -> battle -> report -> persistence -> srs）
 - [x] 增加数据一致性巡检（events/profile/dashboard）

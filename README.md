@@ -52,17 +52,17 @@ These materials are intended to make maintenance work visible without claiming a
 | Learning Events | Implemented | Battle, SRS, and daily challenge flows log answer, hint, and session events into IndexedDB for analytics and task progress. |
 | Daily Challenges / Questline | Partially implemented | Daily challenges and weekly learning tasks exist. Richer questline design remains on the roadmap. |
 | Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard shows learning history, weak skills, due FSRS cards, study-plan actions, repeated-cause evidence, engagement metrics, data consistency, API health, and session recovery status. |
-| AI-assisted question generation | Implemented, optional | A plan → generate → critique pipeline applies lexical grounding, source-span checks, answer-integrity and age-appropriateness gates, bounded repair, and safe local fallback packs. |
+| AI-assisted question generation | Implemented, optional | A provider-neutral adapter supports DeepSeek, OpenRouter, and OpenAI maintainer experiments. The plan → generate → critique pipeline applies lexical grounding, source-span checks, answer-integrity and age-appropriateness gates, bounded repair, and safe local fallback packs. |
 | Browser E2E | Implemented in CI | Playwright covers provider failure → fallback mission → six-question battle → report evidence → IndexedDB persistence → SRS dashboard. |
 | Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented yet. |
-| API stability monitoring | Implemented locally | OpenRouter request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
+| API stability monitoring | Implemented locally | Provider request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
 
 ## Architecture Overview
 
 ```mermaid
 flowchart TD
     Learner["Learner interaction"] --> Input["InputSection: study text, samples, settings"]
-    Input --> AI["AI service layer: OpenRouter client"]
+    Input --> AI["AI service layer: provider-neutral adapter"]
     AI --> Planner["Question planner"]
     Planner --> Generator["Plan-bound generator"]
     Generator --> Critic["Critic + deterministic quality gate"]
@@ -132,7 +132,7 @@ Prerequisites:
 
 - Node.js 20 or newer
 - npm
-- Optional: an OpenRouter API key for AI-generated missions
+- Optional: a DeepSeek, OpenRouter, or OpenAI API key for AI-generated missions
 
 Install dependencies:
 
@@ -157,7 +157,7 @@ npm run build
 npm run test:e2e
 ```
 
-AI-generated missions require a local API key entered through the app settings. Do not commit API keys, real student data, or identifiable child information.
+AI-generated missions require a local API key entered through the app settings. OpenAI support is intended for maintainer experiments and uses the Responses API with `store: false`; the browser still sends the key directly, so use a restricted development key rather than a production or classroom credential. Do not commit API keys, real student data, or identifiable child information.
 
 This project keeps `"private": true` in `package.json` because it is a Next.js application, not an npm package intended for publication. The GitHub repository itself is open source under the MIT License.
 
@@ -169,7 +169,7 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 ├── src/components/             # Learning UI: battle, SRS, daily challenge, reports, dashboard
 ├── src/components/battle/      # Battle scene, HUD, question panel, endless-wave hook
 ├── src/db/                     # Dexie/IndexedDB schema, FSRS, learning events, mastery, metrics
-├── src/lib/ai/                 # OpenRouter client, prompts, AI request metric logging
+├── src/lib/ai/                 # Provider adapters, prompts, AI request metric logging
 ├── src/lib/data/               # Mission sanitizing, history, mistakes, study plans, consistency checks
 ├── src/store/                  # Zustand game/settings stores and domain modules
 ├── src/store/slices/           # Learning, combat, and economy state/action boundaries

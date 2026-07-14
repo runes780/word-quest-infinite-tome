@@ -182,7 +182,7 @@ const landingCopy = {
     techStack: {
       eyebrow: 'Technology',
       title: 'Built With',
-      note: 'Frontend-only, local-first architecture. All learning state persists in the browser. Optional AI generation via OpenRouter with a locally-entered API key.',
+      note: 'Frontend-only, local-first architecture. All learning state persists in the browser. Optional AI generation uses a provider-neutral DeepSeek, OpenRouter, or OpenAI adapter with a locally-entered API key.',
     },
     maintainer: {
       eyebrow: 'Behind the Project',
@@ -385,7 +385,7 @@ const landingCopy = {
     techStack: {
       eyebrow: '技术栈',
       title: 'Built With',
-      note: '前端单体、本地优先架构。所有学习状态都保存在浏览器中。AI 生成通过 OpenRouter 可选接入，API Key 由用户本地输入。',
+      note: '前端单体、本地优先架构。所有学习状态都保存在浏览器中。AI 生成可通过统一适配层选择 DeepSeek、OpenRouter 或 OpenAI，API Key 由用户本地输入。',
     },
     maintainer: {
       eyebrow: '项目背后',

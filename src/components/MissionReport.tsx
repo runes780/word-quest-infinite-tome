@@ -2,7 +2,7 @@
 
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
+import { createAIClient } from '@/lib/ai/providerClient';
 import { buildReportSystemPrompt, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
 import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
@@ -123,7 +123,7 @@ export function MissionReport() {
         setIsLoading(true);
         setAnalysisError(null);
         try {
-            const client = new OpenRouterClient(apiKey, model, apiProvider);
+            const client = createAIClient({ apiKey, model, provider: apiProvider });
             const prompt = generateReportPrompt(score, questions.length, userAnswers);
             const jsonStr = await client.generate(prompt, buildReportSystemPrompt(language));
             const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();

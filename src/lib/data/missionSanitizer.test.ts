@@ -323,11 +323,11 @@ describe('normalizeMissionMonsters', () => {
                 id: 5,
                 type: 'vocab',
                 question: 'Which API provider is used?',
-                options: ['DeepSeek', 'OpenRouter', 'Gemini', 'Claude'],
+                options: ['OpenAI', 'OpenRouter', 'Gemini', 'Claude'],
                 correct_index: 0,
                 questionMode: 'choice',
-                correctAnswer: 'DeepSeek',
-                explanation: 'DeepSeek is the selected provider.',
+                correctAnswer: 'OpenAI',
+                explanation: 'OpenAI is the selected provider.',
                 hint: 'It is in settings.',
                 skillTag: 'api_provider'
             }

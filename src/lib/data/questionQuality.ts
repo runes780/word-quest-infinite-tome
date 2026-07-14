@@ -44,7 +44,7 @@ const CJK_REGEX = /[㐀-鿿]/;
 const PLACEHOLDER_OPTION_REGEX = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|option\s+\d+|choice\s+\d+|\d+)$/i;
 const GENERIC_SOURCE_SPAN_REGEX = /^(?:mission|daily_plan|srs|battle|revenge|diagnostic|immediate_repair|sanitized_fallback|boss_gate_(?:recognition|application|transfer))$/i;
 const INTERNAL_FIELD_REGEX = /\b(?:questionMode|skillTag|correct_index|correctIndex|correctAnswer|sourceContextSpan|learningObjectiveId|supportLevel|attemptKind|apiProvider|apiKey|contextHash|level_title)\b/i;
-const META_CONTENT_REGEX = /\b(?:api\s+(?:key|provider)|api\s+provider|model\s+name|openrouter|deepseek|gemini|claude|guardian\s+dashboard|system\s+status|json\s+schema|field\s+name)\b/i;
+const META_CONTENT_REGEX = /\b(?:api\s+(?:key|provider)|api\s+provider|model\s+name|openai|openrouter|deepseek|gemini|claude|guardian\s+dashboard|system\s+status|json\s+schema|field\s+name)\b/i;
 const UNSUITABLE_CONTENT_REGEX = /(?:\bkill\s+(?:yourself|himself|herself|themself|themselves)\b|\bsuicide\s+(?:method|instruction|plan)\b|\bexplicit\s+sexual\b|\b(?:buy|sell|use)\s+illegal\s+drugs?\b|\bgraphic\s+(?:violence|injury|gore)\b)/i;
 
 const READING_SKILL_SIGNALS: Record<PlanReadingSkill, RegExp> = {
