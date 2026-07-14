@@ -207,6 +207,8 @@ describe('plan / generate / critic prompts', () => {
         });
         expect(prompt).toContain('waters');
         expect(prompt).toContain('cloze');
+        expect(prompt).toContain('"id": 1');
+        expect(prompt).not.toContain('"index":');
     });
 
     test('CRITIC_SYSTEM_PROMPT lists the three axes', () => {

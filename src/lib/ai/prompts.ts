@@ -368,7 +368,7 @@ per plan item, following each item exactly. The plan is authoritative — do not
 
 # Output (strict JSON only)
 { "level_title": string, "monsters": [ {
-  "id": number (match the plan item index),
+  "id": number (match the plan item id),
   "type": "vocab" | "grammar" | "reading" (match item.domain),
   "skillTag": string,
   "difficulty": "easy" | "medium" | "hard" (match item.difficulty),
@@ -414,7 +414,7 @@ ${allowed.join(', ')}
 
 export function generateLevelFromPlanPrompt(plan: QuestionPlan): string {
     const items = plan.items.map((item: QuestionPlanItem, index: number) => ({
-        index,
+        id: index + 1,
         role: item.role,
         domain: item.domain,
         learningObjectiveId: item.learningObjectiveId,

@@ -51,12 +51,123 @@ describe('generateQuestionPack', () => {
         expect(result.monsters.length).toBeGreaterThanOrEqual(5);
     });
 
-    test('degrades when planner returns null', async () => {
+    test('uses the legacy single-stage path when the planner returns null', async () => {
         const client = makeClient({ plan: null });
         const result = await generateQuestionPack('she waters the plants.', {
             client, criticEnabled: false, material: 'she waters the plants.'
         });
-        expect(result.degradedPath).toBe('planner_failed');
+        expect(result.degradedPath).toBe('legacy_single_stage');
+        expect(result.monsters).toHaveLength(6);
+    });
+
+    test('returns a playable fallback pack when planner and legacy generation fail', async () => {
+        const client: LlmClient = {
+            async generate() {
+                throw new Error('provider unavailable');
+            }
+        };
+        const result = await generateQuestionPack('she waters the plants.', {
+            client, criticEnabled: false, material: 'she waters the plants.'
+        });
+        expect(result.degradedPath).toBe('fallback_bank');
+        expect(result.monsters).toHaveLength(6);
+        expect(result.monsters.every((monster) => monster.sourceContextSpan)).toBe(true);
+    });
+
+    test('returns a playable fallback pack when plan-bound generation fails', async () => {
+        const plan = {
+            levelTitle: 'Garden', materialSummary: 'x',
+            vocabularyAllowed: ['water', 'plant', 'she', 'the'],
+            items: Array.from({ length: 6 }, () => ({
+                role: 'cloze', domain: 'grammar', learningObjectiveId: 'present_simple',
+                sourceSpan: 'she waters the plants.', target: 'waters',
+                targetKind: 'grammar_form', allowedWords: ['water', 'plant', 'she'],
+                supportLevel: 2, difficulty: 'easy'
+            }))
+        };
+        let callCount = 0;
+        const client: LlmClient = {
+            async generate() {
+                callCount += 1;
+                if (callCount === 1) return JSON.stringify(plan);
+                throw new Error('generation unavailable');
+            }
+        };
+        const result = await generateQuestionPack('she waters the plants.', {
+            client, criticEnabled: false, material: 'she waters the plants.'
+        });
+        expect(result.degradedPath).toBe('fallback_bank');
+        expect(result.monsters).toHaveLength(6);
+    });
+
+    test('treats a malformed critic payload as an empty report without crashing', async () => {
+        const plan = {
+            levelTitle: 'Garden', materialSummary: 'x',
+            vocabularyAllowed: ['water', 'plant', 'she', 'the'],
+            items: Array.from({ length: 6 }, () => ({
+                role: 'cloze', domain: 'grammar', learningObjectiveId: 'present_simple',
+                sourceSpan: 'she waters the plants.', target: 'waters',
+                targetKind: 'grammar_form', allowedWords: ['water', 'plant', 'she'],
+                supportLevel: 2, difficulty: 'easy'
+            }))
+        };
+        const gen = {
+            level_title: 'Garden',
+            monsters: Array.from({ length: 6 }, (_, index) => ({
+                id: index + 1, type: 'grammar',
+                question: 'Read: "she waters the plants." she ___ the plants.',
+                options: ['waters', 'water', 'watering', 'watered'], correct_index: 0,
+                explanation: 'she waters the plants.', hint: 'use water',
+                skillTag: 'present_simple', difficulty: 'easy', questionMode: 'fill-blank',
+                correctAnswer: 'waters', sourceContextSpan: 'she waters the plants.',
+                learningObjectiveId: 'present_simple', supportLevel: 2, attemptKind: 'practice'
+            }))
+        };
+        const client = makeClient({ plan, gen, critic: { verdicts: 'not-an-array' } });
+        const result = await generateQuestionPack('she waters the plants.', {
+            client, criticEnabled: true, material: 'she waters the plants.'
+        });
+        expect(result.degradedPath).toBe('none');
+        expect(result.criticReport).toEqual({ verdicts: [] });
+        expect(result.monsters).toHaveLength(6);
+    });
+
+    test('replaces a deterministically rejected question even when the critic reports no failures', async () => {
+        const plan = {
+            levelTitle: 'Garden', materialSummary: 'x',
+            vocabularyAllowed: ['water', 'plant', 'she', 'the'],
+            items: Array.from({ length: 6 }, () => ({
+                role: 'recognition', domain: 'grammar', learningObjectiveId: 'present_simple',
+                sourceSpan: 'she waters the plants.', target: 'waters',
+                targetKind: 'grammar_form', allowedWords: ['water', 'plant', 'she'],
+                supportLevel: 2, difficulty: 'easy'
+            }))
+        };
+        const monsters = Array.from({ length: 6 }, (_, index) => ({
+            id: index + 1, type: 'grammar',
+            question: index === 0
+                ? 'Read: "she waters the plants." Which zephyr waters the plants?'
+                : 'Read: "she waters the plants." Who waters the plants?',
+            options: ['she', 'he', 'they', 'we'], correct_index: 0,
+            explanation: 'she waters the plants.', hint: 'read the words',
+            skillTag: 'present_simple', difficulty: 'easy', questionMode: 'choice',
+            correctAnswer: 'she', sourceContextSpan: 'she waters the plants.',
+            learningObjectiveId: 'present_simple', supportLevel: 2, attemptKind: 'practice'
+        }));
+        const client = makeClient({
+            plan,
+            gen: { level_title: 'Garden', monsters },
+            critic: { verdicts: [] }
+        });
+
+        const result = await generateQuestionPack('she waters the plants.', {
+            client, criticEnabled: true, material: 'she waters the plants.'
+        });
+
+        expect(FALLBACK_QUESTIONS.some((fallback) =>
+            fallback.question === result.monsters[0].question
+        )).toBe(true);
+        expect(result.monsters[0].question).not.toContain('zephyr');
     });
 
     test('safety net replaces a critic-rejected, unrepairable question with a fallback', async () => {

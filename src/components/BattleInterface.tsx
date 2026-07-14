@@ -83,6 +83,9 @@ export function BattleInterface() {
 
     const currentQuestion = questions[currentIndex];
     const { isGeneratingMore } = useEndlessWave({
+        // Standard missions are finite and must reach MissionReport. Endless
+        // generation remains available behind an explicit future mode toggle.
+        enabled: false,
         apiKey,
         apiProvider,
         model,
