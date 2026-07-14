@@ -2,6 +2,9 @@
   "name": "word-quest",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24 <27"
+  },
   "description": "An AI-assisted, game-based vocabulary learning system with SRS, mastery analytics, and guardian-facing learning evidence.",
   "license": "MIT",
   "repository": {
@@ -51,7 +54,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20",
+    "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
