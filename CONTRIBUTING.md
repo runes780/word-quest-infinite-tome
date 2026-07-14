@@ -90,6 +90,12 @@ Update the README, roadmap, TODO, or inline documentation when a change affects:
 - Do not send identifiable children, school rosters, private records, or sensitive student data to an AI provider.
 - Keep fallback behavior graceful when API calls fail, time out, or hit rate limits.
 
+See [docs/PRIVACY_AND_AI_SAFETY.md](docs/PRIVACY_AND_AI_SAFETY.md) for the full privacy and AI safety checklist.
+
+## Codex and Agentic Contributions
+
+Agentic coding tools are welcome when they follow the repository rules in [AGENTS.md](AGENTS.md). Codex-specific review, triage, release, and test-expansion prompts are documented in [docs/CODEX_WORKFLOWS.md](docs/CODEX_WORKFLOWS.md).
+
 ## Privacy Rule
 
 No real student private data in issues, PRs, screenshots, fixtures, generated prompts, logs, or example exports.
