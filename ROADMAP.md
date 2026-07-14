@@ -199,6 +199,7 @@
 - 已启动架构拆分第二阶段：`gameStore` 抽离 `economyRewards`（relic 配置、掉落保底、XP/Gold 增益、成长结算）模块。
 - 已启动架构拆分第三阶段：`gameStore` 抽离会话恢复存取到 `sessionRecovery` 模块，主 store 不再内联 localStorage 细节。
 - 已启动架构拆分第四阶段：`gameStore` 抽离答题战斗结算纯逻辑到 `combatResolution` 模块，并补齐模块级单测。
+- 已完成领域 slice 基线：learning、combat、economy 分别拥有领域内状态和动作；跨域答题、结算、恢复流程保留在可审阅的编排层。
 
 ### 目标
 - 为后续账号体系、班级协作、多端同步打好基础。
@@ -281,7 +282,7 @@
 
 ### 下一阶段（按优先级）
 
-1. 完成 `gameStore` learning/combat/economy 领域切片，并以学习事件一致性测试保护行为。
+1. 持续缩小跨域编排层，并以学习事件一致性测试保护 learning/combat/economy slice 之间的行为。
 2. 为 OpenAI 等可选服务商建立统一适配接口；任何新增输入字段先完成隐私数据流审查。
 3. 扩展多材料、多难度的离线评测集，记录各质量轴回归趋势，而不是只比较总分。
 4. 增加报告导出可见的隐私说明和用户确认，继续保持“页面可审阅、导出少披露”。
