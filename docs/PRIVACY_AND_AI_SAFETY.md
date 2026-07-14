@@ -86,6 +86,22 @@ The project uses browser-local persistence such as IndexedDB and localStorage. T
 - report exports and screenshots can reveal learning behavior even without a cloud database
 - schema changes must preserve consistency across learning events, FSRS cards, mastery records, history, dashboard summaries, and reports
 
+### IndexedDB Backup and Restore
+
+The settings panel can export a versioned JSON backup of every current IndexedDB table. This is a disaster-recovery tool, not cloud sync and not a privacy-filtered report.
+
+Backups include full local records such as source-derived question text, answers, mistakes, mentor analysis, FSRS state, learning events, mastery, history, tasks, dashboard events, AI reliability metrics, and practice-plan evidence. They exclude localStorage data, including API keys, provider/model settings, theme, and session-recovery snapshots.
+
+Safety boundaries:
+
+- the file is not encrypted; keep it only in trusted storage and do not attach a real learner backup to public issues, pull requests, chat, or email
+- export requires a visible privacy confirmation and uses a generic date-based filename without learner identity
+- restore validates the format marker, format version, schema version, known/required tables, row shape, file size, and row-count limits before opening a write transaction
+- schema v13 backups are accepted with the v14 `objectiveMastery` and `practicePlanRuns` tables initialized empty; backups from a future schema are rejected
+- restore replaces all IndexedDB tables inside one Dexie transaction, so a write failure rolls back instead of leaving learning evidence partially restored
+- the app must be reloaded after restore before learning continues, preventing stale in-memory state from overwriting restored records
+- any future database table must be added to the backup manifest and compatibility tests in the same change
+
 ## Report Export and Screenshot Rules
 
 - Use synthetic examples for public screenshots and fixtures.
