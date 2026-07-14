@@ -31,6 +31,7 @@ Record the command output summary in the release notes or PR.
 - [ ] The generated-content seven-axis baseline passes on synthetic fixtures.
 - [ ] Fallback behavior is described for API failure, rate limits, malformed output, and empty output.
 - [ ] Report exports and screenshots are reviewed for privacy risk.
+- [ ] Image and print/PDF report exports show the privacy contract and require a fresh acknowledgement.
 
 ## Maintenance Evidence
 
