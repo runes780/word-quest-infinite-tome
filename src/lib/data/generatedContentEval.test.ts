@@ -1,6 +1,14 @@
 import type { Monster } from '@/store/gameStore';
 import { analyzeMaterialProfile } from '@/lib/ai/materialProfile';
-import { evaluateGeneratedContentPack, evaluateGeneratedQuestion } from './generatedContentEval';
+import {
+    evaluateGeneratedContentBenchmark,
+    evaluateGeneratedContentPack,
+    evaluateGeneratedQuestion
+} from './generatedContentEval';
+import {
+    GENERATED_CONTENT_OFFLINE_FIXTURES,
+    GENERATED_CONTENT_OFFLINE_REFERENCE
+} from './generatedContentEvalFixtures';
 
 const SOURCE_SENTENCE = 'Mia saw dark clouds, so she took an umbrella because it might rain.';
 const MATERIAL = `${SOURCE_SENTENCE} It was not lunchtime. She never lost a book. It was not sunny. Dark clouds are a weather clue.`;
@@ -74,5 +82,69 @@ describe('generated content evaluation baseline', () => {
         expect(fullPack.automatedPass).toBe(true);
         expect(fullPack.axisPassRates.safety).toBe(1);
         expect(fullPack.humanReviewRequired).toBe(true);
+    });
+
+    test('matches the multi-material, multi-difficulty offline reference on every axis', () => {
+        const result = evaluateGeneratedContentBenchmark(
+            GENERATED_CONTENT_OFFLINE_FIXTURES,
+            GENERATED_CONTENT_OFFLINE_REFERENCE.axisAgreementRates
+        );
+
+        expect(result.automatedPass).toBe(true);
+        expect(result.caseCount).toBe(GENERATED_CONTENT_OFFLINE_REFERENCE.fixtureCount);
+        expect(result.materialCount).toBe(GENERATED_CONTENT_OFFLINE_REFERENCE.materialCount);
+        expect(result.materialKinds.sort()).toEqual(['informational', 'narrative', 'procedural']);
+        expect(result.mismatches).toEqual([]);
+        expect(result.axisAgreementRates).toEqual(GENERATED_CONTENT_OFFLINE_REFERENCE.axisAgreementRates);
+        expect(Object.values(result.axisTrends).every((trend) => trend.direction === 'stable')).toBe(true);
+        expect(result.difficultyResults.easy.caseCount).toBeGreaterThan(0);
+        expect(result.difficultyResults.medium.caseCount).toBeGreaterThan(0);
+        expect(result.difficultyResults.hard.caseCount).toBeGreaterThan(0);
+        expect(GENERATED_CONTENT_OFFLINE_FIXTURES
+            .filter((fixture) => fixture.id.endsWith('-pass'))
+            .every((fixture) => fixture.context.maxDifficulty === fixture.difficulty)).toBe(true);
+        expect(new Set(GENERATED_CONTENT_OFFLINE_FIXTURES.flatMap((fixture) =>
+            Object.entries(fixture.expectedAxes)
+                .filter(([, expected]) => !expected)
+                .map(([axis]) => axis)
+        ))).toEqual(new Set([
+            'structure',
+            'answerIntegrity',
+            'grounding',
+            'distractors',
+            'support',
+            'difficulty',
+            'safety'
+        ]));
+        expect(result.caseResults.every((entry) =>
+            Object.values(entry.evaluation.axes)
+                .every((axis) => axis.humanReviewPrompt.length > 0)
+        )).toBe(true);
+        expect(result.humanReviewRequired).toBe(true);
+    });
+
+    test('reports an axis-specific regression against the stored reference', () => {
+        const changedFixtures = GENERATED_CONTENT_OFFLINE_FIXTURES.map((fixture, index) =>
+            index === 0
+                ? {
+                    ...fixture,
+                    expectedAxes: { ...fixture.expectedAxes, safety: false }
+                }
+                : fixture
+        );
+
+        const result = evaluateGeneratedContentBenchmark(
+            changedFixtures,
+            GENERATED_CONTENT_OFFLINE_REFERENCE.axisAgreementRates
+        );
+
+        expect(result.automatedPass).toBe(false);
+        expect(result.mismatches).toEqual(expect.arrayContaining([
+            expect.objectContaining({ caseId: 'easy-narrative-pass', axis: 'safety' })
+        ]));
+        expect(result.axisTrends.safety.direction).toBe('regressed');
+        expect(result.axisTrends.safety.delta).toBe(-0.1);
+        expect(result.axisTrends.structure.direction).toBe('stable');
+        expect(result.difficultyResults.easy.axisAgreementRates.safety).toBe(0.75);
     });
 });
