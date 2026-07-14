@@ -38,3 +38,26 @@ describe('material profile analysis', () => {
         expect(analyzeMaterialProfile('This is English. 这是中文提示。').language).toBe('mixed');
     });
 });
+
+describe('analyzeMaterialProfile vocabulary grounding', () => {
+    test('extracts material vocabulary and builds allowed set', () => {
+        const profile = analyzeMaterialProfile('The small fox found a bright leaf.');
+        expect(profile.vocabulary.material).toContain('fox');
+        expect(profile.vocabulary.material).toContain('leaf');
+        expect(profile.vocabulary.allowed.has('fox')).toBe(true);
+        expect(profile.vocabulary.allowed.has('because')).toBe(true);
+        expect(profile.vocabulary.allowed.has('enormous')).toBe(false);
+    });
+
+    test('materialSpecific excludes common words', () => {
+        const profile = analyzeMaterialProfile('The small fox found a bright leaf.');
+        expect(profile.vocabulary.materialSpecific).toContain('fox');
+        expect(profile.vocabulary.materialSpecific).not.toContain('small');
+    });
+
+    test('sentences are split from the material', () => {
+        const profile = analyzeMaterialProfile('Mia has a garden. She waters it.');
+        expect(profile.sentences.length).toBeGreaterThanOrEqual(2);
+        expect(profile.sentences[0]).toContain('Mia');
+    });
+});

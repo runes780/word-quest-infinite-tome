@@ -4,6 +4,18 @@
 > 基线日期：2026-02-08  
 > 维护规则：完成即勾选，延期需写原因
 
+## 2026-07-15 质量与隐私收尾
+
+- [x] 审阅并加固 PR #12 的 plan/generate/critique 降级与确定性质量门
+- [x] 新增 Playwright 浏览器 E2E 并接入 CI
+- [x] 修复普通任务被无尽波次扩展、无法到达报告页的问题
+- [x] 完成学习数据与报告导出隐私威胁模型
+- [x] 导出报告仅保留聚合证据与受控目标分类
+- [x] 建立公开安全的合成学习夹具
+- [x] 建立 7 轴生成内容评测基线并保留人工复核
+- [x] 拦截答案键冲突与明确不适龄内容
+- [ ] PR #12 合并后建立下一阶段独立 PR：`gameStore` 领域切片
+
 ---
 
 ## 本周优先（2026-02-09 ~ 2026-02-16）
@@ -102,7 +114,7 @@
 - [x] `gameStore` 第四阶段拆分：抽离 `combatResolution`（答题战斗结算纯逻辑）
 - [ ] `gameStore` 按领域拆分（learning/combat/economy）
 - [ ] `BattleInterface` 拆分子模块
-- [x] 建立学习主流程 E2E（mission -> battle -> srs -> report）
+- [x] 建立学习主流程浏览器 E2E（provider fallback -> mission -> battle -> report -> persistence -> srs）
 - [x] 增加数据一致性巡检（events/profile/dashboard）
 
 ### 性能与稳定性
@@ -122,4 +134,4 @@
 - [ ] 所有新功能必须附带验收指标
 - [ ] 所有数据字段变更必须补迁移与回归
 - [ ] 每周固定更新 `ROADMAP.md` 与本 TODO
-- [ ] 发布前执行：`tsc --noEmit` + `npm test` + 关键路径手测
+- [ ] 发布前执行：`npm run lint` + `npm test` + `npm run build` + `npm run test:e2e`

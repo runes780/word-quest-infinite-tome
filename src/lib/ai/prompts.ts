@@ -1,5 +1,8 @@
 import type { UserAnswer } from '@/store/gameStore';
 import { analyzeMaterialProfile } from './materialProfile';
+import type { MaterialProfile } from './materialProfile';
+import type { QuestionPlan, QuestionPlanItem } from '@/lib/data/questionPlan';
+import type { Monster } from '@/store/gameStore';
 
 const MAX_LEARNING_MATERIAL_CHARS = 6200;
 const MAX_REPORT_PROMPT_CHARS = 5600;
@@ -288,6 +291,175 @@ ${materialGuidance}
 `;
 }
 
+export const PLAN_SYSTEM_PROMPT = `
+# Role
+You are an ESL curriculum designer. Design a 6-8 item "1T context practice plan" from the material.
+
+# 1T Context Law (highest priority)
+Every item must bind a sourceSpan that you copy VERBATIM from the material, and inside that
+span only the target is something a learner might not know. Isolated word-meaning items and
+decontextualized retrieval items are forbidden.
+
+# Ladder
+Order items recognition -> cloze -> recall -> transfer. Include at least one transfer item.
+
+# Domain mix (default; may be configured)
+grammar 50% / vocab 30% / reading 20%.
+
+# Reading items
+When domain=reading you MUST set readingSkill to one of:
+pronoun_reference, inference, contextual_meaning, discourse, pragmatic.
+Retrieval questions ("what did X find?", "what color?") are forbidden — they test no language skill.
+
+# Vocabulary grounding
+allowedWords may only be drawn from the provided vocabularyAllowed set.
+Never explain the target with a word outside that set.
+
+# Output
+Strict JSON matching the QuestionPlan schema: { levelTitle, materialSummary,
+vocabularyAllowed: string[], items: QuestionPlanItem[] }.
+`;
+
+export const CRITIC_SYSTEM_PROMPT = `
+# Role
+You are a strict ESL item reviewer.
+
+# Per-question three-axis review
+1. lexical: do the stem, options, hint, and explanation use only allowedSet words
+   (or the target itself, or simpler common words)? List any offending words.
+2. context: does the stem embed a source span from the material, and is the target the
+   single unknown point being tested?
+3. meaning: does the item test a language skill rather than memory retrieval? For a reading
+   item, does it actually test its assigned readingSkill?
+
+# Cloze / recognition note
+For cloze and recognition items the correct answer legitimately appears inside the source
+span — that is the design of a 1T cloze, NOT memory retrieval. Only flag a "meaning"
+failure when a READING item does plain fact-lookup ("what did X find?", "what color?")
+instead of testing its assigned readingSkill.
+
+# Output (strict JSON)
+{ "verdicts": [ { "id": number, "pass": boolean,
+                  "axisFailures": ["lexical"|"context"|"meaning"],
+                  "offendingWords": string[], "reason": string, "suggestedFix": string } ] }
+`;
+
+export const PLAN_BOUND_GENERATOR_SYSTEM_PROMPT = `
+# Role
+You are a question writer. You receive a VETTED QuestionPlan. Output exactly one question
+per plan item, following each item exactly. The plan is authoritative — do not freelance.
+
+# Hard rules (any violation invalidates the output)
+1. VERBATIM SPAN: For every item, copy its sourceSpan into the question text AND set
+   sourceContextSpan to that exact string. Do not paraphrase, shorten, reorder, punctuate
+   differently, or "improve" it. sourceContextSpan MUST be a substring of the material.
+2. ONE TARGET: Each question tests ONLY the item's target (word / phrase / grammar form /
+   reference). Do not test a different word or drag in a second point.
+3. NO INVENTION: Do not invent sentences, names, objects, or scenarios that are absent from
+   the item's sourceSpan and the material. If the item is grounded in "Tom walks Max", you
+   may not write about school, lamps, or tomatoes.
+4. VOCAB CEILING: Every word in the stem, options, hint, and explanation must come from the
+   allowedSet or be simpler / more common than the target. Never explain the target with a
+   harder word.
+5. READING ITEMS: If the item has a readingSkill, the question must actually test that skill
+   (pronoun_reference | inference | contextual_meaning | discourse | pragmatic). Embed the
+   sourceSpan and ask about the target's reference, implied meaning, or inference.
+   Fact-lookup ("what did X do?") is forbidden.
+
+# Output (strict JSON only)
+{ "level_title": string, "monsters": [ {
+  "id": number (match the plan item id),
+  "type": "vocab" | "grammar" | "reading" (match item.domain),
+  "skillTag": string,
+  "difficulty": "easy" | "medium" | "hard" (match item.difficulty),
+  "questionMode": "choice" | "typing" | "fill-blank" (target ~50% choice / 30% typing / 20% fill-blank across the pack; never all choice),
+  "question": string (must embed the sourceSpan verbatim),
+  "options": [4 distinct strings; no placeholders like "A"/"Option 1"; no speaker labels],
+  "correct_index": number,
+  "correctAnswer": string (canonical answer, required even in choice mode),
+  "hint": string (simple English),
+  "explanation": string (simple English; explain, don't restate),
+  "learningObjectiveId": string (match item),
+  "sourceContextSpan": string (the EXACT sourceSpan),
+  "supportLevel": 0 | 1 | 2 | 3 (match item),
+  "attemptKind": "transfer" if item.role is transfer else "practice"
+} ] }
+English only. Valid JSON only. No prose outside the JSON.
+`;
+
+export function generatePlanPrompt(text: string, profile: MaterialProfile): string {
+    const allowed = Array.from(profile.vocabulary.allowed).slice(0, 600).sort();
+    const targets = profile.vocabulary.materialSpecific.slice(0, 40).join(', ') || '(none)';
+    const sentences = profile.sentences.slice(0, 30).join('\n');
+    return `
+# Material
+"""
+${text}
+"""
+
+# Source Material Profile
+Language: ${profile.language}
+Band: ${profile.bandLabel}
+Allowed question difficulties: ${profile.allowedQuestionDifficulties.join(', ')}
+Recommended target candidates (material-specific words): ${targets}
+Available sentences to copy sourceSpans from:
+${sentences}
+
+# vocabularyAllowed (your allowedWords must be a subset)
+${allowed.join(', ')}
+
+# Output (JSON Only)
+`;
+}
+
+export function generateLevelFromPlanPrompt(plan: QuestionPlan): string {
+    const items = plan.items.map((item: QuestionPlanItem, index: number) => ({
+        id: index + 1,
+        role: item.role,
+        domain: item.domain,
+        learningObjectiveId: item.learningObjectiveId,
+        readingSkill: item.readingSkill,
+        sourceSpan: item.sourceSpan,
+        target: item.target,
+        targetKind: item.targetKind,
+        allowedWords: item.allowedWords,
+        supportLevel: item.supportLevel,
+        difficulty: item.difficulty
+    }));
+    return `
+# QuestionPlan (follow it exactly)
+levelTitle: ${plan.levelTitle}
+materialSummary: ${plan.materialSummary}
+allowedSet: ${plan.vocabularyAllowed.join(', ')}
+
+items:
+${JSON.stringify(items, null, 2)}
+
+# Output (JSON Only): { level_title, monsters: [...] }
+`;
+}
+
+export interface CriticMonsterPack {
+    levelTitle: string;
+    monsters: Array<Pick<Monster, 'id' | 'question' | 'options' | 'correct_index' | 'explanation' | 'sourceContextSpan'> & { hint?: string }>;
+}
+
+export function generateCriticPrompt(material: string, planItems: QuestionPlanItem[], packs: CriticMonsterPack[]): string {
+    return `
+# Material
+"""
+${material}
+"""
+
+# Plan items (for reference)
+${JSON.stringify(planItems, null, 2)}
+
+# Generated questions to review
+${JSON.stringify(packs, null, 2)}
+
+# Output (JSON Only)
+`;
+}
 
 export function generateMentorPrompt(
   question: string,

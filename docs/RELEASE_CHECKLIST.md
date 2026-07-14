@@ -18,6 +18,7 @@ Run the full check sequence:
 npm run lint
 npm test
 npm run build
+npm run test:e2e
 ```
 
 Record the command output summary in the release notes or PR.
@@ -27,6 +28,7 @@ Record the command output summary in the release notes or PR.
 - [ ] No real student data, classroom records, school IDs, private reports, or API keys are included.
 - [ ] Any new AI prompt or provider data flow is documented.
 - [ ] Generated educational content remains human-reviewable.
+- [ ] The generated-content seven-axis baseline passes on synthetic fixtures.
 - [ ] Fallback behavior is described for API failure, rate limits, malformed output, and empty output.
 - [ ] Report exports and screenshots are reviewed for privacy risk.
 
@@ -61,6 +63,7 @@ Short description of the release.
 - `npm run lint`
 - `npm test`
 - `npm run build`
+- `npm run test:e2e`
 
 ## Privacy and AI Safety
 

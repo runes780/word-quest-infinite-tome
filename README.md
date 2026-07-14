@@ -34,6 +34,7 @@ This repository is prepared for open-source maintainer support and Codex-assiste
 
 - [Codex for OSS application notes](docs/OPEN_SOURCE_APPLICATION.md) summarize the maintainer role, project qualification argument, API-credit use cases, and Codex Security review areas.
 - [Privacy and AI safety](docs/PRIVACY_AND_AI_SAFETY.md) documents local learning-data boundaries, AI provider expectations, prompt-injection risks, API key handling, and report-export privacy.
+- [Generated content evaluation](docs/GENERATED_CONTENT_EVAL.md) defines the seven-axis automated baseline and required human review for questions, hints, explanations, and distractors.
 - [Codex workflows](docs/CODEX_WORKFLOWS.md) defines review, triage, release, and test-expansion prompts for safe maintainer automation.
 - [Open-source issue backlog](docs/OPEN_SOURCE_ISSUE_BACKLOG.md) lists ready-to-create public issues for privacy hardening, tests, generated-content evaluation, release process, and refactoring.
 - [Release checklist](docs/RELEASE_CHECKLIST.md) defines the verification, privacy, screenshot, and changelog gate before publishing a release.
@@ -51,7 +52,8 @@ These materials are intended to make maintenance work visible without claiming a
 | Learning Events | Implemented | Battle, SRS, and daily challenge flows log answer, hint, and session events into IndexedDB for analytics and task progress. |
 | Daily Challenges / Questline | Partially implemented | Daily challenges and weekly learning tasks exist. Richer questline design remains on the roadmap. |
 | Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard shows learning history, weak skills, due FSRS cards, study-plan actions, repeated-cause evidence, engagement metrics, data consistency, API health, and session recovery status. |
-| AI-assisted question generation | Implemented, optional | OpenRouter-based streaming generation creates mission questions from study text. Sanitizers and fallback questions reduce malformed or unsuitable output. |
+| AI-assisted question generation | Implemented, optional | A plan → generate → critique pipeline applies lexical grounding, source-span checks, answer-integrity and age-appropriateness gates, bounded repair, and safe local fallback packs. |
+| Browser E2E | Implemented in CI | Playwright covers provider failure → fallback mission → six-question battle → report evidence → IndexedDB persistence → SRS dashboard. |
 | Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented yet. |
 | API stability monitoring | Implemented locally | OpenRouter request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
 
@@ -61,8 +63,10 @@ These materials are intended to make maintenance work visible without claiming a
 flowchart TD
     Learner["Learner interaction"] --> Input["InputSection: study text, samples, settings"]
     Input --> AI["AI service layer: OpenRouter client"]
-    AI --> Generator["Question generation prompts"]
-    Generator --> Sanitizer["Mission sanitizer and fallback questions"]
+    AI --> Planner["Question planner"]
+    Planner --> Generator["Plan-bound generator"]
+    Generator --> Critic["Critic + deterministic quality gate"]
+    Critic --> Sanitizer["Mission sanitizer and fallback questions"]
     Sanitizer --> Battle["Battle loop"]
     Input --> Daily["Daily challenge"]
     Input --> SRS["SRS review dashboard"]
@@ -150,6 +154,7 @@ Run quality checks:
 npm run lint
 npm test
 npm run build
+npm run test:e2e
 ```
 
 AI-generated missions require a local API key entered through the app settings. Do not commit API keys, real student data, or identifiable child information.
@@ -167,9 +172,11 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 ├── src/lib/ai/                 # OpenRouter client, prompts, AI request metric logging
 ├── src/lib/data/               # Mission sanitizing, history, mistakes, study plans, consistency checks
 ├── src/store/                  # Zustand game/settings stores and domain modules
-├── src/e2e/                    # Learning main-flow regression test
+├── tests/browser/              # Playwright learning main-flow regression
+├── tests/fixtures/             # Public-safe synthetic learning fixtures
 ├── docs/assets/                # README visuals and screenshots
 ├── docs/PRIVACY_AND_AI_SAFETY.md
+├── docs/GENERATED_CONTENT_EVAL.md
 ├── docs/CODEX_WORKFLOWS.md
 ├── docs/OPEN_SOURCE_APPLICATION.md
 ├── docs/RELEASE_CHECKLIST.md
@@ -185,7 +192,8 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 2. Use `npm test` for unit and integration regression checks.
 3. Use `npm run lint` before submitting changes.
 4. Use `npm run build` to verify the Next.js production build.
-5. Add focused tests when changing learning data logic, mastery state transitions, FSRS behavior, AI prompt contracts, or dashboard calculations.
+5. Use `npm run test:e2e` after a production build for the browser learning-flow gate.
+6. Add focused tests when changing learning data logic, mastery state transitions, FSRS behavior, AI prompt contracts, or dashboard calculations.
 
 When adding a feature:
 

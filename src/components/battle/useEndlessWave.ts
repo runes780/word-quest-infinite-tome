@@ -6,6 +6,7 @@ import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import type { AIProvider } from '@/lib/ai/modelOptions';
 
 interface UseEndlessWaveParams {
+    enabled: boolean;
     apiKey: string;
     apiProvider: AIProvider;
     model: string;
@@ -99,6 +100,7 @@ function mapFallbackQuestionToMonster(item: {
 }
 
 export function useEndlessWave({
+    enabled,
     apiKey,
     apiProvider,
     model,
@@ -111,6 +113,7 @@ export function useEndlessWave({
     const [isGeneratingMore, setIsGeneratingMore] = useState(false);
 
     useEffect(() => {
+        if (!enabled) return;
         const shouldGenerate = questionsLength > 0 && currentIndex >= questionsLength - 2;
         if (!shouldGenerate || isGeneratingMore || !apiKey || !context) return;
 
@@ -178,7 +181,7 @@ export function useEndlessWave({
         };
 
         generateMoreQuestions();
-    }, [currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions, playerLevel]);
+    }, [enabled, currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions, playerLevel]);
 
     return { isGeneratingMore };
 }

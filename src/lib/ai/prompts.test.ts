@@ -165,3 +165,81 @@ The fox runs under the pine tree.
         expect(prompt).not.toContain('Very long generated question 1 Very long generated question 1 Very long generated question 1');
     });
 });
+
+import {
+    PLAN_SYSTEM_PROMPT,
+    CRITIC_SYSTEM_PROMPT,
+    PLAN_BOUND_GENERATOR_SYSTEM_PROMPT,
+    generatePlanPrompt,
+    generateLevelFromPlanPrompt,
+    generateCriticPrompt
+} from '@/lib/ai/prompts';
+
+describe('plan / generate / critic prompts', () => {
+    test('PLAN_SYSTEM_PROMPT contains the 1T law and reading-skill list', () => {
+        expect(PLAN_SYSTEM_PROMPT).toContain('1T');
+        expect(PLAN_SYSTEM_PROMPT).toContain('pronoun_reference');
+        expect(PLAN_SYSTEM_PROMPT).toContain('forbidden');
+    });
+
+    test('generatePlanPrompt embeds allowedSet, materialSpecific, sentences, band', () => {
+        const prompt = generatePlanPrompt('Mia waters the plants.', {
+            language: 'english', difficulty: 'easy', bandLabel: 'starter',
+            allowedQuestionDifficulties: ['easy'], maxQuestionDifficulty: 'easy',
+            wordCount: 4, averageSentenceLength: 4, advancedWordCount: 0, grammarSignalCount: 0,
+            vocabulary: { material: ['mia', 'water', 'plant'], allowed: new Set(['mia', 'water', 'plant']), materialSpecific: ['mia'] },
+            sentences: ['Mia waters the plants.']
+        } as never);
+        expect(prompt).toContain('starter');
+        expect(prompt).toContain('Mia waters the plants.');
+    });
+
+    test('generateLevelFromPlanPrompt embeds the plan items', () => {
+        const prompt = generateLevelFromPlanPrompt({
+            levelTitle: 'Garden',
+            materialSummary: 'x',
+            vocabularyAllowed: ['water'],
+            items: [{
+                role: 'cloze', domain: 'grammar', learningObjectiveId: 'present_simple',
+                sourceSpan: 'she waters the plants.', target: 'waters', targetKind: 'grammar_form',
+                allowedWords: ['water'], supportLevel: 2, difficulty: 'easy'
+            }]
+        });
+        expect(prompt).toContain('waters');
+        expect(prompt).toContain('cloze');
+        expect(prompt).toContain('"id": 1');
+        expect(prompt).not.toContain('"index":');
+    });
+
+    test('CRITIC_SYSTEM_PROMPT lists the three axes', () => {
+        expect(CRITIC_SYSTEM_PROMPT).toContain('lexical');
+        expect(CRITIC_SYSTEM_PROMPT).toContain('context');
+        expect(CRITIC_SYSTEM_PROMPT).toContain('meaning');
+    });
+
+    test('CRITIC_SYSTEM_PROMPT exempts legitimate cloze from the meaning axis', () => {
+        // Without this note the critic nukes every source cloze (answer is in the
+        // span by design) as "memory retrieval".
+        expect(CRITIC_SYSTEM_PROMPT.toLowerCase()).toContain('cloze');
+        expect(CRITIC_SYSTEM_PROMPT).toContain('NOT memory retrieval');
+    });
+
+    test('PLAN_BOUND_GENERATOR_SYSTEM_PROMPT enforces verbatim span and no invention', () => {
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('VERBATIM SPAN');
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('NO INVENTION');
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('ONE TARGET');
+        expect(PLAN_BOUND_GENERATOR_SYSTEM_PROMPT).toContain('sourceContextSpan');
+    });
+
+    test('generateCriticPrompt embeds material and a monster', () => {
+        const prompt = generateCriticPrompt('Mia waters the plants.', [], [{
+            levelTitle: 'Garden',
+            monsters: [{
+                id: 1, question: 'q', options: ['a', 'b', 'c', 'd'],
+                correct_index: 0, explanation: 'e',
+                sourceContextSpan: 'Mia waters the plants.'
+            }]
+        }]);
+        expect(prompt).toContain('Mia waters the plants.');
+    });
+});

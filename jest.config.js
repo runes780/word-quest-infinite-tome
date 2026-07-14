@@ -13,6 +13,11 @@ const customJestConfig = {
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
     },
+    // Live real-LLM tests are opt-in. Browser specs always run through
+    // Playwright, not Jest's jsdom environment.
+    testPathIgnorePatterns: process.env.LIVE_TESTS === '1'
+        ? ['/node_modules/', '/tests/browser/']
+        : ['/node_modules/', '/tests/browser/', '\\.live\\.test\\.[jt]sx?$'],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

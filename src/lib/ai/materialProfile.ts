@@ -1,5 +1,14 @@
+import { normalizeWord } from '@/lib/data/textNormalize';
+import { COMMON_WORD_SET } from '@/lib/data/commonWords';
+
 export type MaterialLanguage = 'english' | 'chinese' | 'mixed' | 'unknown';
 export type MaterialDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface MaterialVocabulary {
+    material: string[];            // distinct normalized words from the text
+    allowed: Set<string>;          // material ∪ common
+    materialSpecific: string[];    // material − common (recommended targets)
+}
 
 export interface MaterialProfile {
     language: MaterialLanguage;
@@ -11,6 +20,8 @@ export interface MaterialProfile {
     averageSentenceLength: number;
     advancedWordCount: number;
     grammarSignalCount: number;
+    vocabulary: MaterialVocabulary;   // NEW
+    sentences: string[];              // NEW
 }
 
 const CJK_REGEX = /[\u3400-\u9FFF]/g;
@@ -62,6 +73,20 @@ const DIFFICULTY_RANK: Record<MaterialDifficulty, number> = {
 
 function wordsIn(text: string): string[] {
     return (text.match(WORD_REGEX) || []).map((word) => word.toLowerCase());
+}
+
+function splitSentences(text: string): string[] {
+    return text
+        .split(/(?<=[.!?])\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+
+function buildVocabulary(words: string[]): MaterialVocabulary {
+    const material = Array.from(new Set(words.map(normalizeWord).filter((w) => w.length >= 2)));
+    const allowed = new Set<string>([...material, ...COMMON_WORD_SET]);
+    const materialSpecific = material.filter((w) => !COMMON_WORD_SET.has(w));
+    return { material, allowed, materialSpecific };
 }
 
 function sentenceCount(text: string): number {
@@ -140,6 +165,9 @@ export function analyzeMaterialProfile(text: string): MaterialProfile {
         longWordRatio
     });
 
+    const vocabulary = buildVocabulary(words);
+    const sentences = splitSentences(text);
+
     return {
         language: detectLanguage(text, words),
         difficulty,
@@ -149,7 +177,9 @@ export function analyzeMaterialProfile(text: string): MaterialProfile {
         wordCount,
         averageSentenceLength,
         advancedWordCount,
-        grammarSignalCount
+        grammarSignalCount,
+        vocabulary,
+        sentences
     };
 }
 
