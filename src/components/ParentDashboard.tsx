@@ -161,6 +161,7 @@ export function ParentDashboard() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
+    const [pendingExport, setPendingExport] = useState<'image' | 'pdf' | null>(null);
     const reportRef = useRef<HTMLDivElement | null>(null);
     const exportReportRef = useRef<HTMLDivElement | null>(null);
     const [exportGeneratedAt, setExportGeneratedAt] = useState(() => Date.now());
@@ -620,6 +621,13 @@ export function ParentDashboard() {
         }
     };
 
+    const handleConfirmedExport = async () => {
+        const exportType = pendingExport;
+        setPendingExport(null);
+        if (exportType === 'image') await handleExportImage();
+        if (exportType === 'pdf') await handleExportPdf();
+    };
+
     return (
         <>
             <button
@@ -751,8 +759,9 @@ export function ParentDashboard() {
                                             {repeatedAlert?.active && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500" />}
                                         </button>
                                         <button
-                                            onClick={handleExportImage}
+                                            onClick={() => setPendingExport('image')}
                                             disabled={!hasHistory || isLoading || exporting !== null}
+                                            aria-describedby="report-export-privacy-summary"
                                             className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50"
                                         >
                                             {exporting === 'image' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -992,17 +1001,38 @@ export function ParentDashboard() {
                                     </section>
 
                                     <div className="mt-5 flex flex-wrap gap-3">
+                                        <div
+                                            id="report-export-privacy-summary"
+                                            data-export-private="true"
+                                            className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                                                <div>
+                                                    <p className="font-black">
+                                                        {isZh ? '导出前请检查隐私' : 'Check privacy before exporting'}
+                                                    </p>
+                                                    <p className="mt-1 leading-relaxed text-amber-900/80">
+                                                        {isZh
+                                                            ? '导出只包含聚合指标和受控学习分类，不包含原文、题目、答案、错题文本、任务标题或 API Key。文件会离开浏览器本地存储，分享前仍需人工检查。'
+                                                            : 'Exports include aggregate metrics and controlled learning categories only. Source text, questions, answers, mistake text, mission/task titles, and API keys are excluded. The file leaves browser-local storage, so review it before sharing.'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <button
-                                            onClick={handleExportImage}
+                                            onClick={() => setPendingExport('image')}
                                             disabled={!hasHistory || isLoading || exporting !== null}
+                                            aria-describedby="report-export-privacy-summary"
                                             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
                                         >
                                             <Download className="h-4 w-4" />
                                             {t.dashboard.exportImage}
                                         </button>
                                         <button
-                                            onClick={handleExportPdf}
+                                            onClick={() => setPendingExport('pdf')}
                                             disabled={!hasHistory || isLoading || exporting !== null}
+                                            aria-describedby="report-export-privacy-summary"
                                             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
                                         >
                                             <Printer className="h-4 w-4" />
@@ -1048,10 +1078,113 @@ export function ParentDashboard() {
                                 />
                             </div>
                         )}
+                        {pendingExport && (
+                            <ReportExportPrivacyDialog
+                                exportType={pendingExport}
+                                isZh={isZh}
+                                onCancel={() => setPendingExport(null)}
+                                onConfirm={() => void handleConfirmedExport()}
+                            />
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
         </>
+    );
+}
+
+function ReportExportPrivacyDialog({
+    exportType,
+    isZh,
+    onCancel,
+    onConfirm
+}: {
+    exportType: 'image' | 'pdf';
+    isZh: boolean;
+    onCancel: () => void;
+    onConfirm: () => void;
+}) {
+    const [acknowledged, setAcknowledged] = useState(false);
+    const actionLabel = exportType === 'image'
+        ? (isZh ? '创建 PNG 报告' : 'Create PNG report')
+        : (isZh ? '打开打印 / PDF' : 'Open print / PDF');
+
+    return (
+        <div
+            className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/70 p-4"
+            onClick={onCancel}
+        >
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="report-export-privacy-title"
+                className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 text-slate-950 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="flex items-start gap-3">
+                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700">
+                        <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <h2 id="report-export-privacy-title" className="text-xl font-black">
+                            {isZh ? '确认报告导出隐私' : 'Confirm report export privacy'}
+                        </h2>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                            {isZh
+                                ? '这不是完整学习数据备份。报告经过少披露处理，但下载或打印后的文件可以被复制、同步或公开分享。'
+                                : 'This is not a full learning-data backup. The report is privacy-minimized, but a downloaded or printed file can still be copied, synced, or shared publicly.'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                        <p className="font-black text-emerald-900">{isZh ? '包含' : 'Included'}</p>
+                        <p className="mt-1 leading-relaxed text-emerald-800">
+                            {isZh ? '聚合掌握度、正确率、数量、复习状态和受控学习分类。' : 'Aggregate mastery, accuracy, counts, review status, and controlled learning categories.'}
+                        </p>
+                    </div>
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm">
+                        <p className="font-black text-blue-900">{isZh ? '已排除' : 'Excluded'}</p>
+                        <p className="mt-1 leading-relaxed text-blue-800">
+                            {isZh ? '原文、题目、答案、错题、任务标题、自由文本和凭据。' : 'Source text, questions, answers, mistakes, titles, free text, and credentials.'}
+                        </p>
+                    </div>
+                </div>
+
+                <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-semibold text-slate-700">
+                    <input
+                        type="checkbox"
+                        checked={acknowledged}
+                        onChange={(event) => setAcknowledged(event.target.checked)}
+                        className="mt-0.5 h-4 w-4"
+                    />
+                    <span>
+                        {isZh
+                            ? '我知道文件将离开浏览器本地存储，并会在分享前检查其中是否仍有隐私信息。'
+                            : 'I understand this file leaves browser-local storage, and I will review it for private information before sharing.'}
+                    </span>
+                </label>
+
+                <div className="mt-5 flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+                    >
+                        {isZh ? '取消' : 'Cancel'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={!acknowledged}
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {actionLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }
 

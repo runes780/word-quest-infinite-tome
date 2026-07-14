@@ -141,6 +141,18 @@ Excluded from report exports:
 
 The visible guardian dashboard may still show local detail for review. The dedicated export snapshot is deliberately less detailed.
 
+### User Confirmation Before Export
+
+The dashboard shows a persistent privacy notice beside the export actions. Selecting image or print/PDF opens a confirmation dialog that:
+
+- distinguishes the privacy-minimized report from the full IndexedDB backup
+- lists aggregate/controlled fields that are included and private/free-form fields that are excluded
+- warns that downloaded or printed files leave browser-local storage and can be copied, synced, or shared
+- requires the user to check a fresh acknowledgement before the export action is enabled
+- performs no export and logs no `report_export` event when the user cancels
+
+This confirmation is required for every image and print/PDF export. It does not replace the field allowlist, dedicated `ExportReportSnapshot`, DOM-clone sanitization, or human review of the final artifact.
+
 ### Export Change Checklist
 
 When adding or changing exported content:
@@ -150,6 +162,7 @@ When adding or changing exported content:
 - [ ] Mark defense-in-depth exclusions with `data-export-private="true"`.
 - [ ] Add a synthetic regression test that proves source text, questions, answers, and mission/task titles are absent.
 - [ ] Verify both PNG and print/PDF paths use the privacy-safe clone.
+- [ ] Verify both paths require a fresh privacy acknowledgement and cancellation creates no artifact or event.
 - [ ] Review the final artifact locally before using it in a public issue, pull request, or documentation page.
 
 ## Review Checklist

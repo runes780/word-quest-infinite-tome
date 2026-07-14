@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { downloadNodeAsImage } from '@/lib/exportReport';
+import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
+import { logGuardianDashboardEvent } from '@/db/db';
 import { ParentDashboard } from './ParentDashboard';
 import { SYNTHETIC_DASHBOARD_LABELS } from '../../tests/fixtures/syntheticLearning';
 
@@ -305,6 +306,8 @@ describe('ParentDashboard visual information architecture', () => {
     beforeEach(() => {
         mockGetGuardianDashboardViewModel.mockClear();
         jest.mocked(downloadNodeAsImage).mockClear();
+        jest.mocked(openNodePrintView).mockClear();
+        jest.mocked(logGuardianDashboardEvent).mockClear();
         scrollIntoView.mockClear();
         scrollTo.mockClear();
         Element.prototype.scrollIntoView = scrollIntoView;
@@ -506,6 +509,12 @@ describe('ParentDashboard visual information architecture', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Export Report' }));
 
+        const privacyDialog = screen.getByRole('dialog', { name: 'Confirm report export privacy' });
+        expect(privacyDialog).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Create PNG report' })).toBeDisabled();
+        fireEvent.click(screen.getByLabelText(/I understand this file leaves browser-local storage/));
+        fireEvent.click(screen.getByRole('button', { name: 'Create PNG report' }));
+
         await waitFor(() => {
             expect(downloadNodeAsImage).toHaveBeenCalled();
         });
@@ -525,5 +534,38 @@ describe('ParentDashboard visual information architecture', () => {
         expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.mistakeQuestion);
         expect(filename).toMatch(/^word-quest-report-14d-\d{8}-\d{4}\.png$/);
         expect(options).toMatchObject({ backgroundColor: '#f8fafc' });
+        expect(logGuardianDashboardEvent).toHaveBeenCalledWith('report_export');
+    });
+
+    test('shows the export contract and cancellation does not export or log an event', async () => {
+        render(<ParentDashboard />);
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        expect(await screen.findByText('Check privacy before exporting')).toBeInTheDocument();
+        expect(screen.getByText(/Source text, questions, answers, mistake text/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Download Snapshot' }));
+        expect(screen.getByText('Included')).toBeInTheDocument();
+        expect(screen.getByText('Excluded')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(screen.queryByRole('dialog', { name: 'Confirm report export privacy' })).not.toBeInTheDocument();
+        expect(downloadNodeAsImage).not.toHaveBeenCalled();
+        expect(openNodePrintView).not.toHaveBeenCalled();
+        expect(logGuardianDashboardEvent).not.toHaveBeenCalledWith('report_export');
+    });
+
+    test('requires the same acknowledgement before opening print or PDF', async () => {
+        render(<ParentDashboard />);
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+        await screen.findByText('Good morning, Guardian!');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Print / Save PDF' }));
+        const confirmButton = screen.getByRole('button', { name: 'Open print / PDF' });
+        expect(confirmButton).toBeDisabled();
+        fireEvent.click(screen.getByLabelText(/I understand this file leaves browser-local storage/));
+        fireEvent.click(confirmButton);
+
+        await waitFor(() => expect(openNodePrintView).toHaveBeenCalledTimes(1));
+        expect(logGuardianDashboardEvent).toHaveBeenCalledWith('report_export');
     });
 });
