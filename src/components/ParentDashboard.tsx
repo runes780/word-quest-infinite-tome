@@ -72,7 +72,7 @@ import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import type { Monster } from '@/store/gameStore';
 import type { PracticePlan, PracticePlanEvidence } from '@/lib/data/dailyPracticePlan';
 import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
-import { formatLearningLabel } from '@/lib/data/learningObjectives';
+import { formatLearningLabel, mapSkillTagToObjectiveId, objectiveTitle } from '@/lib/data/learningObjectives';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -1030,7 +1030,6 @@ export function ParentDashboard() {
                                     masteryAverage={masteryAverage}
                                     profileLevelHelper={profileLevelHelper}
                                     completedMissions={completedMissions}
-                                    latestMission={latestMission}
                                     totalQuestions={snapshot?.totals.total || 0}
                                     correctQuestions={snapshot?.totals.correct || 0}
                                     averageAccuracy={averageAccuracy}
@@ -1064,7 +1063,6 @@ function ExportReportSnapshot({
     masteryAverage,
     profileLevelHelper,
     completedMissions,
-    latestMission,
     totalQuestions,
     correctQuestions,
     averageAccuracy,
@@ -1088,7 +1086,6 @@ function ExportReportSnapshot({
     masteryAverage: number;
     profileLevelHelper: string;
     completedMissions: number;
-    latestMission: string;
     totalQuestions: number;
     correctQuestions: number;
     averageAccuracy: number;
@@ -1162,7 +1159,7 @@ function ExportReportSnapshot({
                         <ExportStatCard
                             label={isZh ? '完成任务' : 'Missions'}
                             value={formatNumber(completedMissions)}
-                            helper={latestMission}
+                            helper={isZh ? '仅导出任务数量，不包含任务标题' : 'Mission titles are excluded from exports'}
                             icon={Trophy}
                             tone="amber"
                         />
@@ -1245,7 +1242,7 @@ function ExportReportSnapshot({
 
                         <ExportSection
                             title={isZh ? '今晚建议' : 'Recommended Next Actions'}
-                            subtitle={dailyPracticePlan ? practicePlanRationaleText(dailyPracticePlan, isZh) : (isZh ? '基于近期证据生成' : 'Based on recent evidence')}
+                            subtitle={isZh ? '基于本机聚合证据生成；原题和原文不导出' : 'Based on aggregate local evidence; source text and questions are excluded'}
                             icon={Sparkles}
                             badge={dailyPracticePlan ? `${dailyPracticePlan.estimatedMinutes}m` : undefined}
                         >
@@ -1253,14 +1250,14 @@ function ExportReportSnapshot({
                                 <div className="mb-4 flex flex-wrap gap-2">
                                     {dailyPracticePlan.evidence.slice(0, 3).map((row, index) => (
                                         <span key={`${row.label}-${index}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                                            {practicePlanEvidenceLabel(row.label, isZh)}: {practicePlanEvidenceValue(row, isZh)}
+                                            {practicePlanEvidenceLabel(row.label, isZh)}: {exportPracticeEvidenceValue(row, isZh)}
                                         </span>
                                     ))}
                                 </div>
                             )}
                             <div className="space-y-3">
                                 {visibleActions.map((action) => (
-                                    <ExportActionRow key={action.id} action={action} />
+                                    <ExportActionRow key={action.id} action={action} isZh={isZh} />
                                 ))}
                             </div>
                         </ExportSection>
@@ -1387,7 +1384,7 @@ function ExportSkillRow({ row, tone, isZh }: { row: SkillAccuracyRow; tone: Tone
     return (
         <div className="grid grid-cols-[minmax(0,1fr)_190px_48px] items-center gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
             <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(row.skill, isZh)}</p>
+                <p className="truncate text-sm font-black text-slate-900">{exportObjectiveLabel(row.skill, isZh)}</p>
                 <p className="text-xs font-semibold text-slate-500">{row.correct}/{row.total} {isZh ? '正确' : 'correct'}</p>
             </div>
             <div className="h-2.5 rounded-full bg-slate-100">
@@ -1412,8 +1409,10 @@ function ExportReviewRow({ card, index, isZh }: { card: FSRSCard; index: number;
                 <BookOpen className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review', isZh)}</p>
-                <p className="truncate text-xs font-semibold text-slate-500">{card.question}</p>
+                <p className="truncate text-sm font-black text-slate-900">{exportObjectiveLabel(card.skillTag || card.type || 'review', isZh)}</p>
+                <p className="truncate text-xs font-semibold text-slate-500">
+                    {isZh ? '题目原文已从导出中排除' : 'Question text excluded from export'}
+                </p>
             </div>
             <div className="shrink-0 text-right">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priority}</span>
@@ -1456,19 +1455,38 @@ function ExportDailyTrend({ rows, isZh }: { rows: DailyAccuracyRow[]; isZh: bool
     );
 }
 
-function ExportActionRow({ action }: { action: TonightActionItem; }) {
+function ExportActionRow({ action, isZh }: { action: TonightActionItem; isZh: boolean; }) {
+    const description = exportActionDescription(action.id, isZh);
     return (
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-black text-slate-900">{action.title}</p>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{action.description}</p>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{description}</p>
                 </div>
                 <PriorityBadge priority={action.priority} />
             </div>
             <p className="mt-2 text-xs font-black text-slate-600">{action.evidence}</p>
         </div>
     );
+}
+
+function exportObjectiveLabel(value: string, isZh: boolean) {
+    const objectiveId = mapSkillTagToObjectiveId({ skillTag: value, type: value });
+    return objectiveTitle(objectiveId, isZh ? 'zh' : 'en');
+}
+
+function exportActionDescription(actionId: string, isZh: boolean) {
+    if (actionId === 'targeted_pack') {
+        return isZh ? '完成一组针对近期重复错误类型的练习。' : 'Complete a short practice set for a recent repeated error type.';
+    }
+    if (actionId === 'srs_focus') {
+        return isZh ? '优先完成到期复习，降低遗忘风险。' : 'Prioritize due reviews to reduce forgetting risk.';
+    }
+    if (actionId === 'questline_push') {
+        return isZh ? '完成一个短学习任务，保持练习节奏。' : 'Complete one short learning task to maintain practice rhythm.';
+    }
+    return isZh ? '根据聚合学习证据安排短练习。' : 'Use aggregate learning evidence to schedule a short practice.';
 }
 
 function ExportMiniMetric({ label, value }: { label: string; value: string | number; }) {
@@ -2066,6 +2084,14 @@ function practicePlanEvidenceValue(row: PracticePlanEvidence, isZh: boolean) {
     if (row.source === 'task') return row.value.replace(' - ', ' · ');
     if (row.source === 'starter') return '先收集第一轮本地学习证据';
     return row.value;
+}
+
+function exportPracticeEvidenceValue(row: PracticePlanEvidence, isZh: boolean) {
+    if (row.source === 'srs') return isZh ? '存在到期复习项目' : 'Due review items detected';
+    if (row.source === 'mistake') return isZh ? '存在近期错误信号' : 'Recent error signals detected';
+    if (row.source === 'mastery') return isZh ? '掌握状态需要短练习' : 'Mastery state needs short practice';
+    if (row.source === 'task') return isZh ? '存在进行中的学习任务' : 'An active learning task is available';
+    return isZh ? '正在建立本机学习基线' : 'Building a local learning baseline';
 }
 
 function formatPercent(value: number) {

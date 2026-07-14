@@ -1,17 +1,5 @@
 import { expect, test, type Page } from 'playwright/test';
-
-const SYNTHETIC_MATERIAL =
-    'Yesterday was Sunday. I went to the park with my friends. ' +
-    'We played football and had a picnic. The weather was sunny and warm.';
-
-const ANSWERS: Array<[string, string]> = [
-    ['she ___ the plants', 'waters'],
-    ['Here "red" means', 'good to eat'],
-    ['What does "them" refer to', 'the tomatoes'],
-    ['What does this show about Mia', 'she cares for the garden'],
-    ['He ___ to school', 'walks'],
-    ['Why does Tom take an umbrella', 'to keep dry']
-];
+import { SYNTHETIC_FALLBACK_ANSWERS, SYNTHETIC_STUDY_MATERIAL } from '../fixtures/syntheticLearning';
 
 async function readLearningCounts(page: Page) {
     return page.evaluate(async () => {
@@ -63,18 +51,18 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
     await page.goto('/demo');
     const composer = page.getByRole('group', { name: 'Learning material composer' });
-    await composer.locator('textarea').fill(SYNTHETIC_MATERIAL);
+    await composer.locator('textarea').fill(SYNTHETIC_STUDY_MATERIAL);
     await page.getByRole('button', { name: 'Initialize Mission' }).click();
 
     await expect(page.getByRole('dialog', { name: 'Choose Your Blessing' })).toBeVisible();
     expect(providerRequests).toBeGreaterThan(0);
     await page.getByRole('button', { name: 'Skip', exact: true }).click();
 
-    for (let questionNumber = 0; questionNumber < ANSWERS.length; questionNumber += 1) {
+    for (let questionNumber = 0; questionNumber < SYNTHETIC_FALLBACK_ANSWERS.length; questionNumber += 1) {
         const questionHeading = page.locator('h3.text-2xl').first();
         await expect(questionHeading).toBeVisible();
         const question = (await questionHeading.textContent()) ?? '';
-        const matchingAnswer = ANSWERS.find(([fragment]) => question.includes(fragment));
+        const matchingAnswer = SYNTHETIC_FALLBACK_ANSWERS.find(([fragment]) => question.includes(fragment));
         expect(matchingAnswer, `No synthetic answer mapping for: ${question}`).toBeTruthy();
         const answer = matchingAnswer![1];
 
@@ -100,8 +88,8 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
         history: expect.any(Number)
     });
     const counts = await readLearningCounts(page);
-    expect(counts.learningEvents).toBeGreaterThanOrEqual(ANSWERS.length);
-    expect(counts.fsrsCards).toBeGreaterThanOrEqual(ANSWERS.length);
+    expect(counts.learningEvents).toBeGreaterThanOrEqual(SYNTHETIC_FALLBACK_ANSWERS.length);
+    expect(counts.fsrsCards).toBeGreaterThanOrEqual(SYNTHETIC_FALLBACK_ANSWERS.length);
     expect(counts.history).toBeGreaterThanOrEqual(1);
 
     await page.getByRole('button', { name: 'Initialize New Mission' }).click();

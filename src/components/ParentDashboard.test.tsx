@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { downloadNodeAsImage } from '@/lib/exportReport';
 import { ParentDashboard } from './ParentDashboard';
+import { SYNTHETIC_DASHBOARD_LABELS } from '../../tests/fixtures/syntheticLearning';
 
 const startGame = jest.fn();
 const scrollIntoView = jest.fn();
@@ -27,7 +28,7 @@ const buildMockDashboardViewModel = () => ({
             timestamp: Date.now(),
             score: 80,
             totalQuestions: 10,
-            levelTitle: 'Animal Habits Adventure',
+            levelTitle: SYNTHETIC_DASHBOARD_LABELS.missionTitle,
             totalCorrect: 8,
             accuracy: 0.8
         }],
@@ -93,7 +94,7 @@ const buildMockDashboardViewModel = () => ({
     mistakes: [{
         id: 1,
         questionId: 10,
-        questionText: 'Why did the bird fly south?',
+        questionText: SYNTHETIC_DASHBOARD_LABELS.mistakeQuestion,
         wrongAnswer: 'Because it was tired',
         correctAnswer: 'Because winter was coming',
         explanation: 'Cause and effect connects why and what happened.',
@@ -104,7 +105,7 @@ const buildMockDashboardViewModel = () => ({
     dueCards: [{
         id: 1,
         questionHash: 'q1',
-        question: 'Choose the cause.',
+        question: SYNTHETIC_DASHBOARD_LABELS.dueQuestion,
         options: ['wind', 'because', 'blue', 'cat'],
         correct_index: 1,
         type: 'reading',
@@ -132,7 +133,7 @@ const buildMockDashboardViewModel = () => ({
     learningTasks: [{
         taskId: 'weekly-reading',
         metric: 'battle_correct',
-        title: 'Reading Sprint',
+        title: SYNTHETIC_DASHBOARD_LABELS.taskTitle,
         description: 'Answer reading questions',
         goal: 20,
         progress: 12,
@@ -518,6 +519,10 @@ describe('ParentDashboard visual information architecture', () => {
         expect(node).toHaveAttribute('data-testid', 'guardian-export-report');
         expect(node.textContent).toContain('Generated');
         expect(node.textContent).toContain('Last 14 days');
+        expect(node.textContent).toContain('Question text excluded from export');
+        expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.missionTitle);
+        expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.dueQuestion);
+        expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.mistakeQuestion);
         expect(filename).toMatch(/^word-quest-report-14d-\d{8}-\d{4}\.png$/);
         expect(options).toMatchObject({ backgroundColor: '#f8fafc' });
     });

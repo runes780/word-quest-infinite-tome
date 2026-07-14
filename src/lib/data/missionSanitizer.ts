@@ -331,6 +331,14 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
         const matchedIndex = providedCorrect
             ? sanitizedOptions.findIndex((opt) => opt.toLowerCase() === providedCorrect.toLowerCase())
             : -1;
+        const providedIndexIsValid = providedIndex >= 0 && providedIndex < sanitizedOptions.length;
+        const hasConflictingAnswerKey = Boolean(providedCorrect) && (
+            matchedIndex === -1 || (providedIndexIsValid && matchedIndex !== providedIndex)
+        );
+        if (hasConflictingAnswerKey) {
+            if (source.id !== undefined) fallback.id = source.id;
+            return fallback;
+        }
         const safeCorrectIndex = providedIndex >= 0 && providedIndex < sanitizedOptions.length
             ? providedIndex
             : matchedIndex >= 0

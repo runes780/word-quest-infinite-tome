@@ -80,6 +80,49 @@ The project uses browser-local persistence such as IndexedDB and localStorage. T
 - Do not include real student data in issue reproduction steps.
 - Avoid exposing API keys or private study text in generated images.
 
+### Export Threat Model
+
+The report exporter assumes that study material, generated questions, mission titles, answers, mistake text, and free-form task titles may contain identifying or private information. Keeping the application local-first does not make a downloaded PNG or print/PDF private: an export can be copied, synced, attached to an issue, or photographed.
+
+| Risk | Boundary | Required control |
+| --- | --- | --- |
+| Pasted study text reappears in a question, mission title, skill tag, or recommendation | Local database -> report snapshot | Export aggregate counts and controlled objective categories; omit raw question, mission, answer, mistake, and task text |
+| A future dashboard field is accidentally included in an export | Rendered dashboard -> image/print payload | Mark it `data-export-private="true"`; the exporter removes marked and interactive elements from a cloned DOM |
+| HTML attributes load remote resources or execute active content | Export clone -> image/print window | Strip event handlers, editable controls, and non-data resource URLs; include only inline or same-origin styles |
+| A public test or screenshot contains real learning data | Developer machine -> repository/issue/PR | Use fixtures under `tests/fixtures/` and synthetic credentials/material only |
+| Report metrics are treated as final judgments | Export -> guardian/educator decision | Label reports as learning evidence and retain human review; do not add ranking, diagnosis, or high-stakes conclusions |
+
+### Current Export Contract
+
+Allowed in report exports:
+
+- date range, generation time, and local timezone
+- aggregate mastery, accuracy, mission, question, streak, review, and completion counts
+- controlled learning-objective categories derived from internal objective IDs
+- aggregate AI reliability and session-recovery health
+- generic next-action descriptions and aggregate evidence states
+
+Excluded from report exports:
+
+- pasted source/study text and uploaded images
+- question text, options, answers, hints, and explanations
+- mission titles, mistake text, free-form task titles, and raw evidence strings
+- API keys, provider credentials, request bodies, and error payloads
+- learner names, school/classroom identifiers, contact details, and arbitrary form values
+
+The visible guardian dashboard may still show local detail for review. The dedicated export snapshot is deliberately less detailed.
+
+### Export Change Checklist
+
+When adding or changing exported content:
+
+- [ ] Classify every field as controlled aggregate, controlled taxonomy, or private/free-form.
+- [ ] Keep private/free-form fields out of `ExportReportSnapshot`; do not rely only on visual hiding.
+- [ ] Mark defense-in-depth exclusions with `data-export-private="true"`.
+- [ ] Add a synthetic regression test that proves source text, questions, answers, and mission/task titles are absent.
+- [ ] Verify both PNG and print/PDF paths use the privacy-safe clone.
+- [ ] Review the final artifact locally before using it in a public issue, pull request, or documentation page.
+
 ## Review Checklist
 
 Before merging changes that touch AI, persistence, reports, screenshots, or dashboard analytics, verify:
@@ -90,4 +133,5 @@ Before merging changes that touch AI, persistence, reports, screenshots, or dash
 - [ ] Generated content remains human-reviewable.
 - [ ] Fallback behavior handles API errors, rate limits, malformed output, and empty output.
 - [ ] Tests cover learning data consistency or sanitizer behavior where relevant.
+- [ ] Report exports contain only aggregate evidence and controlled categories.
 - [ ] README, SECURITY, CONTRIBUTING, or AGENTS guidance is updated when assumptions change.
