@@ -4,6 +4,7 @@ import {
     type QuestionQualityOptions,
     type QuestionQualityReport
 } from './questionQuality';
+import type { MaterialDifficulty } from '@/lib/ai/materialProfile';
 
 export type GeneratedContentEvalAxis =
     | 'structure'
@@ -44,6 +45,54 @@ export interface GeneratedContentPackEvalResult {
     itemCount: number;
     axisPassRates: Record<GeneratedContentEvalAxis, number>;
     items: GeneratedQuestionEvalResult[];
+    humanReviewRequired: true;
+}
+
+export interface GeneratedContentBenchmarkCase {
+    id: string;
+    materialId: string;
+    materialKind: 'narrative' | 'procedural' | 'informational';
+    difficulty: MaterialDifficulty;
+    question: Monster;
+    context: QuestionQualityOptions;
+    expectedAxes: Record<GeneratedContentEvalAxis, boolean>;
+}
+
+export interface GeneratedContentAxisTrend {
+    current: number;
+    reference: number;
+    delta: number;
+    direction: 'improved' | 'stable' | 'regressed';
+}
+
+export interface GeneratedContentBenchmarkMismatch {
+    caseId: string;
+    axis: GeneratedContentEvalAxis;
+    expected: boolean;
+    actual: boolean;
+    findings: string[];
+}
+
+export interface GeneratedContentDifficultyResult {
+    caseCount: number;
+    axisAgreementRates: Record<GeneratedContentEvalAxis, number>;
+}
+
+export interface GeneratedContentBenchmarkResult {
+    automatedPass: boolean;
+    caseCount: number;
+    materialCount: number;
+    materialKinds: Array<GeneratedContentBenchmarkCase['materialKind']>;
+    difficultyResults: Record<MaterialDifficulty, GeneratedContentDifficultyResult>;
+    axisAgreementRates: Record<GeneratedContentEvalAxis, number>;
+    axisTrends: Record<GeneratedContentEvalAxis, GeneratedContentAxisTrend>;
+    caseResults: Array<{
+        caseId: string;
+        materialId: string;
+        difficulty: MaterialDifficulty;
+        evaluation: GeneratedQuestionEvalResult;
+    }>;
+    mismatches: GeneratedContentBenchmarkMismatch[];
     humanReviewRequired: true;
 }
 
@@ -148,6 +197,118 @@ export function evaluateGeneratedContentPack(
         itemCount: items.length,
         axisPassRates,
         items,
+        humanReviewRequired: true
+    };
+}
+
+function rateForAxis(
+    cases: GeneratedContentBenchmarkCase[],
+    results: GeneratedQuestionEvalResult[],
+    axis: GeneratedContentEvalAxis
+): number {
+    if (cases.length === 0) return 0;
+    const matches = cases.filter((testCase, index) =>
+        results[index]?.axes[axis].passed === testCase.expectedAxes[axis]
+    ).length;
+    return matches / cases.length;
+}
+
+function axisAgreementRatesFor(
+    cases: GeneratedContentBenchmarkCase[],
+    results: GeneratedQuestionEvalResult[]
+): Record<GeneratedContentEvalAxis, number> {
+    const rates = {} as Record<GeneratedContentEvalAxis, number>;
+    (Object.keys(GENERATED_CONTENT_EVAL_BASELINE) as GeneratedContentEvalAxis[])
+        .forEach((axis) => {
+            rates[axis] = rateForAxis(cases, results, axis);
+        });
+    return rates;
+}
+
+function roundedDelta(value: number): number {
+    return Math.round(value * 10000) / 10000;
+}
+
+export function evaluateGeneratedContentBenchmark(
+    cases: GeneratedContentBenchmarkCase[],
+    referenceRates: Partial<Record<GeneratedContentEvalAxis, number>> = GENERATED_CONTENT_EVAL_BASELINE
+): GeneratedContentBenchmarkResult {
+    const results = cases.map((testCase) =>
+        evaluateGeneratedQuestion(testCase.question, testCase.context)
+    );
+    const axes = Object.keys(GENERATED_CONTENT_EVAL_BASELINE) as GeneratedContentEvalAxis[];
+    const axisAgreementRates = axisAgreementRatesFor(cases, results);
+    const mismatches: GeneratedContentBenchmarkMismatch[] = [];
+
+    cases.forEach((testCase, index) => {
+        axes.forEach((axis) => {
+            const actual = results[index].axes[axis].passed;
+            const expected = testCase.expectedAxes[axis];
+            if (actual !== expected) {
+                mismatches.push({
+                    caseId: testCase.id,
+                    axis,
+                    expected,
+                    actual,
+                    findings: results[index].axes[axis].findings
+                });
+            }
+        });
+    });
+
+    const difficultyResults = {} as Record<MaterialDifficulty, GeneratedContentDifficultyResult>;
+    (['easy', 'medium', 'hard'] as MaterialDifficulty[]).forEach((difficulty) => {
+        const selectedCases: GeneratedContentBenchmarkCase[] = [];
+        const selectedResults: GeneratedQuestionEvalResult[] = [];
+        cases.forEach((testCase, index) => {
+            if (testCase.difficulty === difficulty) {
+                selectedCases.push(testCase);
+                selectedResults.push(results[index]);
+            }
+        });
+        difficultyResults[difficulty] = {
+            caseCount: selectedCases.length,
+            axisAgreementRates: axisAgreementRatesFor(selectedCases, selectedResults)
+        };
+    });
+
+    const axisTrends = {} as Record<GeneratedContentEvalAxis, GeneratedContentAxisTrend>;
+    axes.forEach((axis) => {
+        const reference = referenceRates[axis] ?? GENERATED_CONTENT_EVAL_BASELINE[axis];
+        const current = axisAgreementRates[axis];
+        const delta = roundedDelta(current - reference);
+        axisTrends[axis] = {
+            current,
+            reference,
+            delta,
+            direction: delta > 0 ? 'improved' : delta < 0 ? 'regressed' : 'stable'
+        };
+    });
+
+    const materialKinds = Array.from(new Set(cases.map((testCase) => testCase.materialKind)));
+    const materialCount = new Set(cases.map((testCase) => testCase.materialId)).size;
+    const hasDifficultyCoverage = (['easy', 'medium', 'hard'] as MaterialDifficulty[])
+        .every((difficulty) => difficultyResults[difficulty].caseCount > 0);
+
+    return {
+        automatedPass: cases.length >= 7 &&
+            materialCount >= 3 &&
+            materialKinds.length >= 3 &&
+            hasDifficultyCoverage &&
+            mismatches.length === 0,
+        caseCount: cases.length,
+        materialCount,
+        materialKinds,
+        difficultyResults,
+        axisAgreementRates,
+        axisTrends,
+        caseResults: cases.map((testCase, index) => ({
+            caseId: testCase.id,
+            materialId: testCase.materialId,
+            difficulty: testCase.difficulty,
+            evaluation: results[index]
+        })),
+        mismatches,
         humanReviewRequired: true
     };
 }

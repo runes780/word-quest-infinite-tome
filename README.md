@@ -34,7 +34,7 @@ This repository is prepared for open-source maintainer support and Codex-assiste
 
 - [Codex for OSS application notes](docs/OPEN_SOURCE_APPLICATION.md) summarize the maintainer role, project qualification argument, API-credit use cases, and Codex Security review areas.
 - [Privacy and AI safety](docs/PRIVACY_AND_AI_SAFETY.md) documents local learning-data boundaries, AI provider expectations, prompt-injection risks, API key handling, and report-export privacy.
-- [Generated content evaluation](docs/GENERATED_CONTENT_EVAL.md) defines the seven-axis automated baseline and required human review for questions, hints, explanations, and distractors.
+- [Generated content evaluation](docs/GENERATED_CONTENT_EVAL.md) defines the seven-axis automated baseline, a ten-case multi-material/multi-difficulty offline matrix, per-axis regression trends, and required human review.
 - [Codex workflows](docs/CODEX_WORKFLOWS.md) defines review, triage, release, and test-expansion prompts for safe maintainer automation.
 - [Open-source issue backlog](docs/OPEN_SOURCE_ISSUE_BACKLOG.md) lists ready-to-create public issues for privacy hardening, tests, generated-content evaluation, release process, and refactoring.
 - [Release checklist](docs/RELEASE_CHECKLIST.md) defines the verification, privacy, screenshot, and changelog gate before publishing a release.

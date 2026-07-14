@@ -26,6 +26,7 @@
     "start": "node ./node_modules/next/dist/bin/next start",
     "lint": "node ./node_modules/eslint/bin/eslint.js",
     "test": "node ./node_modules/jest/bin/jest.js",
+    "test:eval": "node ./node_modules/jest/bin/jest.js --runInBand src/lib/data/generatedContentEval.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
