@@ -20,7 +20,7 @@ const CJK_REGEX = /[\u3400-\u9FFF]/;
 const OPTION_PREFIX_REGEX = /^\s*[(\[]?[A-Da-d][\)\].:-]\s*/;
 const PLACEHOLDER_OPTION_REGEX = /^(?:[A-D]|option\s*[A-D]?|choice\s*[A-D]?|\d+)$/i;
 const SPEAKER_LABEL_OPTION_REGEX = /^[A-Z][A-Za-z]{1,18}:$/;
-const META_CONTENT_REGEX = /\b(?:api|api key|api provider|provider|model|model name|openrouter|deepseek|gemini|claude|dashboard|guardian dashboard|settings|system status|json|schema|field name|question mode|skill tag|correct index|source context|support level|attempt kind|learning objective|context hash)\b/i;
+const META_CONTENT_REGEX = /\b(?:api|api key|api provider|provider|model|model name|openai|openrouter|deepseek|gemini|claude|dashboard|guardian dashboard|settings|system status|json|schema|field name|question mode|skill tag|correct index|source context|support level|attempt kind|learning objective|context hash)\b/i;
 const INTERNAL_FIELD_REGEX = /\b(?:questionMode|skillTag|correct_index|correctIndex|correctAnswer|sourceContextSpan|learningObjectiveId|supportLevel|attemptKind|apiProvider|apiKey|contextHash|level_title)\b/i;
 const CONTEXT_LABEL_REGEX = /\b(?:read|context|sentence|passage|text)\s*[:：]/i;
 const QUOTED_SENTENCE_REGEX = /["“][^"”]*\b[A-Za-z]+\b[^"”]*\s+\b[A-Za-z]+\b[^"”]*["”]/;
@@ -189,7 +189,7 @@ function isMetaContentPayload(question: string, options: string[]): boolean {
     const lowerQuestion = question.toLowerCase();
     return (
         /\b(api|provider|model|dashboard|settings|json|schema|field|question mode|skill tag|source context|support level|attempt kind|learning objective)\b/.test(lowerQuestion) ||
-        options.some((option) => /\b(openrouter|deepseek|gemini|claude)\b/i.test(option))
+        options.some((option) => /\b(openai|openrouter|deepseek|gemini|claude)\b/i.test(option))
     );
 }
 

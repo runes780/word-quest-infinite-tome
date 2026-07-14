@@ -18,7 +18,10 @@ export function SettingsModal() {
     const isFreeModel = isOpenRouter && model.endsWith(':free');
     const apiKeyLabel = apiProvider === 'deepseek'
         ? (language === 'zh' ? 'DeepSeek 官方 API Key' : 'DeepSeek Official API Key')
-        : t.settings.apiKey;
+        : apiProvider === 'openai'
+            ? (language === 'zh' ? 'OpenAI API Key（维护者实验）' : 'OpenAI API Key (maintainer experiments)')
+            : t.settings.apiKey;
+    const apiKeyPlaceholder = apiProvider === 'openrouter' ? 'sk-or-...' : 'sk-...';
 
     const fetchModels = useCallback(async () => {
         if (!isOpenRouter) return;
@@ -180,6 +183,12 @@ export function SettingsModal() {
                                         >
                                             OpenRouter
                                         </button>
+                                        <button
+                                            onClick={() => setApiProvider('openai')}
+                                            className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${apiProvider === 'openai' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            OpenAI
+                                        </button>
                                     </div>
                                 </div>
 
@@ -192,7 +201,7 @@ export function SettingsModal() {
                                             type="password"
                                             value={apiKey}
                                             onChange={(e) => setApiKey(e.target.value)}
-                                            placeholder={apiProvider === 'deepseek' ? 'sk-...' : 'sk-or-...'}
+                                            placeholder={apiKeyPlaceholder}
                                             className="flex-1 bg-secondary/50 border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-primary outline-none"
                                         />
                                         {isOpenRouter && (
@@ -210,14 +219,22 @@ export function SettingsModal() {
                                             ? (language === 'zh'
                                                 ? '使用 DeepSeek 官方 OpenAI 兼容接口。'
                                                 : 'Uses the official DeepSeek OpenAI-compatible endpoint.')
-                                            : (language === 'zh' ? '输入密钥以加载可用模型。' : 'Enter key to load available models.')}
+                                            : apiProvider === 'openai'
+                                                ? (language === 'zh'
+                                                    ? '通过官方 Responses API 发送；请求设置 store=false。不要输入可识别的学习者资料。'
+                                                    : 'Sent through the official Responses API with store=false. Do not enter identifiable learner data.')
+                                                : (language === 'zh' ? '输入密钥以加载可用模型。' : 'Enter key to load available models.')}
                                     </p>
                                     <div className="mt-3 text-xs text-muted-foreground bg-secondary/40 border border-secondary/60 rounded-lg p-3">
                                         {apiProvider === 'deepseek'
                                             ? (language === 'zh'
                                                 ? '默认使用 deepseek-v4-flash。'
                                                 : 'Defaults to deepseek-v4-flash.')
-                                            : isFreeModel ? t.settings.rateLimitFree : t.settings.rateLimitPaid}
+                                            : apiProvider === 'openai'
+                                                ? (language === 'zh'
+                                                    ? '默认使用 GPT-5.6 Luna；AI 内容必须由教师或监护人审阅。'
+                                                    : 'Defaults to GPT-5.6 Luna; AI content requires educator or guardian review.')
+                                                : isFreeModel ? t.settings.rateLimitFree : t.settings.rateLimitPaid}
                                     </div>
                                 </div>
 
@@ -266,9 +283,13 @@ export function SettingsModal() {
                                             ? (language === 'zh'
                                                 ? 'DeepSeek 官方模型，直接请求 api.deepseek.com。'
                                                 : 'Official DeepSeek models, sent directly to api.deepseek.com.')
-                                            : showFreeOnly
-                                            ? (language === 'zh' ? '当前仅显示免费模型（以 :free 结尾）。' : 'Showing only free models (ending in :free).')
-                                            : (language === 'zh' ? '选择用于生成任务的 AI 模型。' : 'Select a neural model for mission generation.')}
+                                            : apiProvider === 'openai'
+                                                ? (language === 'zh'
+                                                    ? 'OpenAI 官方模型，直接请求 api.openai.com。'
+                                                    : 'Official OpenAI models, sent directly to api.openai.com.')
+                                                : showFreeOnly
+                                                    ? (language === 'zh' ? '当前仅显示免费模型（以 :free 结尾）。' : 'Showing only free models (ending in :free).')
+                                                    : (language === 'zh' ? '选择用于生成任务的 AI 模型。' : 'Select a neural model for mission generation.')}
                                     </p>
                                 </div>
                                 </div>

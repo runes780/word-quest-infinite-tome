@@ -249,7 +249,7 @@ export type AIRequestOutcome = 'success' | 'error' | 'timeout';
 
 export interface AIRequestMetric {
     id?: number;
-    provider: 'openrouter' | 'deepseek';
+    provider: 'openrouter' | 'deepseek' | 'openai';
     model: string;
     isFreeModel: boolean;
     outcome: AIRequestOutcome;

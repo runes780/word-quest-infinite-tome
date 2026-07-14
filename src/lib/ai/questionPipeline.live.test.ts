@@ -25,7 +25,9 @@ function readLiveSettings() {
         model,
         apiProvider: process.env.WORD_QUEST_LIVE_PROVIDER === 'deepseek'
             ? 'deepseek' as const
-            : 'openrouter' as const
+            : process.env.WORD_QUEST_LIVE_PROVIDER === 'openai'
+                ? 'openai' as const
+                : 'openrouter' as const
     };
 }
 

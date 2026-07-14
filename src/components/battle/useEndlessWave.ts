@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Monster } from '@/store/gameStore';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
+import { createAIClient } from '@/lib/ai/providerClient';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import type { AIProvider } from '@/lib/ai/modelOptions';
@@ -125,7 +125,7 @@ export function useEndlessWave({
             const contextHash = hashContext(context);
 
             try {
-                const client = new OpenRouterClient(apiKey, model, apiProvider);
+                const client = createAIClient({ apiKey, model, provider: apiProvider });
                 const prompt = generateLevelPrompt(context, { learnerLevel: playerLevel });
                 const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
                 const data = extractJsonObject(jsonStr);

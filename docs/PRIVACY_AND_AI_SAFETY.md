@@ -33,6 +33,17 @@ Current public development workflows must not include:
 
 AI-assisted mission generation is optional. Local fallback/sample content should keep the app usable when provider calls fail.
 
+The selectable provider layer currently supports DeepSeek, OpenRouter, and an OpenAI option for maintainer experiments. OpenAI calls use the official Responses API, send `instructions` and `input`, request JSON output, and set `store: false`. No new learner-data field is added for OpenAI: it receives the same minimum inputs already used by the selected AI feature.
+
+Depending on the feature a user explicitly invokes, provider input can include:
+
+- pasted study material plus derived material profile and a coarse learner level for mission planning/generation
+- the current synthetic or user-entered question, wrong answer, correct answer, skill/difficulty metadata, and question mode for mentor help
+- aggregate session score plus answer evidence needed for the optional AI debrief
+- the current study context for an optional endless-wave refill
+
+Provider requests do not include IndexedDB tables, browser profiles, guardian-dashboard records, report exports, API request metrics, or unrelated localStorage fields. Adding any such field requires a separate privacy review, documentation update, and tests.
+
 Provider requests should:
 
 - use only the study text and context needed for educational question generation
@@ -62,6 +73,8 @@ Relevant tests should cover prompt contracts, fallback behavior, mission sanitiz
 ## API Key Handling
 
 - API keys are entered locally through app settings.
+- Switching providers clears the current key so a credential for one provider is not accidentally sent to another provider.
+- In this frontend-only prototype, the selected provider key is stored in browser localStorage and sent directly from the browser to that provider. This is suitable only for controlled maintainer experiments; use a restricted or short-lived development key and do not use a shared production/classroom credential. A production deployment should move secrets behind a trusted server-side boundary.
 - API keys must not be committed, logged in tests, pasted into issues, included in screenshots, or embedded in generated fixtures.
 - If an API key is exposed, revoke it immediately with the provider, rotate related credentials, and report the incident privately through the security process.
 
