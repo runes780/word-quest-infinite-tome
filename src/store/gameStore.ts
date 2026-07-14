@@ -41,9 +41,7 @@ import {
     type PracticePlanRun
 } from '@/lib/data/practicePlanRunner';
 import {
-    loadInitialRevengeQueue,
     persistRevengeQueue,
-    sanitizeForQueue,
     type RevengeEntry
 } from '@/store/modules/revengeQueue';
 import {
@@ -66,6 +64,9 @@ import {
     loadSavedGameStateSnapshot,
     saveGameStateSnapshot
 } from '@/store/modules/sessionRecovery';
+import { createCombatSlice } from '@/store/slices/combatSlice';
+import { createLearningSlice } from '@/store/slices/learningSlice';
+import { createEconomySlice } from '@/store/slices/economySlice';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -237,7 +238,7 @@ export interface RunObjectiveBonus {
     skillTag?: string;
 }
 
-interface GameState {
+export interface GameState {
     health: number;
     maxHealth: number;
     score: number;
@@ -304,43 +305,10 @@ interface GameState {
     dismissMasteryCelebration: (id: string) => void;
 }
 
-export const useGameStore = create<GameState>((set, get) => ({
-    health: 3,
-    maxHealth: 3,
-    score: 0,
-    questions: [],
-    currentIndex: 0,
-    isGameOver: false,
-    isVictory: false,
-
-    playerStats: {
-        level: 1,
-        xp: 0,
-        maxXp: 100,
-        streak: 0,
-        gold: 0
-    },
-    currentMonsterHp: 1,
-    context: '',
-    inventory: [],
-    userAnswers: [],
-    pendingRewards: [],
-    showRewardScreen: false,
-    skillStats: {},
-    revengeQueue: loadInitialRevengeQueue(),
-    bossShieldProgress: 0,
-    clarityEffect: null,
-    knowledgeCards: [],
-    rootFragments: 0,
-    sessionSource: 'battle',
-    questionStartedAt: Date.now(),
-    masteryBySkill: {},
-    reviewRiskBySkill: {},
-    recentMistakeBySkill: {},
-    masteryCelebrations: [],
-    runObjectiveBonuses: [],
-    activePracticePlanRun: null,
-    activePracticePlanStepId: null,
+export const useGameStore = create<GameState>()((set, get, store) => ({
+    ...createCombatSlice(set, get, store),
+    ...createLearningSlice(set, get, store),
+    ...createEconomySlice({ updateAchievementStats })(set, get, store),
 
     startGame: (questions, context, source = 'battle', practicePlanRun = null) => {
         const revengeEntries = [...get().revengeQueue];
@@ -765,124 +733,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         };
     },
 
-    addQuestions: (newQuestions) => {
-        const { questions } = get();
-        // Process new questions to add RPG stats
-        const { sessionSource, masteryBySkill } = get();
-        const processedQuestions = newQuestions.map((q, idx) => {
-            const prepared = applyQuestionDefaults(q, questions.length + idx);
-            return applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)]);
-        });
-        set({ questions: [...questions, ...processedQuestions] });
-    },
-
-    nextQuestion: () => {
-        const { currentIndex, questions, currentMonsterHp } = get();
-        const currentQuestion = questions[currentIndex];
-        if (currentQuestion?.isBoss && currentMonsterHp > 0) {
-            return;
-        }
-
-        // Boss gates are expanded into three distinct encounters before the run starts.
-
-        if (currentIndex < questions.length - 1) {
-            const nextIndex = currentIndex + 1;
-            const nextMonster = questions[nextIndex];
-            set({
-                currentIndex: nextIndex,
-                currentMonsterHp: nextMonster.hp || 1,
-                bossShieldProgress: 0,
-                clarityEffect: null,
-                questionStartedAt: Date.now()
-            });
-        } else {
-            // Endless Mode Trigger would go here
-            set({ isVictory: true });
-        }
-    },
-
-    injectQuestion: (question) => {
-        const { questions, currentIndex } = get();
-        const newQuestions = [...questions];
-        const prepared = applyQuestionDefaults(question, currentIndex + 1);
-        const { sessionSource, masteryBySkill } = get();
-        newQuestions.splice(
-            currentIndex + 1,
-            0,
-            applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)])
-        );
-        set({ questions: newQuestions });
-    },
-
-    heal: (amount) => set((state) => ({
-        health: Math.min(state.health + amount, state.maxHealth)
-    })),
-
-    addGold: (amount) => set((state) => ({
-        playerStats: { ...state.playerStats, gold: state.playerStats.gold + applyGoldBonus(amount, state.inventory) }
-    })),
-
-    spendGold: (amount) => {
-        const { playerStats } = get();
-        if (playerStats.gold >= amount) {
-            set({ playerStats: { ...playerStats, gold: playerStats.gold - amount } });
-            return true;
-        }
-        return false;
-    },
-
-    addItem: (item) => {
-        set((state) => ({
-            inventory: [...state.inventory, item]
-        }));
-        if (item.type.startsWith('relic_')) {
-            const nextInventory = [...get().inventory];
-            const uniqueRelics = new Set(nextInventory.filter((entry) => entry.type.startsWith('relic_')).map((entry) => entry.type)).size;
-            updateAchievementStats({ relicsOwned: uniqueRelics });
-        }
-    },
-
-    useItem: (itemId) => {
-        const { inventory, health, maxHealth, questions, currentIndex, clarityEffect } = get();
-        const itemIndex = inventory.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return;
-
-        const item = inventory[itemIndex];
-        let consumed = false;
-
-        if (item.type === 'potion_health') {
-            if (health < maxHealth) {
-                set({ health: Math.min(health + 1, maxHealth) });
-                consumed = true;
-            }
-        } else if (item.type === 'potion_clarity') {
-            const currentQuestion = questions[currentIndex];
-            if (currentQuestion) {
-                const alreadyApplied = clarityEffect && clarityEffect.questionId === currentQuestion.id;
-                if (!alreadyApplied) {
-                    const wrongIndexes = currentQuestion.options
-                        .map((_, idx) => idx)
-                        .filter(idx => idx !== currentQuestion.correct_index);
-                    if (wrongIndexes.length > 0) {
-                        const shuffled = [...wrongIndexes].sort(() => Math.random() - 0.5);
-                        const hidden = shuffled.slice(0, Math.min(2, shuffled.length));
-                        set({ clarityEffect: { questionId: currentQuestion.id, hiddenOptions: hidden } });
-                        consumed = true;
-                    }
-                }
-            }
-        }
-
-        if (consumed) {
-            const newInventory = [...inventory];
-            newInventory.splice(itemIndex, 1);
-            set({ inventory: newInventory });
-            if (item.type === 'potion_health' || item.type === 'potion_clarity') {
-                updateAchievementStats({ potionsUsed: 1 });
-            }
-        }
-    },
-
     resetGame: () => set((state) => ({
         questions: [],
         health: 3,
@@ -1076,7 +926,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
     },
 
-    closeRewardScreen: () => set({ showRewardScreen: false, pendingRewards: [] }),
     recordHintUsed: () => {
         updateAchievementStats({ hintsUsed: 1 });
         const state = get();
@@ -1166,17 +1015,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
         }).catch(console.error);
     },
-    addToRevengeQueue: (question) => {
-        set((state) => {
-            const entry = sanitizeForQueue(question);
-            const exists = state.revengeQueue.some((q) => q.question === entry.question && q.correct_index === entry.correct_index);
-            if (exists) return state;
-            const updated = [...state.revengeQueue, entry].slice(-10);
-            persistRevengeQueue(updated);
-            return { revengeQueue: updated };
-        });
-    },
-
     // Error Recovery Methods
     hasSavedGame: () => {
         const saved = loadSavedGameStateSnapshot<Monster, PlayerStats, Item, KnowledgeCard, LearningEventSource>();
@@ -1259,11 +1097,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     clearSavedGame: () => {
         clearSavedGameStateSnapshot();
-    },
-
-    dismissMasteryCelebration: (id) => set((state) => ({
-        masteryCelebrations: state.masteryCelebrations.filter((entry) => entry.id !== id)
-    }))
+    }
 }));
 
 // Auto-save game state after every action that modifies important state

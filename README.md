@@ -172,6 +172,7 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 ├── src/lib/ai/                 # OpenRouter client, prompts, AI request metric logging
 ├── src/lib/data/               # Mission sanitizing, history, mistakes, study plans, consistency checks
 ├── src/store/                  # Zustand game/settings stores and domain modules
+├── src/store/slices/           # Learning, combat, and economy state/action boundaries
 ├── tests/browser/              # Playwright learning main-flow regression
 ├── tests/fixtures/             # Public-safe synthetic learning fixtures
 ├── docs/assets/                # README visuals and screenshots

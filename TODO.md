@@ -14,7 +14,7 @@
 - [x] 建立公开安全的合成学习夹具
 - [x] 建立 7 轴生成内容评测基线并保留人工复核
 - [x] 拦截答案键冲突与明确不适龄内容
-- [ ] PR #12 合并后建立下一阶段独立 PR：`gameStore` 领域切片
+- [x] PR #12 合并后建立下一阶段独立 PR：`gameStore` 领域切片
 
 ---
 
@@ -112,7 +112,7 @@
 - [x] `gameStore` 第二阶段拆分：抽离 `economyRewards`（relic/奖励/成长计算）
 - [x] `gameStore` 第三阶段拆分：抽离 `sessionRecovery`（存档保存/恢复/清理）
 - [x] `gameStore` 第四阶段拆分：抽离 `combatResolution`（答题战斗结算纯逻辑）
-- [ ] `gameStore` 按领域拆分（learning/combat/economy）
+- [x] `gameStore` 按领域拆分（learning/combat/economy 状态与领域内动作；跨域流程保留编排层）
 - [ ] `BattleInterface` 拆分子模块
 - [x] 建立学习主流程浏览器 E2E（provider fallback -> mission -> battle -> report -> persistence -> srs）
 - [x] 增加数据一致性巡检（events/profile/dashboard）
