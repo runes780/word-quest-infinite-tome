@@ -54,7 +54,7 @@ These materials are intended to make maintenance work visible without claiming a
 | Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard shows learning history, weak skills, due FSRS cards, study-plan actions, repeated-cause evidence, engagement metrics, data consistency, API health, and session recovery status. |
 | AI-assisted question generation | Implemented, optional | A provider-neutral adapter supports DeepSeek, OpenRouter, and OpenAI maintainer experiments. The plan → generate → critique pipeline applies lexical grounding, source-span checks, answer-integrity and age-appropriateness gates, bounded repair, and safe local fallback packs. |
 | Browser E2E | Implemented in CI | Playwright covers provider failure → fallback mission → six-question battle → report evidence → IndexedDB persistence → SRS dashboard. |
-| Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented yet. |
+| Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Settings can export and transactionally restore a versioned JSON backup of every IndexedDB table; compatibility tests cover schema v13 → v14 and reject future/corrupt files before writes. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented. |
 | API stability monitoring | Implemented locally | Provider request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
 
 ## Architecture Overview
@@ -158,6 +158,8 @@ npm run test:e2e
 ```
 
 AI-generated missions require a local API key entered through the app settings. OpenAI support is intended for maintainer experiments and uses the Responses API with `store: false`; the browser still sends the key directly, so use a restricted development key rather than a production or classroom credential. Do not commit API keys, real student data, or identifiable child information.
+
+The settings panel can create and restore local IndexedDB backups. These JSON files contain full learning history, question text, mistakes, mastery, review state, and dashboard evidence and are not encrypted. Keep them in trusted storage and never attach a real learner backup to a public issue or pull request. API keys and other localStorage settings are deliberately excluded.
 
 This project keeps `"private": true` in `package.json` because it is a Next.js application, not an npm package intended for publication. The GitHub repository itself is open source under the MIT License.
 

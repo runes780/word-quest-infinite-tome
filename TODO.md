@@ -115,6 +115,7 @@
 - [x] `gameStore` 按领域拆分（learning/combat/economy 状态与领域内动作；跨域流程保留编排层）
 - [x] 建立统一 AI Provider 适配接口，并增加 OpenAI Responses API 维护者实验选项（`store=false`、合成请求测试、本地回退）
 - [x] 扩展生成内容离线评测矩阵（叙事/步骤/说明材料，easy/medium/hard，七轴正反例与趋势对比）
+- [x] 增加 IndexedDB 全表版本化备份/原子恢复（隐私确认、v13→v14 兼容、未来/损坏文件写前拒绝）
 - [ ] `BattleInterface` 拆分子模块
 - [x] 建立学习主流程浏览器 E2E（provider fallback -> mission -> battle -> report -> persistence -> srs）
 - [x] 增加数据一致性巡检（events/profile/dashboard）

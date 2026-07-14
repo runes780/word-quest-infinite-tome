@@ -426,6 +426,8 @@ export interface PracticePlanRunRecord {
     updatedAt: number;
 }
 
+export const CURRENT_DB_SCHEMA_VERSION = 14;
+
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
     mistakes!: Table<MistakeRecord>;
@@ -442,8 +444,8 @@ export class WordQuestDB extends Dexie {
     objectiveMastery!: Table<ObjectiveMasteryRecord>;
     practicePlanRuns!: Table<PracticePlanRunRecord>;
 
-    constructor() {
-        super('WordQuestDB');
+    constructor(name = 'WordQuestDB') {
+        super(name);
         this.version(1).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId'
@@ -561,7 +563,7 @@ export class WordQuestDB extends Dexie {
             sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
-        this.version(14).stores({
+        this.version(CURRENT_DB_SCHEMA_VERSION).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId, skillTag',
             questionCache: '++id, contextHash, timestamp, used',

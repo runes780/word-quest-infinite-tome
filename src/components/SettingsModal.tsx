@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCallback, useState, useEffect } from 'react';
 import { translations } from '@/lib/translations';
 import { buildModelOptions, RouterModelOption } from '@/lib/ai/modelOptions';
+import { LocalDataBackup } from './LocalDataBackup';
 
 export function SettingsModal() {
     const { apiKey, setApiKey, apiProvider, setApiProvider, model, setModel, isSettingsOpen, setSettingsOpen, language, setLanguage, theme, setTheme, soundEnabled, setSoundEnabled, ttsEnabled, setTtsEnabled } = useSettingsStore();
@@ -292,6 +293,8 @@ export function SettingsModal() {
                                                     : (language === 'zh' ? '选择用于生成任务的 AI 模型。' : 'Select a neural model for mission generation.')}
                                     </p>
                                 </div>
+
+                                <LocalDataBackup language={language} />
                                 </div>
 
                                 <div data-testid="settings-modal-footer" className="flex shrink-0 justify-end border-t border-border/60 p-4 sm:px-6">
