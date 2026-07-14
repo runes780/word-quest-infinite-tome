@@ -21,6 +21,21 @@ async function readLearningCounts(page: Page) {
     });
 }
 
+async function dismissHydrationSettingsModal(page: Page) {
+    const footer = page.getByTestId('settings-modal-footer');
+    try {
+        await footer.waitFor({ state: 'visible', timeout: 2_000 });
+    } catch {
+        return;
+    }
+
+    // On a cold CI profile, PlayableApp can open settings before Zustand has
+    // rehydrated the synthetic key. Wait for hydration, then close the modal.
+    await expect(page.locator('input[type="password"]')).toHaveValue('synthetic-e2e-key');
+    await footer.getByRole('button').click();
+    await expect(footer).toBeHidden();
+}
+
 test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem('word-quest-settings', JSON.stringify({
@@ -39,6 +54,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('offline mission fallback completes battle, persists evidence, and exposes SRS', async ({ page }) => {
+    test.setTimeout(60_000);
     let providerRequests = 0;
     await page.route('https://api.deepseek.com/**', async (route) => {
         providerRequests += 1;
@@ -50,6 +66,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     });
 
     await page.goto('/demo');
+    await dismissHydrationSettingsModal(page);
     const composer = page.getByRole('group', { name: 'Learning material composer' });
     await composer.locator('textarea').fill(SYNTHETIC_STUDY_MATERIAL);
     await page.getByRole('button', { name: 'Initialize Mission' }).click();
