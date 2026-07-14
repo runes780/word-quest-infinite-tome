@@ -12,11 +12,14 @@ Use this checklist before publishing a GitHub release or claiming a stable miles
 
 ## Verification
 
+Use Node 24 LTS from `.nvmrc`.
+
 Run the full check sequence:
 
 ```bash
 npm run lint
 npm test
+npm run test:eval
 npm run build
 npm run test:e2e
 ```

@@ -80,4 +80,7 @@ Before Codex marks work ready, it must report the exact verification commands ru
 npm run lint
 npm test
 npm run build
+npm run test:e2e
 ```
+
+CI also runs `npm run test:eval` as an explicit generated-content quality gate. The repository uses Node 24 LTS from `.nvmrc`. GitHub-authored actions are pinned to immutable full commit SHAs, the workflow token has `contents: read` only, duplicate branch/PR runs are cancelled, and the quality job has a bounded timeout. Dependabot checks pinned GitHub Actions weekly.

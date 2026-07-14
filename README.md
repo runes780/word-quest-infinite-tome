@@ -130,7 +130,7 @@ Additional image-generation prompts are documented in [docs/image-prompts.md](do
 
 Prerequisites:
 
-- Node.js 20 or newer
+- Node.js 24 LTS (see `.nvmrc`; supported range is `>=24 <27`)
 - npm
 - Optional: a DeepSeek, OpenRouter, or OpenAI API key for AI-generated missions
 
