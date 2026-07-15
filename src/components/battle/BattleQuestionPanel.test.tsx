@@ -24,6 +24,10 @@ const bossQuestion: Monster = {
 };
 
 describe('BattleQuestionPanel learning metadata', () => {
+    beforeEach(() => {
+        HTMLElement.prototype.scrollIntoView = jest.fn();
+    });
+
     test('shows boss stage, objective, and support level', () => {
         render(
             <BattleQuestionPanel
@@ -95,5 +99,39 @@ describe('BattleQuestionPanel learning metadata', () => {
 
         expect(screen.getByText('迁移检查')).toBeInTheDocument();
         expect(screen.getByText('补救反击')).toBeInTheDocument();
+    });
+
+    test('announces answer feedback as one polite status update', () => {
+        render(
+            <BattleQuestionPanel
+                currentQuestion={bossQuestion}
+                t={translations.en}
+                language="en"
+                ttsEnabled={false}
+                showHint={false}
+                showResult
+                selectedOption={1}
+                isCorrect
+                resultMessage="Went is correct because yesterday signals past time."
+                currentMonsterHp={0}
+                bossShieldProgress={2}
+                bossComboThreshold={2}
+                clarityEffect={null}
+                onToggleHint={jest.fn()}
+                onChoiceSelect={jest.fn()}
+                onTypingAnswer={jest.fn()}
+                onFillBlankAnswer={jest.fn()}
+                onVoiceAnswer={jest.fn()}
+                onSpeakQuestion={jest.fn()}
+                onSpeakExplanation={jest.fn()}
+                onOpenMentor={jest.fn()}
+                onNext={jest.fn()}
+            />
+        );
+
+        const status = screen.getByRole('status');
+        expect(status).toHaveAttribute('aria-live', 'polite');
+        expect(status).toHaveTextContent('Went is correct because yesterday signals past time.');
+        expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'nearest' });
     });
 });

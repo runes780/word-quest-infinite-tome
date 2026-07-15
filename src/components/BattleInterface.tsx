@@ -194,6 +194,7 @@ export function BattleInterface() {
                 knowledgeCardsCount={knowledgeCards.length}
                 rootFragments={rootFragments}
                 fragmentsUntilCraft={fragmentsUntilCraft}
+                shopLabel={t.shop.title}
                 onOpenShop={() => setShowShop(true)}
                 t={t}
             />

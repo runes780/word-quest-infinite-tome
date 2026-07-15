@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, MotionConfig } from 'framer-motion';
 import { BattleInterface } from '@/components/BattleInterface';
 import { InputSection } from '@/components/InputSection';
 import { MistakeNotebook } from '@/components/MistakeNotebook';
@@ -12,15 +12,14 @@ import { useSettingsStore } from '@/store/settingsStore';
 
 export function PlayableApp() {
   const { questions } = useGameStore();
-  const { apiKey, language, setSettingsOpen } = useSettingsStore();
+  const { language } = useSettingsStore();
 
   useEffect(() => {
-    if (!apiKey) {
-      setSettingsOpen(true);
-    }
-  }, [apiKey, setSettingsOpen]);
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [questions.length]);
 
   return (
+    <MotionConfig reducedMotion="user">
     <main className="min-h-screen bg-background text-foreground overflow-hidden relative">
       {/* Background Effects */}
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
@@ -62,5 +61,6 @@ export function PlayableApp() {
         </footer>
       </div>
     </main>
+    </MotionConfig>
   );
 }
