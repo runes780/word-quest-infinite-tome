@@ -23,6 +23,7 @@ import {
 } from '@/db/db';
 import {
     applyQuestionDefaults,
+    applyAdaptiveScaffoldDecision,
     applyLearningMetadataForSource,
     buildImmediateRepairQuestion,
     expandBossGateQuestions,
@@ -72,6 +73,12 @@ import {
     planLearningProgressReward,
     type LearningProgressReward
 } from '@/lib/data/learningProgressRewards';
+import {
+    decideAdaptiveScaffold,
+    type AdaptiveScaffoldDecision,
+    type ScaffoldDecisionReason,
+    type ScaffoldTransition
+} from '@/lib/data/adaptiveScaffolding';
 import { createCombatSlice } from '@/store/slices/combatSlice';
 import { createLearningSlice } from '@/store/slices/learningSlice';
 import { createEconomySlice } from '@/store/slices/economySlice';
@@ -229,6 +236,11 @@ export interface UserAnswer {
     questionHash?: string;
     isImmediateRepair?: boolean;
     progressReward?: LearningProgressReward;
+    hintUsed?: boolean;
+    scaffoldTransition?: ScaffoldTransition;
+    scaffoldReason?: ScaffoldDecisionReason;
+    nextSupportLevel?: SupportLevel;
+    nextAttemptKind?: AttemptKind;
 }
 
 export interface MasteryCelebration {
@@ -286,7 +298,7 @@ export interface GameState {
 
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource, practicePlanRun?: PracticePlanRun | null) => void;
-    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number; selfConfidence?: LearningEventSelfConfidence }) => {
+    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number; selfConfidence?: LearningEventSelfConfidence; hintUsed?: boolean }) => {
         correct: boolean;
         explanation: string;
         damageDealt: number;
@@ -295,6 +307,7 @@ export interface GameState {
         repairQueued?: boolean;
         feedbackFocus?: string;
         progressReward: LearningProgressReward | null;
+        scaffoldDecision: AdaptiveScaffoldDecision;
     };
     nextQuestion: () => void;
     addQuestions: (newQuestions: QuestionInput[]) => void;
@@ -424,6 +437,20 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             }
             : plannedProgressReward;
 
+        const scaffoldDecision = decideAdaptiveScaffold({
+            current: {
+                learningObjectiveId: currentQuestion.learningObjectiveId,
+                skillTag: currentQuestion.skillTag,
+                isCorrect,
+                result: answerResult,
+                supportLevel: currentQuestion.supportLevel,
+                attemptKind: currentQuestion.attemptKind,
+                hintUsed: Boolean(meta?.hintUsed),
+                isImmediateRepair: currentQuestion.isImmediateRepair
+            },
+            priorEvidence: userAnswers
+        });
+
         // Record Answer
         const newAnswer = buildUserAnswer({
             question: currentQuestion,
@@ -431,7 +458,9 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             result: answerResult,
             selfConfidence: meta?.selfConfidence,
             questionHash,
-            progressReward
+            progressReward,
+            hintUsed: meta?.hintUsed,
+            scaffoldDecision
         });
         set({ userAnswers: [...userAnswers, newAnswer] });
 
@@ -452,6 +481,12 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
         );
 
         if (isCorrect) {
+            const adaptedQuestions = applyAdaptiveScaffoldDecision(
+                reorderedQuestions,
+                currentIndex,
+                currentQuestion,
+                scaffoldDecision
+            );
             const combatOutcome = resolveCorrectCombat({
                 playerStats,
                 currentMonsterHp,
@@ -497,7 +532,7 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                     gold: playerStats.gold + goldGain
                 },
                 skillStats: updatedSkillStats,
-                questions: reorderedQuestions,
+                questions: adaptedQuestions,
                 bossShieldProgress: nextBossShieldProgress,
                 recentMistakeBySkill: {
                     ...recentMistakeBySkill,
@@ -600,7 +635,9 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             source: sessionSource,
             isCritical,
             selfConfidence: meta?.selfConfidence,
-            progressReward
+            progressReward,
+            hintUsed: meta?.hintUsed,
+            scaffoldDecision
         });
         if (evidence.mistake) {
             void logMistake(evidence.mistake);
@@ -663,7 +700,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             isSuperEffective,
             repairQueued,
             feedbackFocus: repairQueued ? 'immediate_repair' : undefined,
-            progressReward
+            progressReward,
+            scaffoldDecision
         };
     },
 

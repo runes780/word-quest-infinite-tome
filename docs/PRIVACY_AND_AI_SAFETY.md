@@ -13,7 +13,7 @@ Word Quest: Infinite Tome is local-first and early-stage. The project is designe
 
 Current local data can include:
 
-- learning events from battle, SRS, daily challenge, hints, and sessions, including an optional three-level self-confidence signal on selected diagnostic/transfer questions
+- learning events from battle, SRS, daily challenge, hints, and sessions, including an optional three-level self-confidence signal on selected diagnostic/transfer questions and optional scaffold-decision fields (actual answer-level hint use, controlled reason/transition codes, and the next support level/task kind)
 - FSRS cards and due-review state
 - skill mastery records and review-risk signals
 - mission history, mistakes, study actions, and consistency checks
@@ -42,7 +42,7 @@ Depending on the feature a user explicitly invokes, provider input can include:
 - aggregate session score plus answer evidence needed for the optional AI debrief
 - the current study context for an optional endless-wave refill
 
-Provider requests do not include IndexedDB tables, browser profiles, guardian-dashboard records, report exports, API request metrics, optional self-confidence evidence, or unrelated localStorage fields. Adding any such field requires a separate privacy review, documentation update, and tests.
+Provider requests do not include IndexedDB tables, browser profiles, guardian-dashboard records, report exports, API request metrics, optional self-confidence evidence, scaffold-decision fields, answer-level hint-use evidence, or unrelated localStorage fields. Adding any such field requires a separate privacy review, documentation update, and tests.
 
 Provider requests should:
 

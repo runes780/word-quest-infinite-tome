@@ -140,11 +140,62 @@ describe('BattleQuestionPanel learning metadata', () => {
 
         const status = screen.getByRole('status');
         expect(status).toHaveAttribute('aria-live', 'polite');
+        expect(status).toHaveClass('mb-24', 'scroll-mb-28', 'sm:mb-0');
         expect(status).toHaveTextContent('Went is correct because yesterday signals past time.');
         expect(status).toHaveTextContent('correct but unsure');
         expect(status).toHaveTextContent('Transfer succeeded');
         expect(status).toHaveTextContent('+18 XP');
         expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'nearest' });
+    });
+
+    test('explains a support change without presenting it as an ability judgment', () => {
+        render(
+            <BattleQuestionPanel
+                currentQuestion={{ ...bossQuestion, isBoss: false, attemptKind: 'transfer', supportLevel: 0 }}
+                t={translations.en}
+                language="en"
+                ttsEnabled={false}
+                showHint={false}
+                showResult
+                selectedOption={0}
+                isCorrect={false}
+                resultMessage="Try the clue again."
+                currentMonsterHp={1}
+                bossShieldProgress={0}
+                bossComboThreshold={2}
+                clarityEffect={null}
+                selfConfidence={undefined}
+                progressReward={null}
+                scaffoldDecision={{
+                    transition: 'repair',
+                    reason: 'transfer-repair',
+                    nextSupportLevel: 2,
+                    nextAttemptKind: 'practice',
+                    evidence: {
+                        recentAttempts: 3,
+                        recentCorrect: 2,
+                        recentHintUses: 0,
+                        consecutiveWrong: 1,
+                        consecutiveNoHintSuccessesAtLevel: 0,
+                        transferAttempts: 1,
+                        transferCorrect: 0
+                    }
+                }}
+                onToggleHint={jest.fn()}
+                onConfidenceChange={jest.fn()}
+                onChoiceSelect={jest.fn()}
+                onTypingAnswer={jest.fn()}
+                onFillBlankAnswer={jest.fn()}
+                onVoiceAnswer={jest.fn()}
+                onSpeakQuestion={jest.fn()}
+                onSpeakExplanation={jest.fn()}
+                onOpenMentor={jest.fn()}
+                onNext={jest.fn()}
+            />
+        );
+
+        expect(screen.getByText('Next Support Step')).toBeInTheDocument();
+        expect(screen.getByText(/not an ability verdict/i)).toBeInTheDocument();
     });
 
     test('offers a non-scoring three-level confidence choice on transfer questions', () => {

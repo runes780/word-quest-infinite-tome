@@ -150,6 +150,16 @@ export type LearningEventProgressRewardKind =
     | 'delayed-recall'
     | 'transfer-success';
 export type LearningEventRewardProtectionReason = 'duplicate-evidence' | 'kind-cap' | 'session-cap';
+export type LearningEventScaffoldTransition = 'hold' | 'increase' | 'fade' | 'transfer' | 'repair';
+export type LearningEventScaffoldReason =
+    | 'collect-more-evidence'
+    | 'hint-dependence'
+    | 'answer-repair'
+    | 'transfer-repair'
+    | 'repair-confirmation'
+    | 'stable-success'
+    | 'transfer-ready'
+    | 'transfer-confirmed';
 
 export interface LearningEvent {
     id?: number;
@@ -173,6 +183,10 @@ export interface LearningEvent {
     rewardGold?: number;
     rewardCounted?: boolean;
     rewardProtectionReason?: LearningEventRewardProtectionReason;
+    scaffoldTransition?: LearningEventScaffoldTransition;
+    scaffoldReason?: LearningEventScaffoldReason;
+    nextSupportLevel?: LearningEventSupportLevel;
+    nextAttemptKind?: LearningEventAttemptKind;
     source: LearningEventSource;
     timestamp: number;
 }
@@ -195,6 +209,10 @@ export interface LearningEvidence {
     rewardGold?: number;
     rewardCounted?: boolean;
     rewardProtectionReason?: LearningEventRewardProtectionReason;
+    scaffoldTransition?: LearningEventScaffoldTransition;
+    scaffoldReason?: LearningEventScaffoldReason;
+    nextSupportLevel?: LearningEventSupportLevel;
+    nextAttemptKind?: LearningEventAttemptKind;
 }
 
 export type LearningTaskMetric = 'daily_sessions' | 'srs_answers' | 'battle_correct';
