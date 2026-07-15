@@ -119,7 +119,7 @@
 - [x] 增加报告导出可见隐私契约与逐次确认（图片/打印统一，取消不导出且不记录事件）
 - [x] 升级并收紧 GitHub Actions（Node 24 LTS、不可变 SHA、只读权限、并发取消、超时、显式评测门禁）
 - [x] `BattleInterface` 完成答题编排、战斗反馈、库存/通知子模块拆分（524→277 行，定时器卸载清理与聚焦测试）
-- [ ] 继续缩小 `gameStore` 跨域编排层，并以学习事件一致性测试保护 learning/combat/economy slice 行为
+- [x] 缩小 `gameStore` 跨域编排层：统一 answer→learningEvent/FSRS/mastery/mistake 证据契约并增加 store 集成一致性测试（1146→1048 行）
 - [x] 建立学习主流程浏览器 E2E（provider fallback -> mission -> battle -> report -> persistence -> srs）
 - [x] 增加数据一致性巡检（events/profile/dashboard）
 
