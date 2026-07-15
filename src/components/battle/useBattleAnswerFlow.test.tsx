@@ -20,7 +20,13 @@ const correctResult: ReturnType<GameState['answerQuestion']> = {
     explanation: 'apple is correct',
     damageDealt: 1,
     isCritical: false,
-    isSuperEffective: false
+    isSuperEffective: false,
+    progressReward: {
+        kind: 'independent-success',
+        xp: 12,
+        gold: 6,
+        counted: true
+    }
 };
 
 function setup(overrides: Partial<Parameters<typeof useBattleAnswerFlow>[0]> = {}) {
@@ -68,6 +74,7 @@ describe('useBattleAnswerFlow', () => {
         expect(flow.triggerCorrectFeedback).toHaveBeenCalledWith(correctResult);
         expect(flow.result.current.showResult).toBe(true);
         expect(flow.result.current.selectedOption).toBe(0);
+        expect(flow.result.current.progressReward).toEqual(correctResult.progressReward);
     });
 
     test('records hint use only when opening the hint', () => {
@@ -91,6 +98,7 @@ describe('useBattleAnswerFlow', () => {
 
         act(() => flow.result.current.resetAnswerState());
         expect(flow.result.current.selfConfidence).toBeUndefined();
+        expect(flow.result.current.progressReward).toBeNull();
     });
 
     test('opens mentor support after a high-value mistake and clears the timer on unmount', () => {

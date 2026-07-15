@@ -155,7 +155,14 @@ The fox runs under the pine tree.
             attemptKind: index % 4 === 0 ? 'transfer' : 'practice',
             supportLevel: index % 4,
             causeTag: index % 3 === 0 ? 'context_clue' : undefined,
-            selfConfidence: index % 2 === 0 ? 'high' as const : 'low' as const
+            selfConfidence: index % 2 === 0 ? 'high' as const : 'low' as const,
+            questionHash: `synthetic-${index}`,
+            progressReward: {
+                kind: 'supported-practice' as const,
+                xp: 8,
+                gold: 4,
+                counted: true
+            }
         }));
 
         const prompt = generateReportPrompt(400, 60, history);
@@ -164,6 +171,8 @@ The fox runs under the pine tree.
         expect(prompt).toContain('Objective Summary');
         expect(prompt).toContain('Recent Mistakes');
         expect(prompt).not.toContain('selfConfidence');
+        expect(prompt).not.toContain('progressReward');
+        expect(prompt).not.toContain('synthetic-0');
         expect(prompt).not.toContain('Very long generated question 1 Very long generated question 1 Very long generated question 1');
     });
 });

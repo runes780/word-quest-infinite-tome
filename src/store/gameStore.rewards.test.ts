@@ -93,7 +93,7 @@ describe('reward planning and objective rewards', () => {
         expect(rewards.some((reward) => reward.type === 'potion')).toBe(true);
     });
 
-    test('recordRunCompletion grants review-completion and weakness-breakthrough objective bonuses', async () => {
+    test('recordRunCompletion does not pay review and transfer evidence a second time', async () => {
         const answers: UserAnswer[] = [
             { questionId: 1, questionText: 'q1', userChoice: 'a', correctChoice: 'a', isCorrect: true },
             { questionId: 2, questionText: 'q2', userChoice: 'a', correctChoice: 'a', isCorrect: true },
@@ -116,15 +116,10 @@ describe('reward planning and objective rewards', () => {
         await Promise.resolve();
 
         const state = useGameStore.getState();
-        expect(state.runObjectiveBonuses).toHaveLength(3);
-        expect(state.runObjectiveBonuses.some((bonus) => bonus.id.startsWith('bonus_transfer_'))).toBe(true);
-        expect(state.playerStats.xp).toBe(76);
-        expect(state.playerStats.gold).toBe(52);
-        expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
-            totalXp: 76,
-            totalGold: 52,
-            dailyXpEarned: 76
-        }));
+        expect(state.runObjectiveBonuses).toHaveLength(0);
+        expect(state.playerStats.xp).toBe(0);
+        expect(state.playerStats.gold).toBe(0);
+        expect(updatePlayerProfile).not.toHaveBeenCalled();
         expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
             eventType: 'session_complete',
             source: 'srs'

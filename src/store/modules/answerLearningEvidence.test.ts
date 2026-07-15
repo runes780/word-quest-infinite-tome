@@ -27,7 +27,14 @@ describe('answer learning evidence contract', () => {
             question,
             selectedOption: 'orchard',
             result: 'correct',
-            selfConfidence: 'high'
+            selfConfidence: 'high',
+            questionHash: 'hash_public_fixture',
+            progressReward: {
+                kind: 'transfer-success',
+                xp: 18,
+                gold: 10,
+                counted: true
+            }
         })).toEqual({
             questionId: 42,
             questionText: question.question,
@@ -38,7 +45,14 @@ describe('answer learning evidence contract', () => {
             attemptKind: 'transfer',
             supportLevel: 1,
             causeTag: 'context_clue',
-            selfConfidence: 'high'
+            selfConfidence: 'high',
+            questionHash: 'hash_public_fixture',
+            progressReward: {
+                kind: 'transfer-success',
+                xp: 18,
+                gold: 10,
+                counted: true
+            }
         });
     });
 
@@ -55,7 +69,10 @@ describe('answer learning evidence contract', () => {
             responseLatencyMs: 1250,
             source: 'battle',
             isCritical,
-            selfConfidence: 'high'
+            selfConfidence: 'high',
+            progressReward: result === 'correct'
+                ? { kind: 'transfer-success', xp: 18, gold: 10, counted: true }
+                : null
         });
 
         expect(evidence.learningEvent).toEqual(expect.objectContaining({
@@ -72,6 +89,16 @@ describe('answer learning evidence contract', () => {
             latencyMs: 1250,
             selfConfidence: 'high'
         }));
+        if (result === 'correct') {
+            expect(evidence.learningEvent).toEqual(expect.objectContaining({
+                progressRewardKind: 'transfer-success',
+                rewardXp: 18,
+                rewardGold: 10,
+                rewardCounted: true
+            }));
+        } else {
+            expect(evidence.learningEvent.progressRewardKind).toBeUndefined();
+        }
         expect(evidence.objectiveMastery).toEqual(expect.objectContaining({
             result,
             skillTag: 'vocab_context',
@@ -81,6 +108,7 @@ describe('answer learning evidence contract', () => {
             latencyMs: 1250
         }));
         expect(evidence.objectiveMastery).not.toHaveProperty('selfConfidence');
+        expect(evidence.objectiveMastery).not.toHaveProperty('progressRewardKind');
         expect(evidence.review).toEqual(expect.objectContaining({
             questionHash: 'hash_public_fixture',
             rating,
@@ -93,6 +121,7 @@ describe('answer learning evidence contract', () => {
             })
         }));
         expect(evidence.review.questionData).not.toHaveProperty('selfConfidence');
+        expect(evidence.review.questionData).not.toHaveProperty('progressRewardKind');
         expect(evidence.masteryResult).toBe(result);
         expect(Boolean(evidence.mistake)).toBe(result === 'wrong');
     });

@@ -24,7 +24,7 @@ describe('combatResolution', () => {
             goldMultiplier: 1,
             damageMultiplier: 1,
             damageTakenMultiplier: 1,
-            wrongAnswerXp: 0,
+            repairXpMultiplier: 1,
             healOnCorrectThreshold: 0,
             healAmount: 0,
             goldPenalty: 0
@@ -85,7 +85,6 @@ describe('combatResolution', () => {
             playerXp: 5,
             damageTakenMultiplier: 2,
             goldPenalty: 4,
-            wrongAnswerXp: 2,
             isBoss: true,
             bossShieldProgress: 1
         });
@@ -93,7 +92,7 @@ describe('combatResolution', () => {
         expect(outcome.newHealth).toBe(1);
         expect(outcome.isGameOver).toBe(false);
         expect(outcome.nextGold).toBe(6);
-        expect(outcome.nextXp).toBe(7);
+        expect(outcome.nextXp).toBe(5);
         expect(outcome.nextBossShieldProgress).toBe(0);
     });
 });

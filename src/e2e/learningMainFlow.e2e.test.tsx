@@ -144,6 +144,8 @@ describe('learning main flow e2e (mission -> battle -> srs -> report)', () => {
 
         expect(screen.getByText('Confidence Calibration Summary')).toBeInTheDocument();
         expect(screen.getByText(/do not affect mastery or final judgments/i)).toBeInTheDocument();
+        expect(screen.getByText('Learning Progress Rewards')).toBeInTheDocument();
+        expect(screen.getByText(/XP and gold come from traceable learning evidence/i)).toBeInTheDocument();
 
         await waitFor(() => {
             expect(logMissionHistory).toHaveBeenCalledWith(expect.objectContaining({

@@ -54,6 +54,14 @@ export const translations = {
             calibrationCue: "Confidence check",
             highConfidenceError: "You felt very sure, but the answer differed. Compare the clue with your original reasoning before moving on.",
             lowConfidenceCorrect: "You were correct but unsure. Read the explanation once so the answer becomes recall, not a guess.",
+            progressRewardCue: "Learning progress reward",
+            rewardSupportedPractice: "Supported practice completed",
+            rewardIndependentSuccess: "Independent recall",
+            rewardRepairSuccess: "Mistake repaired",
+            rewardDelayedRecall: "Due memory retrieved",
+            rewardTransferSuccess: "Transfer succeeded",
+            rewardProtected: "Practice recorded",
+            rewardProtectedDetail: "This attempt still counts as learning evidence, but repeated or capped evidence does not earn another progress reward.",
             fragmentsHint: "{count} until new relic"
         },
         shop: {
@@ -62,7 +70,7 @@ export const translations = {
             buy: "Buy",
             soldOut: "Sold Out",
             close: "Close",
-            footer: "Earn gold by defeating monsters. Critical hits grant bonus gold!"
+            footer: "Earn gold from learning progress and mission rewards. Stronger evidence earns more."
         },
         report: {
             missionAccomplished: "MISSION ACCOMPLISHED",
@@ -247,6 +255,14 @@ export const translations = {
             calibrationCue: "把握度校准",
             highConfidenceError: "你很有把握，但结果不同。继续前先对照题目线索，找出原先判断的关键偏差。",
             lowConfidenceCorrect: "你答对了但把握较低。请读一遍解析，把这次正确从猜测变成可提取的记忆。",
+            progressRewardCue: "学习进步奖励",
+            rewardSupportedPractice: "完成支架练习",
+            rewardIndependentSuccess: "独立提取成功",
+            rewardRepairSuccess: "错因修复成功",
+            rewardDelayedRecall: "到期记忆已提取",
+            rewardTransferSuccess: "新语境迁移成功",
+            rewardProtected: "练习证据已记录",
+            rewardProtectedDetail: "本次仍计入学习证据；为避免重复刷取，重复题或达到上限的同类证据不再发放进步奖励。",
             fragmentsHint: "距下一件遗物还差 {count} 个"
         },
         shop: {
@@ -255,7 +271,7 @@ export const translations = {
             buy: "购买",
             soldOut: "售罄",
             close: "关闭",
-            footer: "击败怪物赚取金币。暴击获得额外奖励！"
+            footer: "通过学习进步和任务奖励获得金币；证据越强，进步奖励越高。"
         },
         report: {
             missionAccomplished: "任务完成",

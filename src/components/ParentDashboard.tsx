@@ -74,6 +74,7 @@ import type { PracticePlan, PracticePlanEvidence } from '@/lib/data/dailyPractic
 import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
 import { formatLearningLabel, mapSkillTagToObjectiveId, objectiveTitle } from '@/lib/data/learningObjectives';
 import type { CalibrationSummary } from '@/lib/data/metacognitiveCalibration';
+import type { LearningProgressRewardSummary } from '@/lib/data/learningProgressRewards';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -160,6 +161,7 @@ export function ParentDashboard() {
     const [dailyPracticePlan, setDailyPracticePlan] = useState<PracticePlan | null>(null);
     const [activityFeed, setActivityFeed] = useState<GuardianActivityFeedItem[]>([]);
     const [calibrationSummary, setCalibrationSummary] = useState<CalibrationSummary | null>(null);
+    const [progressRewardSummary, setProgressRewardSummary] = useState<LearningProgressRewardSummary | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -284,6 +286,7 @@ export function ParentDashboard() {
             setDailyPracticePlan(dashboard.dailyPracticePlan);
             setActivityFeed(dashboard.activityFeed);
             setCalibrationSummary(dashboard.calibrationSummary ?? null);
+            setProgressRewardSummary(dashboard.progressRewardSummary ?? null);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load dashboard data.');
@@ -867,6 +870,33 @@ export function ParentDashboard() {
                                         </Panel>
 
                                         <Panel title={isZh ? '学习事件' : 'Learning Events'} subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
+                                            {progressRewardSummary && progressRewardSummary.countedRewards > 0 && (
+                                                <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-left">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-sm font-black text-emerald-950">
+                                                            {isZh ? '学习进步奖励证据' : 'Learning Progress Reward Evidence'}
+                                                        </p>
+                                                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-emerald-700">
+                                                            +{progressRewardSummary.totalXp} XP · +{progressRewardSummary.totalGold} Gold
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                                        <MiniMetric
+                                                            label={isZh ? '强学习证据' : 'Strong evidence'}
+                                                            value={progressRewardSummary.strongEvidenceCount}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '防刷保护' : 'Protected attempts'}
+                                                            value={progressRewardSummary.protectedAttempts}
+                                                        />
+                                                    </div>
+                                                    <p className="mt-3 text-xs leading-relaxed text-emerald-800">
+                                                        {isZh
+                                                            ? '奖励只回溯到本机的复习、修复、独立提取和迁移证据；不作为掌握度、排名或最终评价。'
+                                                            : 'Rewards trace back only to local review, repair, independent-recall, and transfer evidence; they are not mastery, ranking, or final judgments.'}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {calibrationSummary && calibrationSummary.ratedAnswers > 0 && (
                                                 <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-left">
                                                     <div className="flex flex-wrap items-center justify-between gap-2">

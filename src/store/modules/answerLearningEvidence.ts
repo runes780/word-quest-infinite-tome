@@ -7,6 +7,7 @@ import type {
     updateObjectiveMastery
 } from '@/db/db';
 import type { LogMistakeArgs } from '@/lib/data/mistakes';
+import type { LearningProgressReward } from '@/lib/data/learningProgressRewards';
 import type { Monster, UserAnswer } from '@/store/gameStore';
 
 type LearningEventInput = Parameters<typeof logLearningEvent>[0];
@@ -19,10 +20,11 @@ interface AnswerIdentityInput {
     selectedOption: string;
     result: LearningEventResult;
     selfConfidence?: LearningEventSelfConfidence;
+    questionHash: string;
+    progressReward?: LearningProgressReward | null;
 }
 
 interface AnswerLearningEvidenceInput extends AnswerIdentityInput {
-    questionHash: string;
     responseLatencyMs: number;
     source: LearningEventSource;
     isCritical: boolean;
@@ -44,7 +46,9 @@ export function buildUserAnswer({
     question,
     selectedOption,
     result,
-    selfConfidence
+    selfConfidence,
+    questionHash,
+    progressReward
 }: AnswerIdentityInput): UserAnswer {
     return {
         questionId: question.id,
@@ -56,7 +60,10 @@ export function buildUserAnswer({
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
         causeTag: question.causeTag,
-        selfConfidence
+        selfConfidence,
+        questionHash,
+        ...(question.isImmediateRepair ? { isImmediateRepair: true } : {}),
+        ...(progressReward ? { progressReward } : {})
     };
 }
 
@@ -68,7 +75,8 @@ export function buildAnswerLearningEvidence({
     responseLatencyMs,
     source,
     isCritical,
-    selfConfidence
+    selfConfidence,
+    progressReward
 }: AnswerLearningEvidenceInput): AnswerLearningEvidence {
     const sharedLearningMetadata = {
         skillTag: question.skillTag,
@@ -79,7 +87,12 @@ export function buildAnswerLearningEvidence({
         supportLevel: question.supportLevel,
         causeTag: question.causeTag,
         mode: question.questionMode,
-        selfConfidence
+        selfConfidence,
+        progressRewardKind: progressReward?.kind,
+        rewardXp: progressReward?.xp,
+        rewardGold: progressReward?.gold,
+        rewardCounted: progressReward?.counted,
+        rewardProtectionReason: progressReward?.protectionReason
     };
     const questionData: ReviewQuestionData = {
         question: question.question,
