@@ -259,6 +259,20 @@ const buildMockDashboardViewModel = () => ({
         lowConfidenceCorrect: 1,
         alignedJudgments: 1,
         status: 'review-high-confidence-errors' as const
+    },
+    progressRewardSummary: {
+        countedRewards: 5,
+        protectedAttempts: 1,
+        totalXp: 66,
+        totalGold: 36,
+        strongEvidenceCount: 3,
+        byKind: {
+            'supported-practice': 2,
+            'independent-success': 0,
+            'repair-success': 1,
+            'delayed-recall': 1,
+            'transfer-success': 1
+        }
     }
 });
 
@@ -334,6 +348,8 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Review Queue')).toBeInTheDocument();
         expect(screen.getByText('Learning Events')).toBeInTheDocument();
         expect(await screen.findByText('Confidence Calibration Signals')).toBeInTheDocument();
+        expect(screen.getByText('Learning Progress Reward Evidence')).toBeInTheDocument();
+        expect(screen.getByText(/trace back only to local review, repair/i)).toBeInTheDocument();
         expect(screen.getByText(/does not affect mastery, ranking, or final judgments/i)).toBeInTheDocument();
         expect(screen.getByText('Wrong battle answer')).toBeInTheDocument();
         expect(screen.getByText('Guardian Recommendations')).toBeInTheDocument();

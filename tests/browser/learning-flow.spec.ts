@@ -38,6 +38,23 @@ async function readConfidenceEvidenceCount(page: Page) {
     });
 }
 
+async function readProgressRewardEvidenceCount(page: Page) {
+    return page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open('WordQuestDB');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const rows = await new Promise<Array<{ progressRewardKind?: string }>>((resolve, reject) => {
+            const request = db.transaction('learningEvents', 'readonly').objectStore('learningEvents').getAll();
+            request.onsuccess = () => resolve(request.result as Array<{ progressRewardKind?: string }>);
+            request.onerror = () => reject(request.error);
+        });
+        db.close();
+        return rows.filter((row) => Boolean(row.progressRewardKind)).length;
+    });
+}
+
 test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem('word-quest-settings', JSON.stringify({
@@ -102,6 +119,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
         const next = page.getByRole('button', { name: 'Next Level' });
         await expect(next).toBeVisible({ timeout: 6_000 });
+        await expect(page.getByRole('status')).toContainText(/Learning progress reward|Practice recorded/i);
         if (confidenceVisible) {
             await expect(page.getByRole('status')).toContainText(/correct but unsure/i);
         }
@@ -110,6 +128,8 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
     await expect(page.getByRole('heading', { name: 'Mission Accomplished' })).toBeVisible();
     await expect(page.getByText('Learning Evidence Snapshot')).toBeVisible();
+    await expect(page.getByText('Learning Progress Rewards')).toBeVisible();
+    await expect(page.getByText(/XP and gold come from traceable learning evidence/i)).toBeVisible();
 
     await expect.poll(() => readLearningCounts(page), { timeout: 10_000 }).toMatchObject({
         learningEvents: expect.any(Number),
@@ -122,6 +142,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     expect(counts.history).toBeGreaterThanOrEqual(1);
     expect(confidenceSelections).toBeGreaterThanOrEqual(1);
     await expect.poll(() => readConfidenceEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => readProgressRewardEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
 
     await page.getByRole('button', { name: 'Initialize New Mission' }).click();
     await page.getByRole('button', { name: 'SRS Review' }).first().click();

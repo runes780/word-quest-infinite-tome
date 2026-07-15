@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Shield, Sword, HelpCircle, Lightbulb } from 'lucide-react';
+import { Brain, Shield, Sparkles, Sword, HelpCircle, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
@@ -12,6 +12,7 @@ import type { translations } from '@/lib/translations';
 import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
 import type { LearningEventSelfConfidence } from '@/db/db';
 import { calibrationSignalFor, shouldCollectSelfConfidence } from '@/lib/data/metacognitiveCalibration';
+import type { LearningProgressReward, LearningProgressRewardKind } from '@/lib/data/learningProgressRewards';
 
 interface BattleQuestionPanelProps {
     currentQuestion: Monster;
@@ -28,6 +29,7 @@ interface BattleQuestionPanelProps {
     bossComboThreshold: number;
     clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
     selfConfidence?: LearningEventSelfConfidence;
+    progressReward: LearningProgressReward | null;
     onToggleHint: () => void;
     onConfidenceChange: (confidence: LearningEventSelfConfidence) => void;
     onChoiceSelect: (index: number) => void;
@@ -55,6 +57,7 @@ export function BattleQuestionPanel({
     bossComboThreshold,
     clarityEffect,
     selfConfidence,
+    progressReward,
     onToggleHint,
     onConfidenceChange,
     onChoiceSelect,
@@ -95,6 +98,13 @@ export function BattleQuestionPanel({
         { value: 'medium', label: t.battle.confidenceMedium },
         { value: 'high', label: t.battle.confidenceHigh }
     ];
+    const progressRewardLabels: Record<LearningProgressRewardKind, string> = {
+        'supported-practice': t.battle.rewardSupportedPractice,
+        'independent-success': t.battle.rewardIndependentSuccess,
+        'repair-success': t.battle.rewardRepairSuccess,
+        'delayed-recall': t.battle.rewardDelayedRecall,
+        'transfer-success': t.battle.rewardTransferSuccess
+    };
 
     useEffect(() => {
         if (!showResult || typeof feedbackRef.current?.scrollIntoView !== 'function') return;
@@ -306,6 +316,23 @@ export function BattleQuestionPanel({
                                         </button>
                                     )}
                                 </div>
+                                {progressReward && (
+                                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-foreground">
+                                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                                {progressReward.counted
+                                                    ? t.battle.progressRewardCue
+                                                    : t.battle.rewardProtected}
+                                            </p>
+                                            <p className="mt-1 leading-relaxed">
+                                                {progressReward.counted
+                                                    ? `${progressRewardLabels[progressReward.kind]} · +${progressReward.xp} XP · +${progressReward.gold} Gold`
+                                                    : t.battle.rewardProtectedDetail}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 {calibrationSignal && (
                                     <div className="mt-3 flex items-start gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 p-3 text-sm text-foreground">
                                         <Brain className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" />

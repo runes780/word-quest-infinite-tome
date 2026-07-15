@@ -1,9 +1,8 @@
-import type { Monster, QuestionMode, UserAnswer, RunObjectiveBonus } from '@/store/gameStore';
+import type { Monster, QuestionMode } from '@/store/gameStore';
 import type { LearningEventSource, SkillMasteryRecord } from '@/db/db';
 import {
     canonicalizeLearningObjective,
     modeForSupportLevel,
-    objectiveTitle,
     selectSupportLevelForMastery,
     type AttemptKind,
     type SupportLevel
@@ -288,54 +287,4 @@ export const findBreakthroughSkill = (stats: SkillStatsMap) => {
     if (!snapshot) return null;
     if (snapshot.attempts < 4 || snapshot.accuracy < 0.75) return null;
     return snapshot;
-};
-
-export const buildRunObjectiveBonuses = (
-    source: LearningEventSource,
-    stats: SkillStatsMap,
-    answers: UserAnswer[]
-): RunObjectiveBonus[] => {
-    const bonuses: RunObjectiveBonus[] = [];
-    const totalAnswers = answers.length;
-    const totalCorrect = answers.filter((answer) => answer.isCorrect).length;
-    const accuracy = totalAnswers > 0 ? totalCorrect / totalAnswers : 0;
-
-    if (source === 'srs' && totalAnswers >= 6 && accuracy >= 0.7) {
-        bonuses.push({
-            id: `bonus_review_${Date.now()}`,
-            title: 'Review Completion',
-            description: 'Completed a qualified SRS review run.',
-            xp: 30,
-            gold: 20
-        });
-    }
-
-    const breakthrough = findBreakthroughSkill(stats);
-    if (breakthrough) {
-        bonuses.push({
-            id: `bonus_breakthrough_${breakthrough.skillTag}_${Date.now()}`,
-            title: 'Weakness Breakthrough',
-            description: `${formatSkillLabel(breakthrough.skillTag)} reached ${Math.round(breakthrough.accuracy * 100)}% in ${breakthrough.attempts} attempts.`,
-            xp: 24,
-            gold: 18,
-            skillTag: breakthrough.skillTag
-        });
-    }
-
-    const transferAnswers = answers.filter((answer) =>
-        answer.isCorrect && (answer.attemptKind === 'transfer' || answer.supportLevel === 0)
-    );
-    const transferObjective = transferAnswers.find((answer) => answer.learningObjectiveId)?.learningObjectiveId;
-    if (transferAnswers.length > 0) {
-        bonuses.push({
-            id: `bonus_transfer_${transferObjective || 'objective'}_${Date.now()}`,
-            title: 'Transfer Checkpoint',
-            description: `${objectiveTitle(transferObjective)} held up in independent recall.`,
-            xp: 22,
-            gold: 14,
-            skillTag: transferObjective
-        });
-    }
-
-    return bonuses;
 };

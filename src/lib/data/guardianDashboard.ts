@@ -50,6 +50,10 @@ import { buildDailyPracticePlan, PracticePlan } from '@/lib/data/dailyPracticePl
 import { objectiveTitle } from '@/lib/data/learningObjectives';
 import { buildDailyFlameStatus, DailyFlameStatus } from '@/lib/data/dailyFlame';
 import { buildCalibrationSummary, type CalibrationSummary } from '@/lib/data/metacognitiveCalibration';
+import {
+    buildLearningProgressRewardSummary,
+    type LearningProgressRewardSummary
+} from '@/lib/data/learningProgressRewards';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -92,6 +96,7 @@ export interface GuardianDashboardViewModel {
     dailyPracticePlan: PracticePlan;
     activityFeed: GuardianActivityFeedItem[];
     calibrationSummary: CalibrationSummary;
+    progressRewardSummary: LearningProgressRewardSummary;
 }
 
 export interface GuardianActivityFeedInput {
@@ -336,6 +341,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
     });
     const dailyFlameStatus = buildDailyFlameStatus({ profile: playerProfile, now });
     const calibrationSummary = buildCalibrationSummary(learningEvents, { now, windowDays: range });
+    const progressRewardSummary = buildLearningProgressRewardSummary(learningEvents, { now, windowDays: range });
 
     return {
         history,
@@ -362,6 +368,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         sessionRecovery,
         dailyPracticePlan,
         activityFeed,
-        calibrationSummary
+        calibrationSummary,
+        progressRewardSummary
     };
 }

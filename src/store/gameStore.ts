@@ -25,7 +25,6 @@ import {
     applyQuestionDefaults,
     applyLearningMetadataForSource,
     buildImmediateRepairQuestion,
-    buildRunObjectiveBonuses,
     expandBossGateQuestions,
     computeSkillPriority as computeSkillPriorityFromModule,
     findWeakSkill,
@@ -69,6 +68,10 @@ import {
     buildAnswerLearningEvidence,
     buildUserAnswer
 } from '@/store/modules/answerLearningEvidence';
+import {
+    planLearningProgressReward,
+    type LearningProgressReward
+} from '@/lib/data/learningProgressRewards';
 import { createCombatSlice } from '@/store/slices/combatSlice';
 import { createLearningSlice } from '@/store/slices/learningSlice';
 import { createEconomySlice } from '@/store/slices/economySlice';
@@ -223,6 +226,9 @@ export interface UserAnswer {
     supportLevel?: SupportLevel;
     causeTag?: string;
     selfConfidence?: LearningEventSelfConfidence;
+    questionHash?: string;
+    isImmediateRepair?: boolean;
+    progressReward?: LearningProgressReward;
 }
 
 export interface MasteryCelebration {
@@ -288,6 +294,7 @@ export interface GameState {
         isSuperEffective: boolean;
         repairQueued?: boolean;
         feedbackFocus?: string;
+        progressReward: LearningProgressReward | null;
     };
     nextQuestion: () => void;
     addQuestions: (newQuestions: QuestionInput[]) => void;
@@ -396,13 +403,35 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
 
         // Get active blessing effect
         const blessing = normalizeBlessingModifiers(getCurrentBlessingEffect());
+        const plannedProgressReward = planLearningProgressReward({
+            source: sessionSource,
+            questionHash,
+            isCorrect,
+            attemptKind: currentQuestion.attemptKind,
+            supportLevel: currentQuestion.supportLevel,
+            isImmediateRepair: currentQuestion.isImmediateRepair,
+            priorEvidence: userAnswers
+        });
+        const progressReward = plannedProgressReward?.counted
+            ? {
+                ...plannedProgressReward,
+                xp: Math.floor(
+                    applyXpBonus(plannedProgressReward.xp, inventory) *
+                    blessing.xpMultiplier *
+                    (plannedProgressReward.kind === 'repair-success' ? blessing.repairXpMultiplier : 1)
+                ),
+                gold: Math.floor(applyGoldBonus(plannedProgressReward.gold, inventory) * blessing.goldMultiplier)
+            }
+            : plannedProgressReward;
 
         // Record Answer
         const newAnswer = buildUserAnswer({
             question: currentQuestion,
             selectedOption,
             result: answerResult,
-            selfConfidence: meta?.selfConfidence
+            selfConfidence: meta?.selfConfidence,
+            questionHash,
+            progressReward
         });
         set({ userAnswers: [...userAnswers, newAnswer] });
 
@@ -437,9 +466,9 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             nextBossShieldProgress = combatOutcome.nextBossShieldProgress;
             nextMonsterHp = combatOutcome.nextMonsterHp;
 
-            // XP Calculation with blessing multiplier
-            const xpBase = 20 + (isCritical ? 10 : 0);
-            const xpGain = Math.floor(applyXpBonus(xpBase, inventory) * blessing.xpMultiplier);
+            // Learning progress evidence determines XP and gold. Combat criticals
+            // still affect score and damage, but no longer inflate learning rewards.
+            const xpGain = progressReward?.xp || 0;
             let newXp = playerStats.xp + xpGain;
             let newLevel = playerStats.level;
             let newMaxXp = playerStats.maxXp;
@@ -453,9 +482,7 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                 set({ health: maxHealth });
             }
 
-            // Gold calculation with blessing multiplier
-            const goldBase = 15 + (isCritical ? 10 : 0);
-            const goldGain = Math.floor(applyGoldBonus(goldBase, inventory) * blessing.goldMultiplier);
+            const goldGain = progressReward?.gold || 0;
             const newStreak = playerStats.streak + 1;
 
             set({
@@ -519,7 +546,6 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                 playerXp: playerStats.xp,
                 damageTakenMultiplier: blessing.damageTakenMultiplier,
                 goldPenalty: blessing.goldPenalty,
-                wrongAnswerXp: blessing.wrongAnswerXp,
                 isBoss: Boolean(currentQuestion.isBoss),
                 bossShieldProgress
             });
@@ -573,7 +599,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             responseLatencyMs,
             source: sessionSource,
             isCritical,
-            selfConfidence: meta?.selfConfidence
+            selfConfidence: meta?.selfConfidence,
+            progressReward
         });
         if (evidence.mistake) {
             void logMistake(evidence.mistake);
@@ -635,7 +662,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             isCritical,
             isSuperEffective,
             repairQueued,
-            feedbackFocus: repairQueued ? 'immediate_repair' : undefined
+            feedbackFocus: repairQueued ? 'immediate_repair' : undefined,
+            progressReward
         };
     },
 
@@ -869,26 +897,10 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             vocabMastered,
             grammarMastered
         });
-        const objectiveBonuses = buildRunObjectiveBonuses(state.sessionSource, state.skillStats, state.userAnswers);
-        if (objectiveBonuses.length > 0) {
-            const totalObjectiveXp = objectiveBonuses.reduce((sum, bonus) => sum + bonus.xp, 0);
-            const totalObjectiveGold = objectiveBonuses.reduce((sum, bonus) => sum + bonus.gold, 0);
-            set((current) => ({
-                playerStats: applyProgressionReward(current.playerStats, totalObjectiveXp, totalObjectiveGold),
-                runObjectiveBonuses: objectiveBonuses
-            }));
-            updateAchievementStats({
-                totalGoldEarned: totalObjectiveGold,
-                totalXpEarned: totalObjectiveXp
-            });
-            updatePlayerProfile({
-                totalXp: totalObjectiveXp,
-                totalGold: totalObjectiveGold,
-                dailyXpEarned: totalObjectiveXp
-            }).catch(console.error);
-        } else {
-            set({ runObjectiveBonuses: [] });
-        }
+        // Per-answer progress rewards already account for review, repair and
+        // transfer evidence. Do not grant a second end-of-run payout for the
+        // same evidence.
+        set({ runObjectiveBonuses: [] });
         const activeStep = currentPracticePlanStep(state.activePracticePlanRun);
         if (state.activePracticePlanRun && activeStep?.id === state.activePracticePlanStepId) {
             set({

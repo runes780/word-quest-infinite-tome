@@ -101,13 +101,17 @@ describe('IndexedDB backup and restore', () => {
         await expect(database.practicePlanRuns.count()).resolves.toBe(0);
     });
 
-    test('round-trips optional confidence evidence without a schema index migration', async () => {
+    test('round-trips optional confidence and progress reward evidence without a schema index migration', async () => {
         await database.learningEvents.add({
             eventType: 'answer',
             source: 'battle',
-            result: 'wrong',
+            result: 'correct',
             attemptKind: 'transfer',
             selfConfidence: 'high',
+            progressRewardKind: 'transfer-success',
+            rewardXp: 18,
+            rewardGold: 10,
+            rewardCounted: true,
             timestamp: Date.parse('2026-07-15T08:00:00Z')
         });
 
@@ -117,8 +121,12 @@ describe('IndexedDB backup and restore', () => {
 
         await expect(database.learningEvents.toArray()).resolves.toEqual([
             expect.objectContaining({
-                result: 'wrong',
-                selfConfidence: 'high'
+                result: 'correct',
+                selfConfidence: 'high',
+                progressRewardKind: 'transfer-success',
+                rewardXp: 18,
+                rewardGold: 10,
+                rewardCounted: true
             })
         ]);
     });

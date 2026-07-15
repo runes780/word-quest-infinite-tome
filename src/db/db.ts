@@ -143,6 +143,13 @@ export type LearningEventResult = 'correct' | 'wrong';
 export type LearningEventAttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
 export type LearningEventSupportLevel = 0 | 1 | 2 | 3;
 export type LearningEventSelfConfidence = 'low' | 'medium' | 'high';
+export type LearningEventProgressRewardKind =
+    | 'supported-practice'
+    | 'independent-success'
+    | 'repair-success'
+    | 'delayed-recall'
+    | 'transfer-success';
+export type LearningEventRewardProtectionReason = 'duplicate-evidence' | 'kind-cap' | 'session-cap';
 
 export interface LearningEvent {
     id?: number;
@@ -161,6 +168,11 @@ export interface LearningEvent {
     hintUsed?: boolean;
     latencyMs?: number;
     selfConfidence?: LearningEventSelfConfidence;
+    progressRewardKind?: LearningEventProgressRewardKind;
+    rewardXp?: number;
+    rewardGold?: number;
+    rewardCounted?: boolean;
+    rewardProtectionReason?: LearningEventRewardProtectionReason;
     source: LearningEventSource;
     timestamp: number;
 }
@@ -178,6 +190,11 @@ export interface LearningEvidence {
     hintUsed?: boolean;
     latencyMs?: number;
     selfConfidence?: LearningEventSelfConfidence;
+    progressRewardKind?: LearningEventProgressRewardKind;
+    rewardXp?: number;
+    rewardGold?: number;
+    rewardCounted?: boolean;
+    rewardProtectionReason?: LearningEventRewardProtectionReason;
 }
 
 export type LearningTaskMetric = 'daily_sessions' | 'srs_answers' | 'battle_correct';

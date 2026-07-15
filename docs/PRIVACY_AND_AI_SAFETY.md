@@ -94,6 +94,8 @@ Backups include full local records such as source-derived question text, answers
 
 Optional self-confidence evidence is stored only inside the local answer event and local session answer. It is used to select feedback for high-confidence errors and low-confidence correct answers. It does not change score, rewards, FSRS ratings, mastery state, ranking, or final judgments. Learner and guardian summaries expose counts only, without linking confidence to exported question text.
 
+Learning-progress rewards add optional local event fields for reward kind, XP, gold, whether the payout counted, and an anti-farming reason. These fields make each payout auditable against supported practice, independent recall, error repair, due review, or transfer evidence. They are non-indexed and require no Dexie schema migration. They are included in full local backups, but learner and guardian summaries expose aggregate counts and totals only. Reward metadata is not added to AI prompts and is not a mastery score, ranking, diagnosis, or final judgment.
+
 Safety boundaries:
 
 - the file is not encrypted; keep it only in trusted storage and do not attach a real learner backup to public issues, pull requests, chat, or email

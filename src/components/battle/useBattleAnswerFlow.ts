@@ -47,6 +47,7 @@ export function useBattleAnswerFlow({
     const [wrongAnswerText, setWrongAnswerText] = useState('');
     const [showHint, setShowHint] = useState(false);
     const [selfConfidence, setSelfConfidence] = useState<LearningEventSelfConfidence | undefined>();
+    const [progressReward, setProgressReward] = useState<AnswerResult['progressReward']>(null);
     const consecutiveWrong = useRef(0);
     const mentorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -90,6 +91,7 @@ export function useBattleAnswerFlow({
         setIsCorrect(correct);
         setShowResult(true);
         setResultMessage(formatBattleResultExplanation(result, language));
+        setProgressReward(result.progressReward);
         onAnswerRecorded();
 
         if (correct) {
@@ -147,6 +149,7 @@ export function useBattleAnswerFlow({
         setShowResult(false);
         setShowHint(false);
         setSelfConfidence(undefined);
+        setProgressReward(null);
     }, []);
 
     return {
@@ -160,6 +163,7 @@ export function useBattleAnswerFlow({
         showHint,
         selfConfidence,
         setSelfConfidence,
+        progressReward,
         handleOptionClick,
         handleTextQuestionAnswer,
         handleVoiceAnswer,

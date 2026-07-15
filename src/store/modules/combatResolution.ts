@@ -10,7 +10,7 @@ export interface BlessingCombatModifiers {
     goldMultiplier: number;
     damageMultiplier: number;
     damageTakenMultiplier: number;
-    wrongAnswerXp: number;
+    repairXpMultiplier: number;
     healOnCorrectThreshold: number;
     healAmount: number;
     goldPenalty: number;
@@ -21,7 +21,7 @@ export interface BlessingEffectInput {
     goldMultiplier?: number;
     damageMultiplier?: number;
     damageTaken?: number;
-    wrongAnswerXp?: number;
+    repairXpMultiplier?: number;
     shieldOnStreak?: number;
     healOnCorrect?: number;
     goldPenalty?: number;
@@ -52,7 +52,6 @@ interface ResolveWrongCombatInput {
     playerXp: number;
     damageTakenMultiplier: number;
     goldPenalty: number;
-    wrongAnswerXp: number;
     isBoss: boolean;
     bossShieldProgress: number;
 }
@@ -85,7 +84,7 @@ export function normalizeBlessingModifiers(effect?: BlessingEffectInput | null):
         goldMultiplier: effect?.goldMultiplier ?? 1,
         damageMultiplier: effect?.damageMultiplier ?? 1,
         damageTakenMultiplier: effect?.damageTaken ?? 1,
-        wrongAnswerXp: effect?.wrongAnswerXp ?? 0,
+        repairXpMultiplier: effect?.repairXpMultiplier ?? 1,
         healOnCorrectThreshold: effect?.shieldOnStreak ?? 0,
         healAmount: effect?.healOnCorrect ?? 0,
         goldPenalty: effect?.goldPenalty ?? 0
@@ -138,7 +137,7 @@ export function resolveWrongCombat(input: ResolveWrongCombatInput) {
     const damageToTake = Math.floor(1 * input.damageTakenMultiplier);
     const newHealth = Math.max(0, input.health - damageToTake);
     const nextGold = Math.max(0, input.playerGold - input.goldPenalty);
-    const nextXp = input.wrongAnswerXp > 0 ? input.playerXp + input.wrongAnswerXp : input.playerXp;
+    const nextXp = input.playerXp;
 
     return {
         newHealth,
