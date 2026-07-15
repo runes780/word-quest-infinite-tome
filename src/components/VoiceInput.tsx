@@ -165,8 +165,13 @@ export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: Voice
             {/* Voice Input Button */}
             <div className="flex justify-center">
                 <motion.button
+                    type="button"
                     onClick={handleMicClick}
                     disabled={disabled || !!feedback}
+                    aria-label={isListening
+                        ? (isZh ? '停止语音回答' : 'Stop voice answer')
+                        : (isZh ? '开始语音回答' : 'Start voice answer')}
+                    aria-pressed={isListening}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     className={`relative p-6 rounded-full transition-all ${isListening
@@ -209,7 +214,7 @@ export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: Voice
             </div>
 
             {/* Status text */}
-            <p className="text-center text-sm text-muted-foreground">
+            <p role="status" aria-live="polite" className="text-center text-sm text-muted-foreground">
                 {isListening ? (
                     <span className="flex items-center justify-center gap-2">
                         <Volume2 className="w-4 h-4 animate-pulse" />
@@ -266,6 +271,8 @@ export function VoiceInput({ correctAnswer, onAnswer, disabled, options }: Voice
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
+                        role="alert"
+                        aria-live="assertive"
                         className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-sm"
                     >
                         <AlertCircle className="w-4 h-4 inline mr-2" />

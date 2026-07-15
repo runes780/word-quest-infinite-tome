@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Sword, HelpCircle, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -59,6 +60,7 @@ export function BattleQuestionPanel({
     onOpenMentor,
     onNext
 }: BattleQuestionPanelProps) {
+    const feedbackRef = useRef<HTMLDivElement | null>(null);
     const uiLanguage = language === 'zh' ? 'zh' : 'en';
     const bossGateLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
         ? (uiLanguage === 'zh'
@@ -76,6 +78,11 @@ export function BattleQuestionPanel({
         ? (uiLanguage === 'zh' ? '补救反击' : 'Counter-Attack')
         : null;
 
+    useEffect(() => {
+        if (!showResult || typeof feedbackRef.current?.scrollIntoView !== 'function') return;
+        feedbackRef.current.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+    }, [currentQuestion.id, showResult]);
+
     return (
         <div className="flex flex-col justify-center space-y-6">
             <motion.div
@@ -92,7 +99,7 @@ export function BattleQuestionPanel({
                         {ttsEnabled && (
                             <button
                                 onClick={onSpeakQuestion}
-                                className="text-xs text-primary hover:text-primary/80 underline"
+                                className="min-h-11 rounded-lg px-2 text-xs text-primary underline hover:bg-primary/10 hover:text-primary/80"
                             >
                                 {t.battle.readQuestion}
                             </button>
@@ -100,7 +107,7 @@ export function BattleQuestionPanel({
                         {currentQuestion.hint && !showResult && (
                             <button
                                 onClick={onToggleHint}
-                                className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                                className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
                             >
                                 <Lightbulb className="w-3 h-3" />
                                 {showHint ? t.battle.hideHint : t.battle.hint}
@@ -222,6 +229,7 @@ export function BattleQuestionPanel({
             <AnimatePresence mode="wait">
                 {showResult && (
                     <motion.div
+                        ref={feedbackRef}
                         initial={{ y: 20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: -20, opacity: 0 }}
@@ -231,6 +239,9 @@ export function BattleQuestionPanel({
                                 ? "bg-green-500/10 border-green-500/30 shadow-green-500/10"
                                 : "bg-destructive/10 border-destructive/30 shadow-destructive/10"
                         )}
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
                     >
                         <div className="flex items-start justify-between gap-4">
                             <div>
@@ -242,7 +253,7 @@ export function BattleQuestionPanel({
                                     {ttsEnabled && (
                                         <button
                                             onClick={onSpeakExplanation}
-                                            className="text-xs text-primary underline"
+                                            className="min-h-11 rounded-lg px-2 text-xs text-primary underline hover:bg-primary/10"
                                         >
                                             {t.battle.readExplanation}
                                         </button>
@@ -261,7 +272,7 @@ export function BattleQuestionPanel({
                                 {!isCorrect && (
                                     <button
                                         onClick={onOpenMentor}
-                                        className="px-4 py-2 bg-background/50 hover:bg-background/80 text-foreground rounded-lg border border-border transition-colors flex items-center justify-center gap-2 text-sm font-bold"
+                                        className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background/50 px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-background/80"
                                     >
                                         <HelpCircle className="w-4 h-4" />
                                         {t.battle.analyze}
@@ -269,7 +280,7 @@ export function BattleQuestionPanel({
                                 )}
                                 <button
                                     onClick={onNext}
-                                    className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/25 font-black uppercase tracking-wide"
+                                    className="min-h-11 rounded-lg bg-primary px-6 py-2 font-black uppercase tracking-wide text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25"
                                 >
                                     {t.battle.nextLevel}
                                 </button>

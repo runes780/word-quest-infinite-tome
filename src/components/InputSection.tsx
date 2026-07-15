@@ -323,6 +323,10 @@ export function InputSection() {
         setError('');
     };
 
+    const handleStartLocalQuest = () => {
+        startStarterPlan(practicePlan?.steps[0]);
+    };
+
     const handleBlessingSelected = (blessing: Blessing) => {
         if (!pendingQuestions) return;
 
@@ -643,7 +647,7 @@ export function InputSection() {
 
                     {error && (
                         <div className="space-y-3 mb-4">
-                            <div className="flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-lg">
+                            <div role="alert" aria-live="assertive" className="flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-lg">
                                 <AlertCircle className="w-5 h-5" />
                                 <p className="text-sm font-medium">{error}</p>
                             </div>
@@ -665,19 +669,43 @@ export function InputSection() {
                     )}
 
                     {!apiKey ? (
-                        <button
-                            onClick={() => setSettingsOpen(true)}
-                            className="w-full py-4 bg-secondary text-secondary-foreground rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-secondary/80 transition-all"
-                        >
-                            <Settings className="w-5 h-5" />
-                            {t.input.configureKey}
-                        </button>
+                        <section className="rounded-2xl border border-primary/25 bg-primary/5 p-4" aria-label={t.input.localModeTitle}>
+                            <div className="mb-4 flex items-start gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+                                    <PlayCircle className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-foreground">{t.input.localModeTitle}</h3>
+                                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{t.input.localModeDescription}</p>
+                                </div>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                                <button
+                                    type="button"
+                                    onClick={handleStartLocalQuest}
+                                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90"
+                                >
+                                    <PlayCircle className="h-5 w-5" />
+                                    {t.input.startLocalQuest}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSettingsOpen(true)}
+                                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-background/70 px-4 py-3 font-bold text-foreground hover:bg-secondary"
+                                >
+                                    <Settings className="h-5 w-5" />
+                                    {t.input.connectAi}
+                                </button>
+                            </div>
+                            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t.input.localModePrivacy}</p>
+                        </section>
                     ) : (
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setShowSRSDashboard(true)}
                                 className="px-4 py-4 bg-purple-500/20 border-2 border-purple-500 text-purple-500 rounded-xl font-bold hover:bg-purple-500/30 transition-all flex items-center gap-2"
                                 title={language === 'zh' ? '复习看板' : 'Review Dashboard'}
+                                aria-label={language === 'zh' ? '打开复习看板' : 'Open review dashboard'}
                             >
                                 <Brain className="w-6 h-6" />
                             </button>
@@ -685,6 +713,7 @@ export function InputSection() {
                                 onClick={() => setShowDailyChallenge(true)}
                                 className="px-4 py-4 bg-accent/20 border-2 border-accent text-accent rounded-xl font-bold hover:bg-accent/30 transition-all flex items-center gap-2"
                                 title={language === 'zh' ? '每日挑战' : 'Daily Challenge'}
+                                aria-label={language === 'zh' ? '打开每日挑战' : 'Open daily challenge'}
                             >
                                 <Trophy className="w-6 h-6" />
                             </button>
@@ -711,7 +740,7 @@ export function InputSection() {
                             </button>
                         </div>
                     )}
-                    {(isLoading || model.endsWith(':free')) && (
+                    {(isLoading || (Boolean(apiKey) && model.endsWith(':free'))) && (
                         <p className="text-xs text-muted-foreground mt-3 text-center">
                             {t.input.throttled}
                         </p>
@@ -779,7 +808,7 @@ function PracticePlanPanel({
                         type="button"
                         onClick={onRefresh}
                         disabled={isLoading}
-                        className="grid h-10 w-10 place-items-center rounded-xl border border-border text-muted-foreground hover:bg-secondary disabled:opacity-50"
+                        className="grid h-11 w-11 place-items-center rounded-xl border border-border text-muted-foreground hover:bg-secondary disabled:opacity-50"
                         aria-label={isZh ? '刷新今日计划' : 'Refresh practice plan'}
                     >
                         <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -788,21 +817,21 @@ function PracticePlanPanel({
                         type="button"
                         onClick={onStart}
                         disabled={isLoading}
-                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
                         <PlayCircle className="h-4 w-4" />
-                        {isZh ? '开始' : 'Start'}
+                        {isZh ? '开始今日路径' : 'Start today\'s path'}
                     </button>
                 </div>
             </div>
 
             {error && (
-                <div className="mb-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+                <div role="alert" aria-live="assertive" className="mb-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
                     {error}
                 </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-2" aria-live="polite" aria-busy={isLoading}>
                 {(plan?.steps || []).slice(0, 3).map((step, index) => (
                     <div key={step.id} className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/40 p-3">
                         <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-black text-primary">
@@ -831,6 +860,12 @@ function PracticePlanPanel({
                     </div>
                 )}
             </div>
+
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                {isZh
+                    ? '路径依据本机学习记录生成；你也可以改选复习卡片或每日挑战。'
+                    : 'This path uses learning evidence stored on this device; you can switch to review cards or the daily challenge.'}
+            </p>
 
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <button

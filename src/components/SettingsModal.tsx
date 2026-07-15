@@ -57,10 +57,12 @@ export function SettingsModal() {
     return (
         <>
             <button
+                type="button"
                 onClick={() => setSettingsOpen(true)}
-                className="fixed top-4 right-4 p-2 bg-secondary/50 backdrop-blur-md rounded-full hover:bg-secondary transition-colors z-50"
+                aria-label={language === 'zh' ? '打开设置' : 'Open settings'}
+                className="fixed right-4 top-4 z-50 grid h-11 w-11 place-items-center rounded-full bg-secondary/70 text-foreground shadow-sm backdrop-blur-md hover:bg-secondary"
             >
-                <Settings className="w-6 h-6 text-primary-foreground" />
+                <Settings className="h-6 w-6" />
             </button>
 
             <AnimatePresence>
@@ -89,6 +91,7 @@ export function SettingsModal() {
                                         type="button"
                                         onClick={() => setSettingsOpen(false)}
                                         aria-label={language === 'zh' ? '关闭设置' : 'Close settings'}
+                                        className="grid h-11 w-11 place-items-center rounded-xl hover:bg-secondary"
                                     >
                                         <X className="w-6 h-6 text-muted-foreground hover:text-foreground" />
                                     </button>
