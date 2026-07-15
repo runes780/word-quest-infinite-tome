@@ -2,25 +2,27 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { useGameStore, BOSS_COMBO_THRESHOLD, CRAFT_THRESHOLD, getPendingAchievements } from '@/store/gameStore';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Coins } from 'lucide-react';
 import { MentorOverlay } from './MentorOverlay';
 import { ShopModal } from './ShopModal';
 import { MissionReport } from './MissionReport';
 import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import { RewardScreen } from './RewardScreen';
-import { playSound } from '@/lib/audio';
 import { speakText, stopSpeech } from '@/lib/tts';
-import { Achievement, AchievementToast } from './AchievementSystem';
+import type { Achievement } from './AchievementSystem';
 import { BattleScene } from './battle/BattleScene';
 import { BattleQuestionPanel } from './battle/BattleQuestionPanel';
 import { useEndlessWave } from './battle/useEndlessWave';
 import { BattleHud } from './battle/BattleHud';
-import { getItemAsset } from '@/lib/battleAssets';
-import { formatLearningLabel } from '@/lib/data/learningObjectives';
+import { useBattleFeedback } from './battle/useBattleFeedback';
+import { useBattleAnswerFlow } from './battle/useBattleAnswerFlow';
+import {
+    BattleGeneratingBanner,
+    BattleInventoryBar,
+    BattleNotifications,
+    FlyingCoinBurst
+} from './battle/BattleOverlays';
 
 export function BattleInterface() {
     const {
@@ -61,27 +63,61 @@ export function BattleInterface() {
     const speechLang = language === 'zh' ? 'zh-CN' : 'en-US';
     const fragmentsRemainder = rootFragments % CRAFT_THRESHOLD;
     const fragmentsUntilCraft = fragmentsRemainder === 0 ? CRAFT_THRESHOLD : CRAFT_THRESHOLD - fragmentsRemainder;
+    const {
+        attackType,
+        particles,
+        damageText,
+        flyingCoins,
+        comboScale,
+        goldScale,
+        markWrongFeedback,
+        triggerCorrectFeedback,
+        resetAttack
+    } = useBattleFeedback({
+        soundEnabled,
+        criticalLabel: t.battle.critical,
+        weaknessLabel: t.battle.weakness
+    });
 
-    const [selectedOption, setSelectedOption] = useState<number | null>(null);
-    const [showResult, setShowResult] = useState(false);
-    const [resultMessage, setResultMessage] = useState('');
-    const [isCorrect, setIsCorrect] = useState(false);
-    const [showMentor, setShowMentor] = useState(false);
     const [showShop, setShowShop] = useState(false);
-    const [attackType, setAttackType] = useState<'slash' | 'fireball' | 'lightning'>('slash');
-    const [particles, setParticles] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
-    const [damageText, setDamageText] = useState<{ id: number; x: number; y: number; text: string; color: string; scale: number; rotate: number }[]>([]);
-    const [flyingCoins, setFlyingCoins] = useState<{ id: number; delay: number }[]>([]);
-    const [comboScale, setComboScale] = useState(1);
-    const [goldScale, setGoldScale] = useState(1);
-    const [wrongAnswerText, setWrongAnswerText] = useState('');
-    const [, setConsecutiveWrong] = useState(0);
-    const [showHint, setShowHint] = useState(false);
-    const [activeAchievement, setActiveAchievement] = useState<Achievement | null>(null);
-    const [queuedAchievements, setQueuedAchievements] = useState<Achievement[]>([]);
+    const [achievementQueue, setAchievementQueue] = useState<Achievement[]>([]);
+    const activeAchievement = achievementQueue[0] || null;
     const activeMasteryCelebration = masteryCelebrations[0] || null;
 
     const currentQuestion = questions[currentIndex];
+    const queueUnlockedAchievements = () => {
+        const unlocked = getPendingAchievements();
+        if (unlocked.length > 0) {
+            setAchievementQueue((previous) => [...previous, ...unlocked]);
+        }
+    };
+    const {
+        selectedOption,
+        showResult,
+        resultMessage,
+        isCorrect,
+        showMentor,
+        setShowMentor,
+        wrongAnswerText,
+        showHint,
+        handleOptionClick,
+        handleTextQuestionAnswer,
+        handleVoiceAnswer,
+        toggleHint,
+        resetAnswerState
+    } = useBattleAnswerFlow({
+        currentQuestion,
+        language,
+        health,
+        masteryBySkill,
+        reviewRiskBySkill,
+        recentMistakeBySkill,
+        answerQuestion,
+        recordHintUsed,
+        onAnswerRecorded: queueUnlockedAchievements,
+        markWrongFeedback,
+        triggerCorrectFeedback
+    });
     const { isGeneratingMore } = useEndlessWave({
         // Standard missions are finite and must reach MissionReport. Endless
         // generation remains available behind an explicit future mode toggle.
@@ -97,12 +133,6 @@ export function BattleInterface() {
     });
 
     useEffect(() => {
-        if (activeAchievement || queuedAchievements.length === 0) return;
-        setActiveAchievement(queuedAchievements[0]);
-        setQueuedAchievements((prev) => prev.slice(1));
-    }, [activeAchievement, queuedAchievements]);
-
-    useEffect(() => {
         if (!activeMasteryCelebration) return;
         const timer = setTimeout(() => {
             dismissMasteryCelebration(activeMasteryCelebration.id);
@@ -110,202 +140,13 @@ export function BattleInterface() {
         return () => clearTimeout(timer);
     }, [activeMasteryCelebration, dismissMasteryCelebration]);
 
-    const queueUnlockedAchievements = () => {
-        const unlocked = getPendingAchievements();
-        if (unlocked.length > 0) {
-            setQueuedAchievements((prev) => [...prev, ...unlocked]);
-        }
-    };
-
-    const masteryStateLabel = (state: 'new' | 'learning' | 'consolidated' | 'mastered') => {
-        if (language === 'zh') {
-            return {
-                new: '新学',
-                learning: '学习中',
-                consolidated: '巩固',
-                mastered: '精通'
-            }[state];
-        }
-        return {
-            new: 'New',
-            learning: 'Learning',
-            consolidated: 'Consolidated',
-            mastered: 'Mastered'
-        }[state];
-    };
-
-    const shouldAutoMentor = (nextWrongCount: number) => {
-        const skillTag = currentQuestion.skillTag;
-        const masteryState = masteryBySkill[skillTag]?.state;
-        const reviewRisk = reviewRiskBySkill[skillTag] || 0;
-        const repeatedMistakes = recentMistakeBySkill[skillTag] || 0;
-        const highValueMistake = currentQuestion.difficulty === 'hard' ||
-            reviewRisk >= 1.5 ||
-            repeatedMistakes >= 2 ||
-            masteryState === 'new';
-
-        return nextWrongCount >= 3 || health <= 1 || highValueMistake;
-    };
-
-    const markWrongAndMaybeMentor = (wrongText: string) => {
-        setWrongAnswerText(wrongText);
-        if (soundEnabled) playSound.hit();
-        setConsecutiveWrong((prev) => {
-            const next = prev + 1;
-            if (shouldAutoMentor(next)) {
-                setTimeout(() => setShowMentor(true), 1500);
-            }
-            return next;
-        });
-    };
-
-    const resultExplanation = (result: { explanation: string; repairQueued?: boolean }) => {
-        if (!result.repairQueued) return result.explanation;
-        const repairMessage = language === 'zh'
-            ? '下一题已自动加入同一逻辑的修复练习，先补错因再继续。'
-            : 'A same-pattern repair question has been added next, so you can fix the mistake before moving on.';
-        return `${result.explanation}\n\n${repairMessage}`;
-    };
-
-    const triggerCorrectCombatFeedback = (result: { damageDealt: number; isCritical: boolean; isSuperEffective: boolean; }) => {
-        const types: ('slash' | 'fireball' | 'lightning')[] = ['slash', 'fireball', 'lightning'];
-        const newAttackType = types[Math.floor(Math.random() * types.length)];
-        setAttackType(newAttackType);
-
-        if (soundEnabled) {
-            if (newAttackType === 'slash') playSound.attackSlash();
-            else if (newAttackType === 'fireball') playSound.attackFire();
-            else playSound.attackZap();
-        }
-
-        const newParticles = Array.from({ length: 12 }).map((_, i) => ({
-            id: Date.now() + i,
-            x: Math.random() * 100 - 50,
-            y: Math.random() * 100 - 50,
-            color: newAttackType === 'fireball' ? '#f97316' : newAttackType === 'lightning' ? '#facc15' : '#ffffff'
-        }));
-        setParticles(newParticles);
-        setTimeout(() => setParticles([]), 1000);
-
-        const damage = result.damageDealt;
-        let text = `-${damage}`;
-        let color = '#ffffff';
-        let scale = 1;
-        const randomX = Math.random() * 40 - 20;
-        const randomRotate = Math.random() * 10 - 5;
-
-        if (result.isCritical) {
-            text = `${t.battle.critical} -${damage}`;
-            color = '#ef4444';
-            scale = 1.5;
-            if (soundEnabled) setTimeout(playSound.crit, 100);
-        } else if (result.isSuperEffective) {
-            text = `${t.battle.weakness} -${damage}`;
-            color = '#facc15';
-            scale = 1.3;
-            if (soundEnabled) setTimeout(playSound.attackZap, 150);
-        } else {
-            if (soundEnabled) setTimeout(playSound.hit, 200);
-        }
-
-        setDamageText([{ id: Date.now(), x: randomX, y: -50, text, color, scale, rotate: randomRotate }]);
-        setTimeout(() => setDamageText([]), 1000);
-
-        setComboScale(1.5);
-        setTimeout(() => setComboScale(1), 200);
-
-        const newCoins = Array.from({ length: 8 }).map((_, i) => ({
-            id: Date.now() + i,
-            delay: i * 0.15
-        }));
-        setFlyingCoins(newCoins);
-        setTimeout(() => setFlyingCoins([]), 3000);
-
-        if (soundEnabled) {
-            newCoins.forEach((_, i) => setTimeout(playSound.coin, i * 150 + 500));
-        }
-
-        newCoins.forEach((_, i) => {
-            setTimeout(() => {
-                setGoldScale(1.5);
-                setTimeout(() => setGoldScale(1), 150);
-            }, 1000 + (i * 150));
-        });
-    };
-
     useEffect(() => () => {
         stopSpeech();
     }, []);
 
-    const handleOptionClick = (index: number) => {
-        if (showResult) return;
-
-        setSelectedOption(index);
-        const result = answerQuestion(index);
-        setIsCorrect(result.correct);
-        setResultMessage(resultExplanation(result));
-        queueUnlockedAchievements();
-
-        if (result.correct) {
-            triggerCorrectCombatFeedback(result);
-        }
-
-        setShowResult(true);
-
-        if (!result.correct) {
-            markWrongAndMaybeMentor(currentQuestion.options[index]);
-        } else {
-            setConsecutiveWrong(0);
-        }
-    };
-
-    const handleTextQuestionAnswer = (correct: boolean, input: string) => {
-        setSelectedOption(correct ? currentQuestion.correct_index : -1);
-        setIsCorrect(correct);
-        setShowResult(true);
-        const result = answerQuestion(correct ? currentQuestion.correct_index : -1, { userResponse: input });
-        setResultMessage(resultExplanation(result));
-        queueUnlockedAchievements();
-        if (correct) {
-            triggerCorrectCombatFeedback(result);
-            setConsecutiveWrong(0);
-        } else {
-            markWrongAndMaybeMentor(input);
-        }
-    };
-
-    const handleVoiceAnswer = (correct: boolean, spokenText: string) => {
-        const matchedIndex = currentQuestion.options.findIndex(
-            opt => opt.toLowerCase().includes(spokenText.toLowerCase()) ||
-                spokenText.toLowerCase().includes(opt.toLowerCase())
-        );
-        const idx = correct ? currentQuestion.correct_index : (matchedIndex >= 0 ? matchedIndex : 0);
-        setSelectedOption(idx);
-        setIsCorrect(correct);
-        setShowResult(true);
-        const result = answerQuestion(idx, { userResponse: spokenText });
-        setResultMessage(resultExplanation(result));
-        queueUnlockedAchievements();
-        if (correct) {
-            triggerCorrectCombatFeedback(result);
-            setConsecutiveWrong(0);
-        } else {
-            markWrongAndMaybeMentor(spokenText);
-        }
-    };
-
-    const toggleHint = () => {
-        if (!showHint) {
-            recordHintUsed();
-        }
-        setShowHint(!showHint);
-    };
-
     const handleNext = () => {
-        setSelectedOption(null);
-        setShowResult(false);
-        setShowHint(false);
-        setAttackType('slash');
+        resetAnswerState();
+        resetAttack();
 
         // Check for Boss Reward
         if (currentQuestion.isBoss) {
@@ -357,20 +198,7 @@ export function BattleInterface() {
                 t={t}
             />
 
-            {/* New Challenger Alert */}
-            <AnimatePresence>
-                {isGeneratingMore && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed top-20 left-1/2 -translate-x-1/2 bg-yellow-500/90 text-black px-6 py-2 rounded-full font-bold shadow-lg z-50 flex items-center gap-2"
-                    >
-                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                        {t.battle.summoning}
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <BattleGeneratingBanner visible={isGeneratingMore} label={t.battle.summoning} />
 
             {/* Main Battle Grid */}
             <div className="grid lg:grid-cols-2 gap-8 items-stretch min-h-[500px]">
@@ -432,93 +260,18 @@ export function BattleInterface() {
             />
 
             <RewardScreen />
-
-            {/* Flying Coins Animation */}
-            <AnimatePresence>
-                {flyingCoins.map((coin) => (
-                    <motion.div
-                        key={coin.id}
-                        initial={{ opacity: 1, x: 0, y: 0, scale: 0.5, rotate: 0 }}
-                        animate={{
-                            opacity: [1, 1, 0],
-                            x: [0, 100, window.innerWidth / 2 - 80], // Target top-right (approximate gold counter pos)
-                            y: [0, -50, -window.innerHeight / 2 + 60],
-                            scale: [0.5, 1.2, 0.5],
-                            rotate: 720
-                        }}
-                        transition={{ duration: 1.5, ease: "easeInOut", delay: coin.delay }}
-                        className="fixed top-1/2 left-1/2 z-[100] text-yellow-400 pointer-events-none"
-                    >
-                        <Coins className="w-8 h-8 drop-shadow-lg" />
-                    </motion.div>
-                ))}
-            </AnimatePresence>
-
-            {/* Inventory Bar */}
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-black/80 backdrop-blur rounded-2xl border border-white/10 shadow-xl z-40">
-                {inventory.length === 0 && (
-                    <div className="px-4 py-2 text-xs text-muted-foreground italic">{t.battle.inventoryEmpty}</div>
-                )}
-                {inventory.map((item) => {
-                    const itemAsset = getItemAsset(item.type);
-                    return (
-                        <button
-                            key={item.id}
-                            onClick={() => consumeItem(item.id)}
-                            className="w-10 h-10 bg-slate-800 rounded-lg border border-white/20 flex items-center justify-center p-1 hover:scale-110 hover:bg-slate-700 transition-all relative group"
-                            title={item.name}
-                        >
-                            <Image
-                                src={itemAsset.src}
-                                alt={itemAsset.alt}
-                                width={40}
-                                height={40}
-                                sizes="40px"
-                                className="h-full w-full object-contain drop-shadow"
-                                draggable={false}
-                            />
-                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black px-2 py-1 rounded text-[10px] text-white opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                                {item.name}
-                            </span>
-                        </button>
-                    );
-                })}
-            </div>
-
-            <AnimatePresence>
-                {activeAchievement && (
-                    <AchievementToast
-                        achievement={activeAchievement}
-                        onClose={() => setActiveAchievement(null)}
-                    />
-                )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-                {activeMasteryCelebration && (
-                    <motion.div
-                        key={activeMasteryCelebration.id}
-                        initial={{ x: -240, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: -240, opacity: 0 }}
-                        className="fixed top-20 left-4 z-50 bg-emerald-50 border-2 border-emerald-400 text-emerald-900 rounded-xl p-4 shadow-xl max-w-xs"
-                    >
-                        <p className="text-xs font-semibold uppercase tracking-wide">
-                            {language === 'zh' ? '技能进阶' : 'Mastery Up'}
-                        </p>
-                        <p className="font-bold text-sm mt-1">
-                            {formatLearningLabel(activeMasteryCelebration.skillTag, language)}
-                        </p>
-                        <p className="text-xs mt-1">
-                            {masteryStateLabel(activeMasteryCelebration.fromState)} -&gt; {masteryStateLabel(activeMasteryCelebration.toState)}
-                        </p>
-                        <div className="mt-2 text-xs font-semibold flex items-center gap-3">
-                            <span>+{activeMasteryCelebration.bonusXp} XP</span>
-                            <span>+{activeMasteryCelebration.bonusGold} Gold</span>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            <FlyingCoinBurst coins={flyingCoins} />
+            <BattleInventoryBar
+                inventory={inventory}
+                emptyLabel={t.battle.inventoryEmpty}
+                onUseItem={consumeItem}
+            />
+            <BattleNotifications
+                activeAchievement={activeAchievement}
+                onCloseAchievement={() => setAchievementQueue((previous) => previous.slice(1))}
+                activeMasteryCelebration={activeMasteryCelebration}
+                language={language}
+            />
         </div >
     );
 }
