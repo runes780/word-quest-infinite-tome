@@ -1,5 +1,13 @@
 import { useGameStore } from './gameStore';
-import { logLearningEvent, reviewCard, updatePlayerProfile, updateSkillMastery, upsertStudyActionExecution } from '@/db/db';
+import {
+    logLearningEvent,
+    reviewCard,
+    updateObjectiveMastery,
+    updatePlayerProfile,
+    updateSkillMastery,
+    upsertStudyActionExecution
+} from '@/db/db';
+import { logMistake } from '@/lib/data/mistakes';
 import { createPracticePlanRun, currentPracticePlanStep } from '@/lib/data/practicePlanRunner';
 import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
 
@@ -190,6 +198,17 @@ describe('learning pipeline regression (battle/srs)', () => {
                 correctAnswer: 'apple'
             })
         );
+        expect(updateObjectiveMastery).toHaveBeenCalledWith(expect.objectContaining({
+            objectiveId: 'vocab_context_meaning',
+            skillTag: 'vocab_core',
+            result: 'correct',
+            mode: 'choice',
+            attemptKind: 'practice',
+            supportLevel: 3,
+            latencyMs: 900
+        }));
+        expect(updateSkillMastery).toHaveBeenCalledWith('vocab_core', 'correct');
+        expect(logMistake).not.toHaveBeenCalled();
     });
 
     test('srs source writes wrong answer with srs tag', async () => {
@@ -228,6 +247,22 @@ describe('learning pipeline regression (battle/srs)', () => {
                 correctAnswer: 'apple'
             })
         );
+        expect(updateObjectiveMastery).toHaveBeenCalledWith(expect.objectContaining({
+            objectiveId: 'vocab_context_meaning',
+            skillTag: 'vocab_core',
+            result: 'wrong',
+            mode: 'choice',
+            attemptKind: 'review',
+            supportLevel: 3,
+            latencyMs: 1200
+        }));
+        expect(updateSkillMastery).toHaveBeenCalledWith('vocab_core', 'wrong');
+        expect(logMistake).toHaveBeenCalledWith(expect.objectContaining({
+            questionId: 1,
+            wrongAnswer: 'banana',
+            correctAnswer: 'apple',
+            skillTag: 'vocab_core'
+        }));
     });
 
     test('run completion advances the active daily practice plan one step', async () => {

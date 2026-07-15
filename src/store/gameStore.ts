@@ -64,6 +64,10 @@ import {
     loadSavedGameStateSnapshot,
     saveGameStateSnapshot
 } from '@/store/modules/sessionRecovery';
+import {
+    buildAnswerLearningEvidence,
+    buildUserAnswer
+} from '@/store/modules/answerLearningEvidence';
 import { createCombatSlice } from '@/store/slices/combatSlice';
 import { createLearningSlice } from '@/store/slices/learningSlice';
 import { createEconomySlice } from '@/store/slices/economySlice';
@@ -381,26 +385,22 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
         const { questions, currentIndex, health, maxHealth, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, questionStartedAt, sessionSource, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
+        const answerResult = isCorrect ? 'correct' : 'wrong';
         const skillKey = getSkillKey(currentQuestion);
         const responseLatencyMs = meta?.responseLatencyMs ?? Math.max(0, Date.now() - questionStartedAt);
         const selectedOption = resolveSelectedOption(optionIndex, currentQuestion.options, meta?.userResponse);
+        const questionHash = hashQuestion(currentQuestion.question);
         const updatedSkillStats = buildUpdatedSkillStats(skillStats, skillKey, isCorrect);
 
         // Get active blessing effect
         const blessing = normalizeBlessingModifiers(getCurrentBlessingEffect());
 
         // Record Answer
-        const newAnswer: UserAnswer = {
-            questionId: currentQuestion.id,
-            questionText: currentQuestion.question,
-            userChoice: selectedOption,
-            correctChoice: currentQuestion.options[currentQuestion.correct_index],
-            isCorrect,
-            learningObjectiveId: currentQuestion.learningObjectiveId,
-            attemptKind: currentQuestion.attemptKind,
-            supportLevel: currentQuestion.supportLevel,
-            causeTag: currentQuestion.causeTag
-        };
+        const newAnswer = buildUserAnswer({
+            question: currentQuestion,
+            selectedOption,
+            result: answerResult
+        });
         set({ userAnswers: [...userAnswers, newAnswer] });
 
         let damageDealt = 0;
@@ -500,96 +500,6 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                 });
             }).catch(console.error);
 
-            logLearningEvent({
-                eventType: 'answer',
-                questionId: currentQuestion.id,
-                questionHash: hashQuestion(currentQuestion.question),
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                objectiveConfidence: currentQuestion.objectiveConfidence,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                causeTag: currentQuestion.causeTag,
-                mode: currentQuestion.questionMode,
-                result: 'correct',
-                hintUsed: false,
-                latencyMs: responseLatencyMs,
-                source: sessionSource
-            }).catch(console.error);
-
-            updateObjectiveMastery({
-                objectiveId: currentQuestion.learningObjectiveId,
-                skillTag: currentQuestion.skillTag,
-                type: currentQuestion.type,
-                question: currentQuestion.question,
-                result: 'correct',
-                mode: currentQuestion.questionMode,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                hintUsed: false,
-                latencyMs: responseLatencyMs
-            }).catch(console.error);
-
-            // Update FSRS card scheduling (mark as 'good' for correct answer)
-            const questionHash = hashQuestion(currentQuestion.question);
-            reviewCard(questionHash, isCritical ? 'easy' : 'good', {
-                question: currentQuestion.question,
-                options: currentQuestion.options,
-                correct_index: currentQuestion.correct_index,
-                type: currentQuestion.type,
-                explanation: currentQuestion.explanation,
-                hint: currentQuestion.hint,
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                questionMode: currentQuestion.questionMode,
-                correctAnswer: currentQuestion.correctAnswer
-            }).catch(console.error);
-
-            updateSkillMastery(skillKey, 'correct')
-                .then((record) => {
-                    const previousState = masteryBySkill[skillKey]?.state || 'new';
-                    const upgraded = isMasteryUpgrade(previousState, record.state);
-                    const rewardPayload = upgraded ? masteryBonusByState[record.state] : null;
-                    const celebration: MasteryCelebration | null = rewardPayload
-                        ? {
-                            id: `mastery_${skillKey}_${Date.now()}`,
-                            skillTag: skillKey,
-                            fromState: previousState,
-                            toState: record.state,
-                            bonusXp: rewardPayload.xp,
-                            bonusGold: rewardPayload.gold,
-                            timestamp: Date.now()
-                        }
-                        : null;
-
-                    set((state) => ({
-                        masteryBySkill: {
-                            ...state.masteryBySkill,
-                            [skillKey]: record
-                        },
-                        ...(rewardPayload && celebration
-                            ? {
-                                playerStats: applyProgressionReward(state.playerStats, rewardPayload.xp, rewardPayload.gold),
-                                masteryCelebrations: [...state.masteryCelebrations, celebration]
-                            }
-                            : {})
-                    }));
-                    if (rewardPayload) {
-                        updateAchievementStats({
-                            totalGoldEarned: rewardPayload.gold,
-                            totalXpEarned: rewardPayload.xp
-                        });
-                        updatePlayerProfile({
-                            totalXp: rewardPayload.xp,
-                            totalGold: rewardPayload.gold,
-                            dailyXpEarned: rewardPayload.xp
-                        }).catch(console.error);
-                    }
-                })
-                .catch(console.error);
-
             // Blessing: Heal on streak threshold (e.g., Vampiric Wisdom)
             if (blessing.healOnCorrectThreshold > 0 && blessing.healAmount > 0 && newStreak % blessing.healOnCorrectThreshold === 0) {
                 get().heal(blessing.healAmount);
@@ -644,83 +554,75 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                 }
             });
 
-            logMistake({
-                questionId: currentQuestion.id,
-                questionText: currentQuestion.question,
-                wrongAnswer: selectedOption,
-                correctAnswer: currentQuestion.options[currentQuestion.correct_index],
-                explanation: currentQuestion.explanation,
-                options: currentQuestion.options,
-                correctIndex: currentQuestion.correct_index,
-                type: currentQuestion.type,
-                skillTag: currentQuestion.skillTag
-            });
-
             // Track achievement stats for wrong answer
             updateAchievementStats({
                 totalWrong: 1,
                 totalQuestions: 1,
                 currentStreak: 0,
             });
-
-            // Update FSRS card scheduling (mark as 'again' for wrong answer)
-            const questionHash = hashQuestion(currentQuestion.question);
-            reviewCard(questionHash, 'again', {
-                question: currentQuestion.question,
-                options: currentQuestion.options,
-                correct_index: currentQuestion.correct_index,
-                type: currentQuestion.type,
-                explanation: currentQuestion.explanation,
-                hint: currentQuestion.hint,
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                questionMode: currentQuestion.questionMode,
-                correctAnswer: currentQuestion.correctAnswer
-            }).catch(console.error);
-
-            updateSkillMastery(skillKey, 'wrong')
-                .then((record) => {
-                    set((state) => ({
-                        masteryBySkill: {
-                            ...state.masteryBySkill,
-                            [skillKey]: record
-                        }
-                    }));
-                })
-                .catch(console.error);
-
-            logLearningEvent({
-                eventType: 'answer',
-                questionId: currentQuestion.id,
-                questionHash: hashQuestion(currentQuestion.question),
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                objectiveConfidence: currentQuestion.objectiveConfidence,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                causeTag: currentQuestion.causeTag,
-                mode: currentQuestion.questionMode,
-                result: 'wrong',
-                hintUsed: false,
-                latencyMs: responseLatencyMs,
-                source: sessionSource
-            }).catch(console.error);
-
-            updateObjectiveMastery({
-                objectiveId: currentQuestion.learningObjectiveId,
-                skillTag: currentQuestion.skillTag,
-                type: currentQuestion.type,
-                question: currentQuestion.question,
-                result: 'wrong',
-                mode: currentQuestion.questionMode,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                hintUsed: false,
-                latencyMs: responseLatencyMs
-            }).catch(console.error);
         }
+
+        const evidence = buildAnswerLearningEvidence({
+            question: currentQuestion,
+            selectedOption,
+            result: answerResult,
+            questionHash,
+            responseLatencyMs,
+            source: sessionSource,
+            isCritical
+        });
+        if (evidence.mistake) {
+            void logMistake(evidence.mistake);
+        }
+        reviewCard(
+            evidence.review.questionHash,
+            evidence.review.rating,
+            evidence.review.questionData
+        ).catch(console.error);
+        logLearningEvent(evidence.learningEvent).catch(console.error);
+        updateObjectiveMastery(evidence.objectiveMastery).catch(console.error);
+        updateSkillMastery(skillKey, evidence.masteryResult)
+            .then((record) => {
+                const previousState = masteryBySkill[skillKey]?.state || 'new';
+                const upgraded = isCorrect && isMasteryUpgrade(previousState, record.state);
+                const rewardPayload = upgraded ? masteryBonusByState[record.state] : null;
+                const celebration: MasteryCelebration | null = rewardPayload
+                    ? {
+                        id: `mastery_${skillKey}_${Date.now()}`,
+                        skillTag: skillKey,
+                        fromState: previousState,
+                        toState: record.state,
+                        bonusXp: rewardPayload.xp,
+                        bonusGold: rewardPayload.gold,
+                        timestamp: Date.now()
+                    }
+                    : null;
+
+                set((state) => ({
+                    masteryBySkill: {
+                        ...state.masteryBySkill,
+                        [skillKey]: record
+                    },
+                    ...(rewardPayload && celebration
+                        ? {
+                            playerStats: applyProgressionReward(state.playerStats, rewardPayload.xp, rewardPayload.gold),
+                            masteryCelebrations: [...state.masteryCelebrations, celebration]
+                        }
+                        : {})
+                }));
+                if (rewardPayload) {
+                    updateAchievementStats({
+                        totalGoldEarned: rewardPayload.gold,
+                        totalXpEarned: rewardPayload.xp
+                    });
+                    updatePlayerProfile({
+                        totalXp: rewardPayload.xp,
+                        totalGold: rewardPayload.gold,
+                        dailyXpEarned: rewardPayload.xp
+                    }).catch(console.error);
+                }
+            })
+            .catch(console.error);
 
         return {
             correct: isCorrect,
