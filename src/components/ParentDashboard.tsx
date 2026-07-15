@@ -73,6 +73,7 @@ import type { Monster } from '@/store/gameStore';
 import type { PracticePlan, PracticePlanEvidence } from '@/lib/data/dailyPracticePlan';
 import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
 import { formatLearningLabel, mapSkillTagToObjectiveId, objectiveTitle } from '@/lib/data/learningObjectives';
+import type { CalibrationSummary } from '@/lib/data/metacognitiveCalibration';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -158,6 +159,7 @@ export function ParentDashboard() {
     const [sessionRecovery, setSessionRecovery] = useState<SessionRecoverySnapshot | null>(null);
     const [dailyPracticePlan, setDailyPracticePlan] = useState<PracticePlan | null>(null);
     const [activityFeed, setActivityFeed] = useState<GuardianActivityFeedItem[]>([]);
+    const [calibrationSummary, setCalibrationSummary] = useState<CalibrationSummary | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -281,6 +283,7 @@ export function ParentDashboard() {
             setSessionRecovery(dashboard.sessionRecovery);
             setDailyPracticePlan(dashboard.dailyPracticePlan);
             setActivityFeed(dashboard.activityFeed);
+            setCalibrationSummary(dashboard.calibrationSummary ?? null);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load dashboard data.');
@@ -864,6 +867,35 @@ export function ParentDashboard() {
                                         </Panel>
 
                                         <Panel title={isZh ? '学习事件' : 'Learning Events'} subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
+                                            {calibrationSummary && calibrationSummary.ratedAnswers > 0 && (
+                                                <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-left">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-sm font-black text-blue-950">
+                                                            {isZh ? '把握度校准信号' : 'Confidence Calibration Signals'}
+                                                        </p>
+                                                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-blue-700">
+                                                            {isZh
+                                                                ? `${calibrationSummary.ratedAnswers} 次可选自评`
+                                                                : `${calibrationSummary.ratedAnswers} optional ratings`}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                                        <MiniMetric
+                                                            label={isZh ? '高把握错误' : 'High-confidence errors'}
+                                                            value={calibrationSummary.highConfidenceErrors}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '低把握正确' : 'Low-confidence correct'}
+                                                            value={calibrationSummary.lowConfidenceCorrect}
+                                                        />
+                                                    </div>
+                                                    <p className="mt-3 text-xs leading-relaxed text-blue-800">
+                                                        {isZh
+                                                            ? '仅用于选择复盘重点，不参与掌握度、排名或最终评价。'
+                                                            : 'Used only to prioritize review; it does not affect mastery, ranking, or final judgments.'}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {learningEvents.length > 0 ? (
                                                 <div className="space-y-4">
                                                     {learningEvents.map((event) => (

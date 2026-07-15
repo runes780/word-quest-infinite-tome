@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MissionReport } from '@/components/MissionReport';
 import { useGameStore } from '@/store/gameStore';
 import { logMissionHistory } from '@/lib/data/history';
@@ -134,10 +134,16 @@ describe('learning main flow e2e (mission -> battle -> srs -> report)', () => {
 
         // Report step uses current mission state, so create a fresh battle mission before rendering report
         useGameStore.getState().startGame([{ ...baseQuestion, id: 33 }], 'Report Mission', 'battle');
-        useGameStore.getState().answerQuestion(0, { responseLatencyMs: 800 });
+        useGameStore.getState().answerQuestion(0, {
+            responseLatencyMs: 800,
+            selfConfidence: 'low'
+        });
         await flush();
 
         render(<MissionReport />);
+
+        expect(screen.getByText('Confidence Calibration Summary')).toBeInTheDocument();
+        expect(screen.getByText(/do not affect mastery or final judgments/i)).toBeInTheDocument();
 
         await waitFor(() => {
             expect(logMissionHistory).toHaveBeenCalledWith(expect.objectContaining({

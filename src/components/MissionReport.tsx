@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { createAIClient } from '@/lib/ai/providerClient';
 import { buildReportSystemPrompt, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
-import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
+import { Brain, Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
@@ -24,6 +24,7 @@ import {
     practicePlanProgressText
 } from '@/lib/data/practicePlanRunner';
 import { buildSessionLearningClosure } from '@/lib/data/sessionLearningClosure';
+import { buildCalibrationSummary } from '@/lib/data/metacognitiveCalibration';
 
 import { translations } from '@/lib/translations';
 
@@ -55,6 +56,7 @@ export function MissionReport() {
     const [historyLogged, setHistoryLogged] = useState(false);
     const nextPlanStep = currentPracticePlanStep(activePracticePlanRun);
     const planComplete = isPracticePlanComplete(activePracticePlanRun);
+    const calibrationSummary = useMemo(() => buildCalibrationSummary(userAnswers), [userAnswers]);
 
     useEffect(() => {
         if (historyLogged || questions.length === 0 || userAnswers.length === 0) return;
@@ -308,6 +310,47 @@ export function MissionReport() {
                             <p className="mt-4 text-xs font-semibold text-muted-foreground">
                                 {sessionClosure.followUp}
                             </p>
+                        </div>
+                    )}
+
+                    {calibrationSummary.ratedAnswers > 0 && (
+                        <div className="mb-8 rounded-2xl border border-blue-500/25 bg-blue-500/10 p-5 text-left">
+                            <div className="flex items-start gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-300">
+                                    <Brain className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-sm font-black text-foreground">
+                                            {language === 'zh' ? '把握度校准摘要' : 'Confidence Calibration Summary'}
+                                        </p>
+                                        <span className="rounded-full bg-background/70 px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300">
+                                            {language === 'zh'
+                                                ? `${calibrationSummary.ratedAnswers} 次可选自评`
+                                                : `${calibrationSummary.ratedAnswers} optional ratings`}
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                        <div className="rounded-xl border border-border/60 bg-background/50 p-3">
+                                            <p className="text-xs font-semibold text-muted-foreground">
+                                                {language === 'zh' ? '高把握错误' : 'High-confidence errors'}
+                                            </p>
+                                            <p className="mt-1 text-xl font-black text-foreground">{calibrationSummary.highConfidenceErrors}</p>
+                                        </div>
+                                        <div className="rounded-xl border border-border/60 bg-background/50 p-3">
+                                            <p className="text-xs font-semibold text-muted-foreground">
+                                                {language === 'zh' ? '低把握正确' : 'Low-confidence correct'}
+                                            </p>
+                                            <p className="mt-1 text-xl font-black text-foreground">{calibrationSummary.lowConfidenceCorrect}</p>
+                                        </div>
+                                    </div>
+                                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                                        {language === 'zh'
+                                            ? '这些信号只帮助选择复盘重点，不参与掌握度或最终评价。'
+                                            : 'These signals only help prioritize review; they do not affect mastery or final judgments.'}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     )}
 

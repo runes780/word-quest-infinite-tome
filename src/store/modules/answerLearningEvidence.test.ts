@@ -26,7 +26,8 @@ describe('answer learning evidence contract', () => {
         expect(buildUserAnswer({
             question,
             selectedOption: 'orchard',
-            result: 'correct'
+            result: 'correct',
+            selfConfidence: 'high'
         })).toEqual({
             questionId: 42,
             questionText: question.question,
@@ -36,7 +37,8 @@ describe('answer learning evidence contract', () => {
             learningObjectiveId: 'vocab_context_meaning',
             attemptKind: 'transfer',
             supportLevel: 1,
-            causeTag: 'context_clue'
+            causeTag: 'context_clue',
+            selfConfidence: 'high'
         });
     });
 
@@ -52,7 +54,8 @@ describe('answer learning evidence contract', () => {
             questionHash: 'hash_public_fixture',
             responseLatencyMs: 1250,
             source: 'battle',
-            isCritical
+            isCritical,
+            selfConfidence: 'high'
         });
 
         expect(evidence.learningEvent).toEqual(expect.objectContaining({
@@ -66,7 +69,8 @@ describe('answer learning evidence contract', () => {
             attemptKind: 'transfer',
             supportLevel: 1,
             causeTag: 'context_clue',
-            latencyMs: 1250
+            latencyMs: 1250,
+            selfConfidence: 'high'
         }));
         expect(evidence.objectiveMastery).toEqual(expect.objectContaining({
             result,
@@ -76,6 +80,7 @@ describe('answer learning evidence contract', () => {
             supportLevel: 1,
             latencyMs: 1250
         }));
+        expect(evidence.objectiveMastery).not.toHaveProperty('selfConfidence');
         expect(evidence.review).toEqual(expect.objectContaining({
             questionHash: 'hash_public_fixture',
             rating,
@@ -87,6 +92,7 @@ describe('answer learning evidence contract', () => {
                 correctAnswer: 'orchard'
             })
         }));
+        expect(evidence.review.questionData).not.toHaveProperty('selfConfidence');
         expect(evidence.masteryResult).toBe(result);
         expect(Boolean(evidence.mistake)).toBe(result === 'wrong');
     });
@@ -111,4 +117,3 @@ describe('answer learning evidence contract', () => {
         expect(JSON.stringify(evidence)).not.toMatch(/student|school|guardian|email/i);
     });
 });
-

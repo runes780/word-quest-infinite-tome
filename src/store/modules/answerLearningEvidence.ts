@@ -1,5 +1,6 @@
 import type {
     LearningEventResult,
+    LearningEventSelfConfidence,
     LearningEventSource,
     logLearningEvent,
     reviewCard,
@@ -17,6 +18,7 @@ interface AnswerIdentityInput {
     question: Monster;
     selectedOption: string;
     result: LearningEventResult;
+    selfConfidence?: LearningEventSelfConfidence;
 }
 
 interface AnswerLearningEvidenceInput extends AnswerIdentityInput {
@@ -41,7 +43,8 @@ export interface AnswerLearningEvidence {
 export function buildUserAnswer({
     question,
     selectedOption,
-    result
+    result,
+    selfConfidence
 }: AnswerIdentityInput): UserAnswer {
     return {
         questionId: question.id,
@@ -52,7 +55,8 @@ export function buildUserAnswer({
         learningObjectiveId: question.learningObjectiveId,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
-        causeTag: question.causeTag
+        causeTag: question.causeTag,
+        selfConfidence
     };
 }
 
@@ -63,7 +67,8 @@ export function buildAnswerLearningEvidence({
     questionHash,
     responseLatencyMs,
     source,
-    isCritical
+    isCritical,
+    selfConfidence
 }: AnswerLearningEvidenceInput): AnswerLearningEvidence {
     const sharedLearningMetadata = {
         skillTag: question.skillTag,
@@ -73,7 +78,8 @@ export function buildAnswerLearningEvidence({
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
         causeTag: question.causeTag,
-        mode: question.questionMode
+        mode: question.questionMode,
+        selfConfidence
     };
     const questionData: ReviewQuestionData = {
         question: question.question,
@@ -135,4 +141,3 @@ export function buildAnswerLearningEvidence({
             : {})
     };
 }
-
