@@ -9,6 +9,7 @@ import type {
 import type { LogMistakeArgs } from '@/lib/data/mistakes';
 import type { LearningProgressReward } from '@/lib/data/learningProgressRewards';
 import type { Monster, UserAnswer } from '@/store/gameStore';
+import type { AdaptiveScaffoldDecision } from '@/lib/data/adaptiveScaffolding';
 
 type LearningEventInput = Parameters<typeof logLearningEvent>[0];
 type ObjectiveMasteryInput = Parameters<typeof updateObjectiveMastery>[0];
@@ -22,6 +23,8 @@ interface AnswerIdentityInput {
     selfConfidence?: LearningEventSelfConfidence;
     questionHash: string;
     progressReward?: LearningProgressReward | null;
+    hintUsed?: boolean;
+    scaffoldDecision?: AdaptiveScaffoldDecision;
 }
 
 interface AnswerLearningEvidenceInput extends AnswerIdentityInput {
@@ -48,7 +51,9 @@ export function buildUserAnswer({
     result,
     selfConfidence,
     questionHash,
-    progressReward
+    progressReward,
+    hintUsed,
+    scaffoldDecision
 }: AnswerIdentityInput): UserAnswer {
     return {
         questionId: question.id,
@@ -62,6 +67,15 @@ export function buildUserAnswer({
         causeTag: question.causeTag,
         selfConfidence,
         questionHash,
+        ...(hintUsed ? { hintUsed: true } : {}),
+        ...(scaffoldDecision
+            ? {
+                scaffoldTransition: scaffoldDecision.transition,
+                scaffoldReason: scaffoldDecision.reason,
+                nextSupportLevel: scaffoldDecision.nextSupportLevel,
+                nextAttemptKind: scaffoldDecision.nextAttemptKind
+            }
+            : {}),
         ...(question.isImmediateRepair ? { isImmediateRepair: true } : {}),
         ...(progressReward ? { progressReward } : {})
     };
@@ -76,7 +90,9 @@ export function buildAnswerLearningEvidence({
     source,
     isCritical,
     selfConfidence,
-    progressReward
+    progressReward,
+    hintUsed,
+    scaffoldDecision
 }: AnswerLearningEvidenceInput): AnswerLearningEvidence {
     const sharedLearningMetadata = {
         skillTag: question.skillTag,
@@ -92,7 +108,11 @@ export function buildAnswerLearningEvidence({
         rewardXp: progressReward?.xp,
         rewardGold: progressReward?.gold,
         rewardCounted: progressReward?.counted,
-        rewardProtectionReason: progressReward?.protectionReason
+        rewardProtectionReason: progressReward?.protectionReason,
+        scaffoldTransition: scaffoldDecision?.transition,
+        scaffoldReason: scaffoldDecision?.reason,
+        nextSupportLevel: scaffoldDecision?.nextSupportLevel,
+        nextAttemptKind: scaffoldDecision?.nextAttemptKind
     };
     const questionData: ReviewQuestionData = {
         question: question.question,
@@ -115,7 +135,7 @@ export function buildAnswerLearningEvidence({
             questionHash,
             ...sharedLearningMetadata,
             result,
-            hintUsed: false,
+            hintUsed: Boolean(hintUsed),
             latencyMs: responseLatencyMs,
             source
         },
@@ -128,7 +148,7 @@ export function buildAnswerLearningEvidence({
             mode: question.questionMode,
             attemptKind: question.attemptKind,
             supportLevel: question.supportLevel,
-            hintUsed: false,
+            hintUsed: Boolean(hintUsed),
             latencyMs: responseLatencyMs
         },
         review: {

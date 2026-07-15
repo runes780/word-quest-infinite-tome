@@ -26,6 +26,21 @@ const correctResult: ReturnType<GameState['answerQuestion']> = {
         xp: 12,
         gold: 6,
         counted: true
+    },
+    scaffoldDecision: {
+        transition: 'hold',
+        reason: 'collect-more-evidence',
+        nextSupportLevel: 1,
+        nextAttemptKind: 'practice',
+        evidence: {
+            recentAttempts: 1,
+            recentCorrect: 1,
+            recentHintUses: 0,
+            consecutiveWrong: 0,
+            consecutiveNoHintSuccessesAtLevel: 1,
+            transferAttempts: 0,
+            transferCorrect: 0
+        }
     }
 };
 
@@ -85,6 +100,15 @@ describe('useBattleAnswerFlow', () => {
 
         expect(flow.recordHintUsed).toHaveBeenCalledTimes(1);
         expect(flow.result.current.showHint).toBe(false);
+    });
+
+    test('attaches opened hint use to the answer evidence', () => {
+        const flow = setup();
+
+        act(() => flow.result.current.toggleHint());
+        act(() => flow.result.current.handleOptionClick(0));
+
+        expect(flow.answerQuestion).toHaveBeenCalledWith(0, { hintUsed: true });
     });
 
     test('forwards optional confidence with the answer and clears it for the next question', () => {
