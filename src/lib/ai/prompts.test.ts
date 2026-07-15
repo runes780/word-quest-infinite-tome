@@ -154,7 +154,8 @@ The fox runs under the pine tree.
             learningObjectiveId: index % 2 === 0 ? 'vocab_context_meaning' : 'reading_inference',
             attemptKind: index % 4 === 0 ? 'transfer' : 'practice',
             supportLevel: index % 4,
-            causeTag: index % 3 === 0 ? 'context_clue' : undefined
+            causeTag: index % 3 === 0 ? 'context_clue' : undefined,
+            selfConfidence: index % 2 === 0 ? 'high' as const : 'low' as const
         }));
 
         const prompt = generateReportPrompt(400, 60, history);
@@ -162,6 +163,7 @@ The fox runs under the pine tree.
         expect(prompt.length).toBeLessThan(6000);
         expect(prompt).toContain('Objective Summary');
         expect(prompt).toContain('Recent Mistakes');
+        expect(prompt).not.toContain('selfConfidence');
         expect(prompt).not.toContain('Very long generated question 1 Very long generated question 1 Very long generated question 1');
     });
 });

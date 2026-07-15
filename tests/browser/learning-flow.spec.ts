@@ -21,6 +21,23 @@ async function readLearningCounts(page: Page) {
     });
 }
 
+async function readConfidenceEvidenceCount(page: Page) {
+    return page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open('WordQuestDB');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const rows = await new Promise<Array<{ selfConfidence?: string }>>((resolve, reject) => {
+            const request = db.transaction('learningEvents', 'readonly').objectStore('learningEvents').getAll();
+            request.onsuccess = () => resolve(request.result as Array<{ selfConfidence?: string }>);
+            request.onerror = () => reject(request.error);
+        });
+        db.close();
+        return rows.filter((row) => Boolean(row.selfConfidence)).length;
+    });
+}
+
 test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem('word-quest-settings', JSON.stringify({
@@ -59,6 +76,8 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     expect(providerRequests).toBeGreaterThan(0);
     await page.getByRole('button', { name: 'Skip', exact: true }).click();
 
+    let confidenceSelections = 0;
+
     for (let questionNumber = 0; questionNumber < SYNTHETIC_FALLBACK_ANSWERS.length; questionNumber += 1) {
         const questionHeading = page.locator('h3.text-2xl').first();
         await expect(questionHeading).toBeVisible();
@@ -66,6 +85,12 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
         const matchingAnswer = SYNTHETIC_FALLBACK_ANSWERS.find(([fragment]) => question.includes(fragment));
         expect(matchingAnswer, `No synthetic answer mapping for: ${question}`).toBeTruthy();
         const answer = matchingAnswer![1];
+        const confidenceButton = page.getByRole('button', { name: 'Not sure', exact: true });
+        const confidenceVisible = await confidenceButton.count() === 1;
+        if (confidenceVisible) {
+            await confidenceButton.click();
+            confidenceSelections += 1;
+        }
 
         const textInput = page.locator('input[type="text"]:visible');
         if (await textInput.count()) {
@@ -77,6 +102,9 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
         const next = page.getByRole('button', { name: 'Next Level' });
         await expect(next).toBeVisible({ timeout: 6_000 });
+        if (confidenceVisible) {
+            await expect(page.getByRole('status')).toContainText(/correct but unsure/i);
+        }
         await next.click();
     }
 
@@ -92,6 +120,8 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     expect(counts.learningEvents).toBeGreaterThanOrEqual(SYNTHETIC_FALLBACK_ANSWERS.length);
     expect(counts.fsrsCards).toBeGreaterThanOrEqual(SYNTHETIC_FALLBACK_ANSWERS.length);
     expect(counts.history).toBeGreaterThanOrEqual(1);
+    expect(confidenceSelections).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => readConfidenceEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
 
     await page.getByRole('button', { name: 'Initialize New Mission' }).click();
     await page.getByRole('button', { name: 'SRS Review' }).first().click();

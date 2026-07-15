@@ -46,6 +46,14 @@ export const translations = {
             rootFragments: "Root Fragments",
             readQuestion: "Listen",
             readExplanation: "Replay",
+            confidencePrompt: "Before answering, how sure are you? (optional)",
+            confidencePurpose: "This adjusts feedback only. It does not change score, rewards, or mastery.",
+            confidenceLow: "Not sure",
+            confidenceMedium: "Somewhat sure",
+            confidenceHigh: "Very sure",
+            calibrationCue: "Confidence check",
+            highConfidenceError: "You felt very sure, but the answer differed. Compare the clue with your original reasoning before moving on.",
+            lowConfidenceCorrect: "You were correct but unsure. Read the explanation once so the answer becomes recall, not a guess.",
             fragmentsHint: "{count} until new relic"
         },
         shop: {
@@ -231,6 +239,14 @@ export const translations = {
             rootFragments: "词根碎片",
             readQuestion: "朗读题目",
             readExplanation: "朗读解析",
+            confidencePrompt: "作答前，你有多大把握？（可跳过）",
+            confidencePurpose: "只用于调整反馈，不影响分数、奖励或掌握度。",
+            confidenceLow: "没把握",
+            confidenceMedium: "有点把握",
+            confidenceHigh: "很有把握",
+            calibrationCue: "把握度校准",
+            highConfidenceError: "你很有把握，但结果不同。继续前先对照题目线索，找出原先判断的关键偏差。",
+            lowConfidenceCorrect: "你答对了但把握较低。请读一遍解析，把这次正确从猜测变成可提取的记忆。",
             fragmentsHint: "距下一件遗物还差 {count} 个"
         },
         shop: {

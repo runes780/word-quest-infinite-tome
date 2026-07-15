@@ -169,7 +169,10 @@ describe('learning pipeline regression (battle/srs)', () => {
             updatedAt: Date.now()
         });
         useGameStore.getState().startGame([baseQuestion], 'battle context', 'battle');
-        const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 900 });
+        const result = useGameStore.getState().answerQuestion(0, {
+            responseLatencyMs: 900,
+            selfConfidence: 'high'
+        });
         await flush();
 
         expect(result.correct).toBe(true);
@@ -180,7 +183,8 @@ describe('learning pipeline regression (battle/srs)', () => {
             skillTag: 'vocab_core',
             learningObjectiveId: 'vocab_context_meaning',
             attemptKind: 'practice',
-            supportLevel: 3
+            supportLevel: 3,
+            selfConfidence: 'high'
         }));
         expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
             totalXp: expect.any(Number),
@@ -207,7 +211,13 @@ describe('learning pipeline regression (battle/srs)', () => {
             supportLevel: 3,
             latencyMs: 900
         }));
+        expect(updateObjectiveMastery).not.toHaveBeenCalledWith(expect.objectContaining({
+            selfConfidence: expect.anything()
+        }));
         expect(updateSkillMastery).toHaveBeenCalledWith('vocab_core', 'correct');
+        expect(useGameStore.getState().userAnswers[0]).toEqual(expect.objectContaining({
+            selfConfidence: 'high'
+        }));
         expect(logMistake).not.toHaveBeenCalled();
     });
 

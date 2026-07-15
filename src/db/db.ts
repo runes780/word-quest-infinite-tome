@@ -142,6 +142,7 @@ export type LearningEventMode = 'choice' | 'typing' | 'fill-blank';
 export type LearningEventResult = 'correct' | 'wrong';
 export type LearningEventAttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
 export type LearningEventSupportLevel = 0 | 1 | 2 | 3;
+export type LearningEventSelfConfidence = 'low' | 'medium' | 'high';
 
 export interface LearningEvent {
     id?: number;
@@ -159,6 +160,7 @@ export interface LearningEvent {
     result?: LearningEventResult;
     hintUsed?: boolean;
     latencyMs?: number;
+    selfConfidence?: LearningEventSelfConfidence;
     source: LearningEventSource;
     timestamp: number;
 }
@@ -175,6 +177,7 @@ export interface LearningEvidence {
     result?: LearningEventResult;
     hintUsed?: boolean;
     latencyMs?: number;
+    selfConfidence?: LearningEventSelfConfidence;
 }
 
 export type LearningTaskMetric = 'daily_sessions' | 'srs_answers' | 'battle_correct';

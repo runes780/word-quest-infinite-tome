@@ -80,6 +80,19 @@ describe('useBattleAnswerFlow', () => {
         expect(flow.result.current.showHint).toBe(false);
     });
 
+    test('forwards optional confidence with the answer and clears it for the next question', () => {
+        const flow = setup();
+
+        act(() => flow.result.current.setSelfConfidence('high'));
+        act(() => flow.result.current.handleOptionClick(0));
+
+        expect(flow.answerQuestion).toHaveBeenCalledWith(0, { selfConfidence: 'high' });
+        expect(flow.result.current.selfConfidence).toBe('high');
+
+        act(() => flow.result.current.resetAnswerState());
+        expect(flow.result.current.selfConfidence).toBeUndefined();
+    });
+
     test('opens mentor support after a high-value mistake and clears the timer on unmount', () => {
         const wrongResult = { ...correctResult, correct: false };
         const answerQuestion = jest.fn(() => wrongResult);
@@ -108,4 +121,3 @@ describe('useBattleAnswerFlow', () => {
         expect(() => jest.runAllTimers()).not.toThrow();
     });
 });
-

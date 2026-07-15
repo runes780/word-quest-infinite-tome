@@ -252,7 +252,14 @@ const buildMockDashboardViewModel = () => ({
         detail: 'Animal Habits Adventure',
         meta: '80% accuracy',
         timestamp: Date.now() - 1000
-    }]
+    }],
+    calibrationSummary: {
+        ratedAnswers: 4,
+        highConfidenceErrors: 1,
+        lowConfidenceCorrect: 1,
+        alignedJudgments: 1,
+        status: 'review-high-confidence-errors' as const
+    }
 });
 
 const mockGetGuardianDashboardViewModel = jest.fn(async () => buildMockDashboardViewModel());
@@ -326,6 +333,8 @@ describe('ParentDashboard visual information architecture', () => {
         expect(mockGetGuardianDashboardViewModel).toHaveBeenCalledWith(14);
         expect(screen.getByText('Review Queue')).toBeInTheDocument();
         expect(screen.getByText('Learning Events')).toBeInTheDocument();
+        expect(await screen.findByText('Confidence Calibration Signals')).toBeInTheDocument();
+        expect(screen.getByText(/does not affect mastery, ranking, or final judgments/i)).toBeInTheDocument();
         expect(screen.getByText('Wrong battle answer')).toBeInTheDocument();
         expect(screen.getByText('Guardian Recommendations')).toBeInTheDocument();
         expect(screen.getByText('Why This Plan')).toBeInTheDocument();

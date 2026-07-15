@@ -13,7 +13,7 @@ Word Quest: Infinite Tome is local-first and early-stage. The project is designe
 
 Current local data can include:
 
-- learning events from battle, SRS, daily challenge, hints, and sessions
+- learning events from battle, SRS, daily challenge, hints, and sessions, including an optional three-level self-confidence signal on selected diagnostic/transfer questions
 - FSRS cards and due-review state
 - skill mastery records and review-risk signals
 - mission history, mistakes, study actions, and consistency checks
@@ -42,7 +42,7 @@ Depending on the feature a user explicitly invokes, provider input can include:
 - aggregate session score plus answer evidence needed for the optional AI debrief
 - the current study context for an optional endless-wave refill
 
-Provider requests do not include IndexedDB tables, browser profiles, guardian-dashboard records, report exports, API request metrics, or unrelated localStorage fields. Adding any such field requires a separate privacy review, documentation update, and tests.
+Provider requests do not include IndexedDB tables, browser profiles, guardian-dashboard records, report exports, API request metrics, optional self-confidence evidence, or unrelated localStorage fields. Adding any such field requires a separate privacy review, documentation update, and tests.
 
 Provider requests should:
 
@@ -91,6 +91,8 @@ The project uses browser-local persistence such as IndexedDB and localStorage. T
 The settings panel can export a versioned JSON backup of every current IndexedDB table. This is a disaster-recovery tool, not cloud sync and not a privacy-filtered report.
 
 Backups include full local records such as source-derived question text, answers, mistakes, mentor analysis, FSRS state, learning events, mastery, history, tasks, dashboard events, AI reliability metrics, and practice-plan evidence. They exclude localStorage data, including API keys, provider/model settings, theme, and session-recovery snapshots.
+
+Optional self-confidence evidence is stored only inside the local answer event and local session answer. It is used to select feedback for high-confidence errors and low-confidence correct answers. It does not change score, rewards, FSRS ratings, mastery state, ranking, or final judgments. Learner and guardian summaries expose counts only, without linking confidence to exported question text.
 
 Safety boundaries:
 

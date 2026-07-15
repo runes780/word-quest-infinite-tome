@@ -101,6 +101,28 @@ describe('IndexedDB backup and restore', () => {
         await expect(database.practicePlanRuns.count()).resolves.toBe(0);
     });
 
+    test('round-trips optional confidence evidence without a schema index migration', async () => {
+        await database.learningEvents.add({
+            eventType: 'answer',
+            source: 'battle',
+            result: 'wrong',
+            attemptKind: 'transfer',
+            selfConfidence: 'high',
+            timestamp: Date.parse('2026-07-15T08:00:00Z')
+        });
+
+        const backup = await createIndexedDBBackup(database, Date.parse('2026-07-15T09:00:00Z'));
+        await database.learningEvents.clear();
+        await restoreIndexedDBBackup(backup, database);
+
+        await expect(database.learningEvents.toArray()).resolves.toEqual([
+            expect.objectContaining({
+                result: 'wrong',
+                selfConfidence: 'high'
+            })
+        ]);
+    });
+
     test('rejects future, unknown, and malformed backups before changing current data', async () => {
         await database.history.add({
             timestamp: 1,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SkillMasteryRecord } from '@/db/db';
+import type { LearningEventSelfConfidence, SkillMasteryRecord } from '@/db/db';
 import type { GameState, Monster } from '@/store/gameStore';
 import type { Language } from '@/store/settingsStore';
 import {
@@ -46,6 +46,7 @@ export function useBattleAnswerFlow({
     const [showMentor, setShowMentor] = useState(false);
     const [wrongAnswerText, setWrongAnswerText] = useState('');
     const [showHint, setShowHint] = useState(false);
+    const [selfConfidence, setSelfConfidence] = useState<LearningEventSelfConfidence | undefined>();
     const consecutiveWrong = useRef(0);
     const mentorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,18 +104,21 @@ export function useBattleAnswerFlow({
         if (!currentQuestion || showResult) return;
 
         setSelectedOption(index);
-        const result = answerQuestion(index);
+        const result = answerQuestion(index, selfConfidence ? { selfConfidence } : undefined);
         recordResult(result, result.correct, currentQuestion.options[index] || '');
-    }, [answerQuestion, currentQuestion, recordResult, showResult]);
+    }, [answerQuestion, currentQuestion, recordResult, selfConfidence, showResult]);
 
     const handleTextQuestionAnswer = useCallback((correct: boolean, input: string) => {
         if (!currentQuestion) return;
 
         const answerIndex = correct ? currentQuestion.correct_index : -1;
         setSelectedOption(answerIndex);
-        const result = answerQuestion(answerIndex, { userResponse: input });
+        const result = answerQuestion(answerIndex, {
+            userResponse: input,
+            ...(selfConfidence ? { selfConfidence } : {})
+        });
         recordResult(result, correct, input);
-    }, [answerQuestion, currentQuestion, recordResult]);
+    }, [answerQuestion, currentQuestion, recordResult, selfConfidence]);
 
     const handleVoiceAnswer = useCallback((correct: boolean, spokenText: string) => {
         if (!currentQuestion) return;
@@ -126,9 +130,12 @@ export function useBattleAnswerFlow({
             spokenText
         });
         setSelectedOption(answerIndex);
-        const result = answerQuestion(answerIndex, { userResponse: spokenText });
+        const result = answerQuestion(answerIndex, {
+            userResponse: spokenText,
+            ...(selfConfidence ? { selfConfidence } : {})
+        });
         recordResult(result, correct, spokenText);
-    }, [answerQuestion, currentQuestion, recordResult]);
+    }, [answerQuestion, currentQuestion, recordResult, selfConfidence]);
 
     const toggleHint = useCallback(() => {
         if (!showHint) recordHintUsed();
@@ -139,6 +146,7 @@ export function useBattleAnswerFlow({
         setSelectedOption(null);
         setShowResult(false);
         setShowHint(false);
+        setSelfConfidence(undefined);
     }, []);
 
     return {
@@ -150,6 +158,8 @@ export function useBattleAnswerFlow({
         setShowMentor,
         wrongAnswerText,
         showHint,
+        selfConfidence,
+        setSelfConfidence,
         handleOptionClick,
         handleTextQuestionAnswer,
         handleVoiceAnswer,
@@ -157,4 +167,3 @@ export function useBattleAnswerFlow({
         resetAnswerState
     };
 }
-

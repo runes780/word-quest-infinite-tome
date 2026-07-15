@@ -9,6 +9,7 @@ import {
     hashQuestion,
     logLearningEvent,
     LearningEventSource,
+    LearningEventSelfConfidence,
     SkillMasteryRecord,
     MasteryState,
     updateSkillMastery,
@@ -221,6 +222,7 @@ export interface UserAnswer {
     attemptKind?: AttemptKind;
     supportLevel?: SupportLevel;
     causeTag?: string;
+    selfConfidence?: LearningEventSelfConfidence;
 }
 
 export interface MasteryCelebration {
@@ -278,7 +280,7 @@ export interface GameState {
 
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource, practicePlanRun?: PracticePlanRun | null) => void;
-    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => {
+    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number; selfConfidence?: LearningEventSelfConfidence }) => {
         correct: boolean;
         explanation: string;
         damageDealt: number;
@@ -399,7 +401,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
         const newAnswer = buildUserAnswer({
             question: currentQuestion,
             selectedOption,
-            result: answerResult
+            result: answerResult,
+            selfConfidence: meta?.selfConfidence
         });
         set({ userAnswers: [...userAnswers, newAnswer] });
 
@@ -569,7 +572,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             questionHash,
             responseLatencyMs,
             source: sessionSource,
-            isCritical
+            isCritical,
+            selfConfidence: meta?.selfConfidence
         });
         if (evidence.mistake) {
             void logMistake(evidence.mistake);

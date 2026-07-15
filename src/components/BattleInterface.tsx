@@ -100,6 +100,8 @@ export function BattleInterface() {
         setShowMentor,
         wrongAnswerText,
         showHint,
+        selfConfidence,
+        setSelfConfidence,
         handleOptionClick,
         handleTextQuestionAnswer,
         handleVoiceAnswer,
@@ -232,7 +234,9 @@ export function BattleInterface() {
                     bossShieldProgress={bossShieldProgress}
                     bossComboThreshold={BOSS_COMBO_THRESHOLD}
                     clarityEffect={clarityEffect}
+                    selfConfidence={selfConfidence}
                     onToggleHint={toggleHint}
+                    onConfidenceChange={setSelfConfidence}
                     onChoiceSelect={handleOptionClick}
                     onTypingAnswer={handleTextQuestionAnswer}
                     onFillBlankAnswer={handleTextQuestionAnswer}
