@@ -79,6 +79,7 @@ function countByObjectiveFromDueCards(cards: FSRSCard[], now: number) {
             skillTag: card.skillTag,
             type: card.type
         });
+        if (!objectiveId) return;
         const current = buckets.get(objectiveId) || { count: 0, skillTag: card.skillTag, overdueMs: 0 };
         current.count += 1;
         current.skillTag ||= card.skillTag;
@@ -96,6 +97,7 @@ function countByObjectiveFromMistakes(records: MistakeRecord[]) {
             skillTag: record.skillTag || record.mentorCauseTag,
             type: record.type
         });
+        if (!objectiveId) return;
         const current = buckets.get(objectiveId) || {
             count: 0,
             skillTag: record.skillTag,
@@ -261,6 +263,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
         .sort((a, b) => a.score - b.score || masteryAccuracy(a) - masteryAccuracy(b))[0];
     if (learningMastery && steps.length < 3) {
         const objectiveId = mapSkillTagToObjectiveId({ skillTag: learningMastery.skillTag });
+        if (objectiveId) {
         const stepEvidence = {
             label: 'Mastery',
             value: `${learningMastery.skillTag} is ${learningMastery.state} at ${learningMastery.score}%`,
@@ -280,6 +283,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             rationale: 'Learning-state objectives need short, focused repetition.',
             evidence: [stepEvidence]
         });
+        }
     }
 
     const transferMastery = [...input.masteryRecords]
@@ -287,6 +291,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
         .sort((a, b) => b.score - a.score || b.attempts - a.attempts)[0];
     if (transferMastery) {
         const objectiveId = mapSkillTagToObjectiveId({ skillTag: transferMastery.skillTag });
+        if (objectiveId) {
         const stepEvidence = {
             label: 'Transfer ready',
             value: `${transferMastery.skillTag} is ${transferMastery.state} at ${transferMastery.score}%`,
@@ -306,6 +311,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             rationale: 'Near-mastered skills should be checked through productive recall or a new context.',
             evidence: [stepEvidence]
         });
+        }
     }
 
     if (steps.length === 0) {

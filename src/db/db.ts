@@ -6,8 +6,8 @@ import {
     mergeQuestionCache
 } from '@/lib/data/questionCachePolicy';
 import {
+    canonicalizeLearningObjective,
     getLearningObjective,
-    mapSkillTagToObjectiveId,
     type LearningObjectiveDomain,
     type LearningObjectiveId
 } from '@/lib/data/learningObjectives';
@@ -1667,13 +1667,15 @@ export async function updateObjectiveMastery(input: {
     hintUsed?: boolean;
     latencyMs?: number;
     now?: number;
-}): Promise<ObjectiveMasteryRecord> {
+}): Promise<ObjectiveMasteryRecord | null> {
     const now = input.now ?? Date.now();
-    const objectiveId = getLearningObjective(input.objectiveId)?.objectiveId || mapSkillTagToObjectiveId({
+    const objectiveId = getLearningObjective(input.objectiveId)?.objectiveId || canonicalizeLearningObjective({
+        suggestedObjectiveId: input.objectiveId,
         skillTag: input.skillTag,
         type: input.type,
         question: input.question
-    });
+    }).objectiveId;
+    if (!objectiveId) return null;
     const existing = await db.objectiveMastery.where('objectiveId').equals(objectiveId).first();
     const attemptsByMode = { ...(existing?.attemptsByMode || emptyAttemptsByMode()) };
     const mode = input.mode || 'choice';

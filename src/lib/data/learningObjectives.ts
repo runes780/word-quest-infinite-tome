@@ -1,6 +1,7 @@
 import type { MasteryState } from '@/db/db';
 
 export type LearningObjectiveId =
+    | 'present_simple'
     | 'past_tense_basic'
     | 'vocab_context_meaning'
     | 'pronoun_reference'
@@ -10,17 +11,24 @@ export type LearningObjectiveId =
 
 export type LearningObjectiveDomain = 'grammar' | 'vocab' | 'reading';
 export type LearningObjectiveType = 'form' | 'meaning' | 'reference' | 'detail' | 'inference';
+export type KnowledgeComponentType = 'fact' | 'concept' | 'rule' | 'strategy';
 export type ObjectiveQuestionMode = 'choice' | 'typing' | 'fill-blank';
 export type SupportLevel = 0 | 1 | 2 | 3;
 export type AttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
 export type UiLanguage = 'en' | 'zh';
+export type ObjectiveClassificationStatus = 'canonical' | 'alias' | 'inferred' | 'unclassified';
+
+export const OBJECTIVE_CATALOG_VERSION = 2;
 
 export interface LearningObjective {
     objectiveId: LearningObjectiveId;
     title: string;
     titleZh: string;
+    catalogVersion: number;
     domain: LearningObjectiveDomain;
     type: LearningObjectiveType;
+    knowledgeComponentType: KnowledgeComponentType;
+    aliases: string[];
     prerequisites: LearningObjectiveId[];
     recommendedModes: ObjectiveQuestionMode[];
     masteryThreshold: {
@@ -37,12 +45,20 @@ export interface LearningObjective {
         maxDaysWithoutReview: number;
         riskWeight: number;
     };
+    evidenceRequirements: {
+        minimumIndependentAttempts: number;
+        minimumDelayedProbes: number;
+        minimumTransferAttempts: number;
+    };
 }
 
 export interface CanonicalLearningObjective {
-    objectiveId: LearningObjectiveId;
+    objectiveId?: LearningObjectiveId;
     confidence: number;
-    source: 'ai' | 'fallback';
+    source: 'ai' | 'catalog' | 'inference' | 'unclassified';
+    status: ObjectiveClassificationStatus;
+    catalogVersion: number;
+    rawObjectiveId?: string;
     sourceContextSpan?: string;
 }
 
@@ -55,76 +71,116 @@ export interface MasteryLike {
 
 export const LEARNING_OBJECTIVES: LearningObjective[] = [
     {
-        objectiveId: 'past_tense_basic',
-        title: 'Basic Past Tense',
-        titleZh: '基础过去时',
+        objectiveId: 'present_simple',
+        title: 'Present Simple',
+        titleZh: '一般现在时',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
         domain: 'grammar',
         type: 'form',
+        knowledgeComponentType: 'rule',
+        aliases: ['grammar_present_simple', 'simple_present', 'present_tense'],
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
         masteryThreshold: { score: 82, attempts: 8, accuracy: 0.8 },
         transferThreshold: { score: 78, transferAttempts: 2, accuracy: 0.75 },
-        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.2 }
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.15 },
+        evidenceRequirements: { minimumIndependentAttempts: 3, minimumDelayedProbes: 2, minimumTransferAttempts: 2 }
+    },
+    {
+        objectiveId: 'past_tense_basic',
+        title: 'Basic Past Tense',
+        titleZh: '基础过去时',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
+        domain: 'grammar',
+        type: 'form',
+        knowledgeComponentType: 'rule',
+        aliases: ['past_simple', 'past_tense', 'grammar_past_simple'],
+        prerequisites: [],
+        recommendedModes: ['choice', 'fill-blank', 'typing'],
+        masteryThreshold: { score: 82, attempts: 8, accuracy: 0.8 },
+        transferThreshold: { score: 78, transferAttempts: 2, accuracy: 0.75 },
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.2 },
+        evidenceRequirements: { minimumIndependentAttempts: 3, minimumDelayedProbes: 2, minimumTransferAttempts: 2 }
     },
     {
         objectiveId: 'vocab_context_meaning',
         title: 'Vocabulary in Context',
         titleZh: '语境词义',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
         domain: 'vocab',
         type: 'meaning',
+        knowledgeComponentType: 'concept',
+        aliases: ['vocab_context', 'vocabulary_in_context', 'reading_contextual_meaning'],
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
         masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 },
         transferThreshold: { score: 76, transferAttempts: 2, accuracy: 0.74 },
-        reviewPolicy: { maxDaysWithoutReview: 4, riskWeight: 1.15 }
+        reviewPolicy: { maxDaysWithoutReview: 4, riskWeight: 1.15 },
+        evidenceRequirements: { minimumIndependentAttempts: 3, minimumDelayedProbes: 2, minimumTransferAttempts: 2 }
     },
     {
         objectiveId: 'pronoun_reference',
         title: 'Pronoun Reference',
         titleZh: '代词指代',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
         domain: 'reading',
         type: 'reference',
+        knowledgeComponentType: 'strategy',
+        aliases: ['pronoun_referent', 'reading_pronoun_reference'],
         prerequisites: ['reading_detail'],
         recommendedModes: ['choice', 'fill-blank'],
         masteryThreshold: { score: 78, attempts: 6, accuracy: 0.76 },
         transferThreshold: { score: 74, transferAttempts: 2, accuracy: 0.72 },
-        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.1 }
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.1 },
+        evidenceRequirements: { minimumIndependentAttempts: 2, minimumDelayedProbes: 2, minimumTransferAttempts: 2 }
     },
     {
         objectiveId: 'preposition_place_time',
         title: 'Place and Time Prepositions',
         titleZh: '时间/地点介词',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
         domain: 'grammar',
         type: 'form',
+        knowledgeComponentType: 'rule',
+        aliases: ['prepositions_place_time', 'in_on_at'],
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
         masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 },
         transferThreshold: { score: 76, transferAttempts: 2, accuracy: 0.74 },
-        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.15 }
+        reviewPolicy: { maxDaysWithoutReview: 5, riskWeight: 1.15 },
+        evidenceRequirements: { minimumIndependentAttempts: 3, minimumDelayedProbes: 2, minimumTransferAttempts: 2 }
     },
     {
         objectiveId: 'reading_detail',
         title: 'Reading for Details',
         titleZh: '阅读细节',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
         domain: 'reading',
         type: 'detail',
+        knowledgeComponentType: 'strategy',
+        aliases: ['reading_details', 'reading_main_idea', 'detail'],
         prerequisites: [],
         recommendedModes: ['choice', 'fill-blank'],
         masteryThreshold: { score: 80, attempts: 8, accuracy: 0.78 },
         transferThreshold: { score: 76, transferAttempts: 2, accuracy: 0.74 },
-        reviewPolicy: { maxDaysWithoutReview: 6, riskWeight: 1 }
+        reviewPolicy: { maxDaysWithoutReview: 6, riskWeight: 1 },
+        evidenceRequirements: { minimumIndependentAttempts: 3, minimumDelayedProbes: 2, minimumTransferAttempts: 2 }
     },
     {
         objectiveId: 'reading_inference',
         title: 'Reading Inference',
         titleZh: '阅读推断',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
         domain: 'reading',
         type: 'inference',
+        knowledgeComponentType: 'strategy',
+        aliases: ['inference', 'reading_infer', 'cause_effect'],
         prerequisites: ['reading_detail', 'vocab_context_meaning'],
         recommendedModes: ['choice', 'fill-blank', 'typing'],
         masteryThreshold: { score: 84, attempts: 10, accuracy: 0.82 },
         transferThreshold: { score: 80, transferAttempts: 3, accuracy: 0.78 },
-        reviewPolicy: { maxDaysWithoutReview: 4, riskWeight: 1.3 }
+        reviewPolicy: { maxDaysWithoutReview: 4, riskWeight: 1.3 },
+        evidenceRequirements: { minimumIndependentAttempts: 3, minimumDelayedProbes: 2, minimumTransferAttempts: 3 }
     }
 ];
 
@@ -133,9 +189,20 @@ const OBJECTIVE_MAP = LEARNING_OBJECTIVES.reduce((acc, objective) => {
     return acc;
 }, {} as Record<LearningObjectiveId, LearningObjective>);
 
+const OBJECTIVE_ALIAS_MAP = LEARNING_OBJECTIVES.reduce((acc, objective) => {
+    objective.aliases.forEach((alias) => {
+        acc[normalize(alias)] = objective.objectiveId;
+    });
+    return acc;
+}, {} as Record<string, LearningObjectiveId>);
+
 export function getLearningObjective(objectiveId?: string | null): LearningObjective | undefined {
     if (!objectiveId) return undefined;
     return OBJECTIVE_MAP[objectiveId as LearningObjectiveId];
+}
+
+export function isKnownObjectiveId(objectiveId?: string | null): objectiveId is LearningObjectiveId {
+    return Boolean(getLearningObjective(objectiveId));
 }
 
 export function canonicalizeLearningObjective(input: {
@@ -146,6 +213,8 @@ export function canonicalizeLearningObjective(input: {
     sourceContextSpan?: string | null;
 }): CanonicalLearningObjective {
     const suggested = getLearningObjective(input.suggestedObjectiveId);
+    const normalizedSuggestion = normalize(input.suggestedObjectiveId);
+    const aliasedObjectiveId = OBJECTIVE_ALIAS_MAP[normalizedSuggestion];
     const sourceContextSpan = input.sourceContextSpan?.trim() || undefined;
     const questionObjective = inferObjectiveFromQuestion(input);
     if (suggested && (!questionObjective || questionObjective === suggested.objectiveId)) {
@@ -153,6 +222,21 @@ export function canonicalizeLearningObjective(input: {
             objectiveId: suggested.objectiveId,
             confidence: 0.86,
             source: 'ai',
+            status: 'canonical',
+            catalogVersion: OBJECTIVE_CATALOG_VERSION,
+            rawObjectiveId: input.suggestedObjectiveId?.trim() || undefined,
+            sourceContextSpan
+        };
+    }
+
+    if (aliasedObjectiveId && (!questionObjective || questionObjective === aliasedObjectiveId)) {
+        return {
+            objectiveId: aliasedObjectiveId,
+            confidence: 0.8,
+            source: 'catalog',
+            status: 'alias',
+            catalogVersion: OBJECTIVE_CATALOG_VERSION,
+            rawObjectiveId: input.suggestedObjectiveId?.trim() || undefined,
             sourceContextSpan
         };
     }
@@ -162,11 +246,23 @@ export function canonicalizeLearningObjective(input: {
         type: input.type,
         question: input.question
     });
-    const hasEvidence = Boolean(input.skillTag || input.type || input.question);
+    if (!objectiveId) {
+        return {
+            confidence: 0,
+            source: 'unclassified',
+            status: 'unclassified',
+            catalogVersion: OBJECTIVE_CATALOG_VERSION,
+            rawObjectiveId: input.suggestedObjectiveId?.trim() || undefined,
+            sourceContextSpan
+        };
+    }
     return {
         objectiveId,
-        confidence: hasEvidence ? 0.64 : 0.5,
-        source: 'fallback',
+        confidence: questionObjective ? 0.72 : 0.64,
+        source: 'inference',
+        status: 'inferred',
+        catalogVersion: OBJECTIVE_CATALOG_VERSION,
+        rawObjectiveId: input.suggestedObjectiveId?.trim() || undefined,
         sourceContextSpan
     };
 }
@@ -182,6 +278,9 @@ function inferObjectiveFromQuestion(input: {
     const question = (input.question || '').trim().toLowerCase();
     if (!question) return undefined;
 
+    if (/\b(?:present simple|simple present|every day|usually|always|often|does|doesn't|do not|don't)\b/.test(question)) {
+        return 'present_simple';
+    }
     if (/\b(?:past[- ]tense|yesterday|last weekend|last week|ago|went|was|were|did)\b/.test(question)) {
         return 'past_tense_basic';
     }
@@ -207,6 +306,9 @@ function inferObjectiveFromQuestion(input: {
 function inferObjectiveFromSkillTag(skillTag?: string | null): LearningObjectiveId | undefined {
     const rawSkill = normalize(skillTag);
     if (!rawSkill) return undefined;
+    const canonical = getLearningObjective(rawSkill)?.objectiveId || OBJECTIVE_ALIAS_MAP[rawSkill];
+    if (canonical) return canonical;
+    if (/(present_simple|simple_present|present_tense|every_day|daily_routine)/.test(rawSkill)) return 'present_simple';
     if (/(past|past_simple|past_tense|ed_form|yesterday|went|was|were)/.test(rawSkill)) return 'past_tense_basic';
     if (/(pronoun|reference|refer|he_|she_|they_|it_)/.test(rawSkill)) return 'pronoun_reference';
     if (/(preposition|place|time|in_on_at|under|behind|between|before|after)/.test(rawSkill)) return 'preposition_place_time';
@@ -220,17 +322,14 @@ export function mapSkillTagToObjectiveId(input: {
     skillTag?: string | null;
     type?: LearningObjectiveDomain | string | null;
     question?: string | null;
-}): LearningObjectiveId {
+}): LearningObjectiveId | undefined {
     const questionObjective = inferObjectiveFromQuestion(input);
     if (questionObjective) return questionObjective;
 
     const skillObjective = inferObjectiveFromSkillTag(input.skillTag);
     if (skillObjective) return skillObjective;
 
-    if (input.type === 'vocab') return 'vocab_context_meaning';
-    if (input.type === 'grammar') return 'past_tense_basic';
-    if (input.type === 'reading') return 'reading_detail';
-    return 'vocab_context_meaning';
+    return undefined;
 }
 
 export function selectSupportLevelForMastery(mastery?: Partial<MasteryLike> | null): SupportLevel {

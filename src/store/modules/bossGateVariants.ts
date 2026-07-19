@@ -326,6 +326,7 @@ export function buildBossGateVariants(question: Monster): Monster[] {
         type: question.type,
         question: question.question
     });
+    if (!objectiveId) return [question];
     const correctAnswer = answerFor(question);
     const distractors = distractorsFor(question, correctAnswer);
     const factory = TEMPLATE_BY_OBJECTIVE[objectiveId] || vocabTemplates;

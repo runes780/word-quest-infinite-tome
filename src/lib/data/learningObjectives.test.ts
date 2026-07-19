@@ -1,4 +1,5 @@
 import {
+    OBJECTIVE_CATALOG_VERSION,
     canonicalizeLearningObjective,
     mapSkillTagToObjectiveId,
     selectSupportLevelForMastery,
@@ -9,6 +10,8 @@ import {
 
 describe('learning objective catalog', () => {
     test('maps common skill tags into stable adaptive objectives', () => {
+        expect(mapSkillTagToObjectiveId({ skillTag: 'present_simple' })).toBe('present_simple');
+        expect(mapSkillTagToObjectiveId({ skillTag: 'grammar:present_tense' })).toBe('present_simple');
         expect(mapSkillTagToObjectiveId({ skillTag: 'past_tense' })).toBe('past_tense_basic');
         expect(mapSkillTagToObjectiveId({ skillTag: 'grammar:past_simple' })).toBe('past_tense_basic');
         expect(mapSkillTagToObjectiveId({ skillTag: 'reading:inference' })).toBe('reading_inference');
@@ -17,10 +20,10 @@ describe('learning objective catalog', () => {
         expect(mapSkillTagToObjectiveId({ skillTag: 'preposition_place_time' })).toBe('preposition_place_time');
     });
 
-    test('falls back by question type when skill tag is sparse', () => {
-        expect(mapSkillTagToObjectiveId({ type: 'vocab' })).toBe('vocab_context_meaning');
-        expect(mapSkillTagToObjectiveId({ type: 'grammar' })).toBe('past_tense_basic');
-        expect(mapSkillTagToObjectiveId({ type: 'reading' })).toBe('reading_detail');
+    test('does not turn a broad domain into fabricated objective evidence', () => {
+        expect(mapSkillTagToObjectiveId({ type: 'vocab' })).toBeUndefined();
+        expect(mapSkillTagToObjectiveId({ type: 'grammar' })).toBeUndefined();
+        expect(mapSkillTagToObjectiveId({ type: 'reading' })).toBeUndefined();
     });
 
     test('defines mastery thresholds and recommended modes for each objective', () => {
@@ -40,6 +43,9 @@ describe('learning objective catalog', () => {
             riskWeight: expect.any(Number)
         }));
         expect(objective?.recommendedModes).toContain('fill-blank');
+        expect(objective?.catalogVersion).toBe(OBJECTIVE_CATALOG_VERSION);
+        expect(objective?.knowledgeComponentType).toBe('strategy');
+        expect(objective?.evidenceRequirements.minimumDelayedProbes).toBeGreaterThanOrEqual(2);
     });
 
     test('canonicalizes AI objective suggestions with confidence and source span', () => {
@@ -52,6 +58,8 @@ describe('learning objective catalog', () => {
             objectiveId: 'reading_inference',
             confidence: expect.any(Number),
             source: 'ai',
+            status: 'canonical',
+            catalogVersion: OBJECTIVE_CATALOG_VERSION,
             sourceContextSpan: 'The word means warm.'
         }));
 
@@ -62,9 +70,32 @@ describe('learning objective catalog', () => {
             question: 'Yesterday, she ___ to school.'
         })).toEqual(expect.objectContaining({
             objectiveId: 'past_tense_basic',
-            source: 'fallback',
+            source: 'inference',
+            status: 'inferred',
             confidence: expect.any(Number)
         }));
+    });
+
+    test('resolves catalog aliases but quarantines unknown objectives without evidence', () => {
+        expect(canonicalizeLearningObjective({
+            suggestedObjectiveId: 'grammar_present_simple'
+        })).toEqual(expect.objectContaining({
+            objectiveId: 'present_simple',
+            source: 'catalog',
+            status: 'alias'
+        }));
+
+        const unknown = canonicalizeLearningObjective({
+            suggestedObjectiveId: 'imaginary_skill',
+            type: 'grammar'
+        });
+        expect(unknown).toEqual(expect.objectContaining({
+            confidence: 0,
+            source: 'unclassified',
+            status: 'unclassified',
+            rawObjectiveId: 'imaginary_skill'
+        }));
+        expect(unknown.objectiveId).toBeUndefined();
     });
 
     test('overrides inconsistent AI pronoun objective for ordinary reading detail questions', () => {
@@ -81,9 +112,10 @@ describe('learning objective catalog', () => {
             question: 'What is the weather like today?',
             sourceContextSpan: 'Today is rainy and cold.'
         })).toEqual(expect.objectContaining({
-            objectiveId: 'reading_detail',
-            source: 'fallback'
-        }));
+                objectiveId: 'reading_detail',
+                source: 'inference',
+                status: 'inferred'
+            }));
     });
 
     test('reduces support as mastery rises', () => {
