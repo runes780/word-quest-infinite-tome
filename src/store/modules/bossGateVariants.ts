@@ -87,6 +87,28 @@ const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distra
     }
 ];
 
+const presentSimpleTemplates: BossTemplateFactory = (question, correctAnswer, distractors) => [
+    {
+        question: 'Recognition: Which option is the present-simple form?',
+        options: ensureFourOptions(correctAnswer, distractors),
+        hint: question.hint || 'Present simple can describe a routine.',
+        explanation: baseExplanation(question, correctAnswer)
+    },
+    {
+        question: 'Application: Every day, Mia ___ this action.',
+        options: ensureFourOptions(correctAnswer, distractors),
+        correctAnswer,
+        hint: 'Use the routine form after “Every day”.',
+        explanation: `${correctAnswer} completes the present-simple routine.`
+    },
+    {
+        question: 'Transfer: Type the present-simple form that completes a new daily-routine sentence.',
+        correctAnswer,
+        hint: `It starts with "${correctAnswer[0] || ''}".`,
+        explanation: `${correctAnswer} applies the same rule in a new routine.`
+    }
+];
+
 const vocabTemplates: BossTemplateFactory = (question, correctAnswer, distractors) => [
     {
         question: `Recognition: Which option best matches the target meaning?`,
@@ -272,6 +294,7 @@ const readingInferenceTemplates: BossTemplateFactory = (question, correctAnswer,
 };
 
 const TEMPLATE_BY_OBJECTIVE: Record<LearningObjectiveId, BossTemplateFactory> = {
+    present_simple: presentSimpleTemplates,
     past_tense_basic: pastTenseTemplates,
     vocab_context_meaning: vocabTemplates,
     pronoun_reference: pronounTemplates,

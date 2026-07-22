@@ -278,7 +278,7 @@ function inferObjectiveFromQuestion(input: {
     const question = (input.question || '').trim().toLowerCase();
     if (!question) return undefined;
 
-    if (/\b(?:present simple|simple present|every day|usually|always|often|does|doesn't|do not|don't)\b/.test(question)) {
+    if (/\b(?:present simple|simple present|every day|usually|always|often|daily routine)\b/.test(question)) {
         return 'present_simple';
     }
     if (/\b(?:past[- ]tense|yesterday|last weekend|last week|ago|went|was|were|did)\b/.test(question)) {

@@ -11,6 +11,13 @@ import {
     type LearningObjectiveDomain,
     type LearningObjectiveId
 } from '@/lib/data/learningObjectives';
+import type {
+    AssessmentRole,
+    ContentReviewerStatus,
+    EvidenceStrength,
+    TransferDistance
+} from '@/lib/data/learningEvidenceContract';
+import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
 
 export interface SkillStatSlice {
     correct: number;
@@ -67,6 +74,15 @@ export interface CachedQuestion {
     hint?: string;
     skillTag?: string;
     learningObjectiveId?: string;
+    objectiveCatalogVersion?: number;
+    objectiveClassificationStatus?: ObjectiveClassificationStatus;
+    evidenceContractVersion?: number;
+    itemFamilyId?: string;
+    contextId?: string;
+    equivalenceGroup?: string;
+    assessmentRole?: AssessmentRole;
+    transferDistance?: TransferDistance;
+    reviewerStatus?: ContentReviewerStatus;
     sourceContextSpan?: string;
     questionMode?: 'choice' | 'typing' | 'fill-blank';
     correctAnswer?: string;
@@ -89,6 +105,15 @@ export interface FSRSCard {
     hint?: string;
     skillTag?: string;
     learningObjectiveId?: string;
+    objectiveCatalogVersion?: number;
+    objectiveClassificationStatus?: ObjectiveClassificationStatus;
+    evidenceContractVersion?: number;
+    itemFamilyId?: string;
+    contextId?: string;
+    equivalenceGroup?: string;
+    assessmentRole?: AssessmentRole;
+    transferDistance?: TransferDistance;
+    reviewerStatus?: ContentReviewerStatus;
     sourceContextSpan?: string;
     questionMode?: 'choice' | 'typing' | 'fill-blank';
     correctAnswer?: string;
@@ -169,6 +194,16 @@ export interface LearningEvent {
     skillTag?: string;
     learningObjectiveId?: string;
     objectiveConfidence?: number;
+    objectiveCatalogVersion?: number;
+    objectiveClassificationStatus?: ObjectiveClassificationStatus;
+    evidenceContractVersion?: number;
+    itemFamilyId?: string;
+    contextId?: string;
+    equivalenceGroup?: string;
+    assessmentRole?: AssessmentRole;
+    transferDistance?: TransferDistance;
+    reviewerStatus?: ContentReviewerStatus;
+    evidenceStrength?: EvidenceStrength;
     sourceContextSpan?: string;
     attemptKind?: LearningEventAttemptKind;
     supportLevel?: LearningEventSupportLevel;
@@ -197,6 +232,16 @@ export interface LearningEvidence {
     skillTag?: string;
     sourceSpan?: string;
     confidence?: number;
+    objectiveCatalogVersion?: number;
+    objectiveClassificationStatus?: ObjectiveClassificationStatus;
+    evidenceContractVersion?: number;
+    itemFamilyId?: string;
+    contextId?: string;
+    equivalenceGroup?: string;
+    assessmentRole?: AssessmentRole;
+    transferDistance?: TransferDistance;
+    reviewerStatus?: ContentReviewerStatus;
+    evidenceStrength?: EvidenceStrength;
     mode?: LearningEventMode;
     supportLevel?: LearningEventSupportLevel;
     attemptKind?: LearningEventAttemptKind;
@@ -1666,6 +1711,10 @@ export async function updateObjectiveMastery(input: {
     supportLevel?: LearningEventSupportLevel;
     hintUsed?: boolean;
     latencyMs?: number;
+    evidenceStrength?: EvidenceStrength;
+    assessmentRole?: AssessmentRole;
+    reviewerStatus?: ContentReviewerStatus;
+    objectiveClassificationStatus?: ObjectiveClassificationStatus;
     now?: number;
 }): Promise<ObjectiveMasteryRecord | null> {
     const now = input.now ?? Date.now();

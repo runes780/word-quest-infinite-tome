@@ -79,6 +79,13 @@ import {
     type ScaffoldDecisionReason,
     type ScaffoldTransition
 } from '@/lib/data/adaptiveScaffolding';
+import type {
+    AssessmentRole,
+    ContentReviewerStatus,
+    EvidenceStrength,
+    TransferDistance
+} from '@/lib/data/learningEvidenceContract';
+import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
 import { createCombatSlice } from '@/store/slices/combatSlice';
 import { createLearningSlice } from '@/store/slices/learningSlice';
 import { createEconomySlice } from '@/store/slices/economySlice';
@@ -157,6 +164,16 @@ export interface Monster {
     correctAnswer: string; // For typing/fill-blank questions
     learningObjectiveId?: string;
     objectiveConfidence?: number;
+    objectiveCatalogVersion?: number;
+    objectiveClassificationStatus?: ObjectiveClassificationStatus;
+    evidenceContractVersion?: number;
+    itemFamilyId?: string;
+    contextId?: string;
+    equivalenceGroup?: string;
+    assessmentRole?: AssessmentRole;
+    transferDistance?: TransferDistance;
+    reviewerStatus?: ContentReviewerStatus;
+    evidenceStrength?: EvidenceStrength;
     supportLevel?: SupportLevel;
     attemptKind?: AttemptKind;
     causeTag?: string;
@@ -229,6 +246,9 @@ export interface UserAnswer {
     correctChoice: string;
     isCorrect: boolean;
     learningObjectiveId?: string;
+    itemFamilyId?: string;
+    assessmentRole?: AssessmentRole;
+    evidenceStrength?: EvidenceStrength;
     attemptKind?: AttemptKind;
     supportLevel?: SupportLevel;
     causeTag?: string;
