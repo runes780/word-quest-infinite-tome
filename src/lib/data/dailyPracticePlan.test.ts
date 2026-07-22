@@ -1,4 +1,4 @@
-import type { FSRSCard, LearningTask, ObjectiveMasteryRecord, MistakeRecord } from '@/db/db';
+import type { FSRSCard, LearningEvent, LearningTask, ObjectiveMasteryRecord, MistakeRecord } from '@/db/db';
 import { buildDailyPracticePlan, getPrerequisiteReadiness } from './dailyPracticePlan';
 
 const now = new Date('2026-06-01T08:00:00.000Z').getTime();
@@ -77,6 +77,23 @@ function task(overrides: Partial<LearningTask>): LearningTask {
         rewardGold: 35,
         evidence: [],
         updatedAt: now,
+        ...overrides
+    };
+}
+
+function learningEvent(overrides: Partial<LearningEvent>): LearningEvent {
+    return {
+        eventType: 'answer',
+        source: 'battle',
+        timestamp: now - 8 * 86_400_000,
+        result: 'correct',
+        learningObjectiveId: 'present_simple',
+        itemFamilyId: 'family_present_routine_third_person',
+        equivalenceGroup: 'equiv_present_routine_s',
+        contextId: 'family_present_routine_third_person_context_1',
+        assessmentRole: 'practice',
+        reviewerStatus: 'system-reviewed',
+        evidenceStrength: 'independent',
         ...overrides
     };
 }
@@ -194,5 +211,22 @@ describe('daily practice planner', () => {
             learningTasks: []
         });
         expect(plan.steps.some((step) => step.type === 'transfer' && step.objectiveId === 'reading_inference')).toBe(false);
+    });
+
+    test('adds a no-hint delayed probe when reviewed baseline evidence is due', () => {
+        const plan = buildDailyPracticePlan({
+            now,
+            dueCards: [],
+            recentMistakes: [],
+            masteryRecords: [mastery({ objectiveId: 'present_simple' })],
+            learningTasks: [],
+            learningEvents: [learningEvent({})]
+        });
+        expect(plan.steps.find((step) => step.assessmentRole === 'delayed-probe')).toEqual(expect.objectContaining({
+            objectiveId: 'present_simple',
+            supportLevel: 0,
+            attemptKind: 'review',
+            probeStage: 'day-1'
+        }));
     });
 });

@@ -15,6 +15,7 @@ import type {
     AssessmentRole,
     ContentReviewerStatus,
     EvidenceStrength,
+    RetentionProbeStage,
     TransferDistance
 } from '@/lib/data/learningEvidenceContract';
 import {
@@ -88,6 +89,8 @@ export interface CachedQuestion {
     assessmentRole?: AssessmentRole;
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
     sourceContextSpan?: string;
     questionMode?: 'choice' | 'typing' | 'fill-blank';
     correctAnswer?: string;
@@ -119,6 +122,8 @@ export interface FSRSCard {
     assessmentRole?: AssessmentRole;
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
     sourceContextSpan?: string;
     questionMode?: 'choice' | 'typing' | 'fill-blank';
     correctAnswer?: string;
@@ -209,6 +214,8 @@ export interface LearningEvent {
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
     evidenceStrength?: EvidenceStrength;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
     sourceContextSpan?: string;
     attemptKind?: LearningEventAttemptKind;
     supportLevel?: LearningEventSupportLevel;
@@ -247,6 +254,8 @@ export interface LearningEvidence {
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
     evidenceStrength?: EvidenceStrength;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
     mode?: LearningEventMode;
     supportLevel?: LearningEventSupportLevel;
     attemptKind?: LearningEventAttemptKind;

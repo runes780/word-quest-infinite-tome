@@ -341,6 +341,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dueCards,
         recentMistakes: mistakes,
         learningTasks,
+        learningEvents,
         profile: playerProfile,
         now
     });

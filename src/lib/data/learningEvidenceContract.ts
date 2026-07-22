@@ -28,6 +28,7 @@ export type EvidenceStrength =
     | 'independent'
     | 'delayed-independent'
     | 'transfer-independent';
+export type RetentionProbeStage = 'day-1' | 'day-7';
 
 export interface LearningEvidenceMetadata {
     evidenceContractVersion: number;
@@ -39,6 +40,8 @@ export interface LearningEvidenceMetadata {
     assessmentRole: AssessmentRole;
     transferDistance: TransferDistance;
     reviewerStatus: ContentReviewerStatus;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
 }
 
 interface EvidenceIdentityInput {
@@ -55,6 +58,8 @@ interface EvidenceIdentityInput {
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
     objectiveCatalogVersion?: number;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
 }
 
 interface EvidenceStrengthInput {
@@ -136,7 +141,9 @@ export function buildLearningEvidenceMetadata(input: EvidenceIdentityInput): Lea
         equivalenceGroup,
         assessmentRole,
         transferDistance: input.transferDistance || (assessmentRole === 'transfer' ? 'near' : 'same-context'),
-        reviewerStatus: input.reviewerStatus || 'unreviewed'
+        reviewerStatus: input.reviewerStatus || 'unreviewed',
+        probeStage: input.probeStage,
+        probeScheduledFor: input.probeScheduledFor
     };
 }
 
@@ -144,6 +151,13 @@ export function evidenceStrengthForAttempt(input: EvidenceStrengthInput): Eviden
     if (!isKnownObjectiveId(input.learningObjectiveId) ||
         input.objectiveClassificationStatus === 'unclassified' ||
         input.reviewerStatus === 'rejected') {
+        return 'no-credit';
+    }
+
+    const reviewedForMeasurement = input.reviewerStatus === 'system-reviewed' ||
+        input.reviewerStatus === 'educator-approved' ||
+        input.reviewerStatus === 'educator-edited';
+    if ((input.assessmentRole === 'delayed-probe' || input.assessmentRole === 'transfer') && !reviewedForMeasurement) {
         return 'no-credit';
     }
 

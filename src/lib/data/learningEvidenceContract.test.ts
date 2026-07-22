@@ -79,4 +79,15 @@ describe('learning evidence contract', () => {
         expect(evidenceStrengthForAttempt({ ...base, assessmentRole: 'transfer', transferDistance: 'near' })).toBe('transfer-independent');
         expect(evidenceStrengthForAttempt({ ...base, assessmentRole: 'transfer', transferDistance: 'same-context' })).toBe('independent');
     });
+
+    test('does not count unreviewed content as transfer or delayed measurement', () => {
+        const base = {
+            learningObjectiveId: 'reading_detail',
+            objectiveClassificationStatus: 'canonical' as const,
+            reviewerStatus: 'unreviewed' as const,
+            supportLevel: 0
+        };
+        expect(evidenceStrengthForAttempt({ ...base, assessmentRole: 'transfer', transferDistance: 'near' })).toBe('no-credit');
+        expect(evidenceStrengthForAttempt({ ...base, assessmentRole: 'delayed-probe' })).toBe('no-credit');
+    });
 });

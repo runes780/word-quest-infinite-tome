@@ -83,6 +83,7 @@ import type {
     AssessmentRole,
     ContentReviewerStatus,
     EvidenceStrength,
+    RetentionProbeStage,
     TransferDistance
 } from '@/lib/data/learningEvidenceContract';
 import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
@@ -174,6 +175,8 @@ export interface Monster {
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
     evidenceStrength?: EvidenceStrength;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
     supportLevel?: SupportLevel;
     attemptKind?: AttemptKind;
     causeTag?: string;

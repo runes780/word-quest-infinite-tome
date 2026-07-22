@@ -7,6 +7,7 @@ import {
 import type {
     FSRSCard,
     GlobalPlayerProfile,
+    LearningEvent,
     LearningTask,
     MistakeRecord,
     ObjectiveMasteryRecord
@@ -21,9 +22,11 @@ import {
     objectiveTitle,
     selectSupportLevelForMastery
 } from './learningObjectives';
+import type { AssessmentRole, RetentionProbeStage } from './learningEvidenceContract';
+import { buildDueRetentionProbes } from './retentionProbes';
 
 export type PracticePlanStepType = 'review' | 'practice' | 'transfer';
-export type PracticePlanEvidenceSource = 'srs' | 'mistake' | 'mastery' | 'task' | 'starter';
+export type PracticePlanEvidenceSource = 'srs' | 'retention' | 'mistake' | 'mastery' | 'task' | 'starter';
 
 export interface PracticePlanEvidence {
     label: string;
@@ -41,6 +44,12 @@ export interface PracticePlanStep {
     questionCount: number;
     supportLevel: SupportLevel;
     attemptKind: AttemptKind;
+    assessmentRole?: AssessmentRole;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
+    itemFamilyId?: string;
+    equivalenceGroup?: string;
+    originalContextId?: string;
     rationale: string;
     evidence: PracticePlanEvidence[];
 }
@@ -60,6 +69,7 @@ export interface BuildDailyPracticePlanInput {
     dueCards: FSRSCard[];
     recentMistakes: MistakeRecord[];
     learningTasks: LearningTask[];
+    learningEvents?: LearningEvent[];
     profile?: GlobalPlayerProfile | null;
     now?: number;
 }
@@ -252,6 +262,34 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
         });
     }
 
+    const dueProbe = buildDueRetentionProbes(input.learningEvents || [], now)[0];
+    if (dueProbe) {
+        const stepEvidence = {
+            label: 'Retention check',
+            value: `${dueProbe.stage === 'day-1' ? '24-hour' : '7-day'} no-hint check for ${objectiveTitle(dueProbe.objectiveId)}`,
+            source: 'retention' as const
+        };
+        evidence.push(stepEvidence);
+        pushUniqueStep(steps, {
+            id: dueProbe.probeId,
+            type: 'review',
+            title: `Recall ${objectiveTitle(dueProbe.objectiveId)}`,
+            objectiveId: dueProbe.objectiveId,
+            estimatedMinutes: 2,
+            questionCount: 1,
+            supportLevel: 0,
+            attemptKind: 'review',
+            assessmentRole: 'delayed-probe',
+            probeStage: dueProbe.stage,
+            probeScheduledFor: dueProbe.scheduledFor,
+            itemFamilyId: dueProbe.itemFamilyId,
+            equivalenceGroup: dueProbe.equivalenceGroup,
+            originalContextId: dueProbe.originalContextId,
+            rationale: 'A short equivalent-item check measures retention without showing a hint before the response.',
+            evidence: [stepEvidence]
+        });
+    }
+
     const mistakeObjective = countByObjectiveFromMistakes(input.recentMistakes)[0];
     if (mistakeObjective) {
         const [objectiveId, data] = mistakeObjective;
@@ -363,7 +401,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
 
 export async function getDailyPracticePlan(now = Date.now()): Promise<PracticePlan> {
     const cutoff = now - 14 * 24 * 60 * 60 * 1000;
-    const [masteryRecords, dueCards, recentMistakes, learningTasks, profile] = await Promise.all([
+    const [masteryRecords, dueCards, recentMistakes, learningTasks, profile, learningEvents] = await Promise.all([
         db.objectiveMastery.toArray(),
         getDueCardsWithPriority(12),
         db.mistakes
@@ -373,7 +411,11 @@ export async function getDailyPracticePlan(now = Date.now()): Promise<PracticePl
             .limit(20)
             .toArray(),
         getWeeklyLearningTasks(now),
-        getPlayerProfile().catch(() => null)
+        getPlayerProfile().catch(() => null),
+        db.learningEvents
+            .where('timestamp')
+            .aboveOrEqual(now - 30 * 24 * 60 * 60 * 1000)
+            .toArray()
     ]);
 
     return buildDailyPracticePlan({
@@ -381,6 +423,7 @@ export async function getDailyPracticePlan(now = Date.now()): Promise<PracticePl
         dueCards,
         recentMistakes,
         learningTasks,
+        learningEvents,
         profile,
         now
     });
