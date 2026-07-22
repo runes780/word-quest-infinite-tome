@@ -462,6 +462,7 @@ export interface ObjectiveMasteryRecord {
     nextReviewAt: number;
     confidence: number;
     updatedAt: number;
+    evidenceModelVersion?: number;
 }
 
 export interface MasteryAggregateSkillRow {
@@ -532,7 +533,22 @@ export interface PracticePlanRunRecord {
     updatedAt: number;
 }
 
-export const CURRENT_DB_SCHEMA_VERSION = 14;
+export interface ContentReviewRecord {
+    id?: number;
+    contentKey: string;
+    cachedQuestionId?: number;
+    questionText: string;
+    sourceType: 'ai' | 'controlled' | 'fallback';
+    status: ContentReviewerStatus;
+    objectiveId?: string;
+    itemFamilyId?: string;
+    equivalenceGroup?: string;
+    notes?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export const CURRENT_DB_SCHEMA_VERSION = 15;
 
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
@@ -549,6 +565,7 @@ export class WordQuestDB extends Dexie {
     skillMastery!: Table<SkillMasteryRecord>;
     objectiveMastery!: Table<ObjectiveMasteryRecord>;
     practicePlanRuns!: Table<PracticePlanRunRecord>;
+    contentReviews!: Table<ContentReviewRecord>;
 
     constructor(name = 'WordQuestDB') {
         super(name);
@@ -669,7 +686,7 @@ export class WordQuestDB extends Dexie {
             sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
-        this.version(CURRENT_DB_SCHEMA_VERSION).stores({
+        this.version(14).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId, skillTag',
             questionCache: '++id, contextHash, timestamp, used',
@@ -684,6 +701,33 @@ export class WordQuestDB extends Dexie {
             skillMastery: '++id, skillTag, state, score, updatedAt',
             objectiveMastery: '++id, objectiveId, state, score, updatedAt, nextReviewAt',
             practicePlanRuns: '++id, planId, dateKey, status, updatedAt, [planId+dateKey]'
+        });
+        this.version(CURRENT_DB_SCHEMA_VERSION).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag, learningObjectiveId, causeTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
+            sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
+            skillMastery: '++id, skillTag, state, score, updatedAt',
+            objectiveMastery: '++id, objectiveId, state, score, updatedAt, nextReviewAt',
+            practicePlanRuns: '++id, planId, dateKey, status, updatedAt, [planId+dateKey]',
+            contentReviews: '++id, &contentKey, status, sourceType, updatedAt'
+        }).upgrade(async (transaction) => {
+            await transaction.table('objectiveMastery').toCollection().modify((record: ObjectiveMasteryRecord) => {
+                record.qualifiedAttempts ??= 0;
+                record.qualifiedCorrect ??= 0;
+                record.independentAttempts ??= 0;
+                record.delayedProbeAttempts ??= 0;
+                record.delayedProbeCorrect ??= 0;
+                record.evidenceModelVersion = 1;
+                if (record.state === 'mastered') record.state = 'consolidated';
+            });
         });
     }
 }
@@ -1866,7 +1910,8 @@ export async function updateObjectiveMastery(input: {
         lastReviewedAt: now,
         nextReviewAt: now + update.nextReviewDelayMs,
         confidence: update.confidence,
-        updatedAt: now
+        updatedAt: now,
+        evidenceModelVersion: 1
     };
 
     if (existing?.id) {

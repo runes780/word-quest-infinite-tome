@@ -28,7 +28,7 @@ function currentBackup(tables: Partial<BackupTables> = {}): WordQuestBackup {
     return {
         format: BACKUP_FORMAT,
         formatVersion: BACKUP_FORMAT_VERSION,
-        schemaVersion: 14,
+        schemaVersion: 15,
         createdAt: Date.parse('2026-07-15T08:00:00Z'),
         tables: { ...emptyTables(), ...tables }
     };
@@ -61,7 +61,7 @@ describe('IndexedDB backup and restore', () => {
 
         expect(json).not.toContain('synthetic-secret-not-for-backup');
         expect(summarizeBackup(backup)).toEqual({
-            schemaVersion: 14,
+            schemaVersion: 15,
             createdAt,
             tableCount: BACKUP_TABLE_COUNT,
             rowCount: BACKUP_TABLE_COUNT
@@ -83,6 +83,7 @@ describe('IndexedDB backup and restore', () => {
         legacyTables.history = [{ id: 7, timestamp: 1, score: 10, totalQuestions: 1, levelTitle: 'Synthetic' }];
         delete legacyTables.objectiveMastery;
         delete legacyTables.practicePlanRuns;
+        delete legacyTables.contentReviews;
 
         const legacy = validateBackupPayload({
             format: BACKUP_FORMAT,
@@ -94,11 +95,13 @@ describe('IndexedDB backup and restore', () => {
 
         expect(legacy.tables.objectiveMastery).toEqual([]);
         expect(legacy.tables.practicePlanRuns).toEqual([]);
+        expect(legacy.tables.contentReviews).toEqual([]);
         await restoreIndexedDBBackup(legacy, database);
 
         await expect(database.history.get(7)).resolves.toEqual(expect.objectContaining({ levelTitle: 'Synthetic' }));
         await expect(database.objectiveMastery.count()).resolves.toBe(0);
         await expect(database.practicePlanRuns.count()).resolves.toBe(0);
+        await expect(database.contentReviews.count()).resolves.toBe(0);
     });
 
     test('round-trips optional confidence, reward, and scaffold evidence without a schema index migration', async () => {

@@ -20,7 +20,8 @@ export const BACKUP_TABLES = [
     'sessionRecoveryEvents',
     'skillMastery',
     'objectiveMastery',
-    'practicePlanRuns'
+    'practicePlanRuns',
+    'contentReviews'
 ] as const;
 export const BACKUP_TABLE_COUNT = BACKUP_TABLES.length;
 
@@ -57,7 +58,8 @@ const TABLE_INTRODUCED_AT: Record<BackupTableName, number> = {
     aiRequestMetrics: 11,
     sessionRecoveryEvents: 12,
     objectiveMastery: 14,
-    practicePlanRuns: 14
+    practicePlanRuns: 14,
+    contentReviews: 15
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
