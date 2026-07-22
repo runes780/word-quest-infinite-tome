@@ -1,16 +1,28 @@
-import type { FSRSCard, LearningTask, SkillMasteryRecord, MistakeRecord } from '@/db/db';
-import { buildDailyPracticePlan } from './dailyPracticePlan';
+import type { FSRSCard, LearningTask, ObjectiveMasteryRecord, MistakeRecord } from '@/db/db';
+import { buildDailyPracticePlan, getPrerequisiteReadiness } from './dailyPracticePlan';
 
 const now = new Date('2026-06-01T08:00:00.000Z').getTime();
 
-function mastery(overrides: Partial<SkillMasteryRecord>): SkillMasteryRecord {
+function mastery(overrides: Partial<ObjectiveMasteryRecord>): ObjectiveMasteryRecord {
     return {
-        skillTag: 'vocab:happy',
+        objectiveId: 'vocab_context_meaning',
         score: 40,
         state: 'learning',
         attempts: 4,
         correct: 2,
+        qualifiedAttempts: 2,
+        qualifiedCorrect: 1,
+        independentAttempts: 1,
+        attemptsByMode: { choice: 2, 'fill-blank': 1, typing: 1 },
+        transferAttempts: 0,
+        transferCorrect: 0,
+        delayedProbeAttempts: 0,
+        delayedProbeCorrect: 0,
+        hintCount: 1,
+        hintRate: 0.25,
         lastReviewedAt: now,
+        nextReviewAt: now + 86_400_000,
+        confidence: 0.3,
         updatedAt: now,
         ...overrides
     };
@@ -76,8 +88,18 @@ describe('daily practice planner', () => {
             dueCards: [dueCard({})],
             recentMistakes: [mistake({})],
             masteryRecords: [
-                mastery({ skillTag: 'vocab:happy', state: 'learning', score: 48 }),
-                mastery({ skillTag: 'reading:detail', state: 'consolidated', score: 74, attempts: 8, correct: 6 })
+                mastery({ objectiveId: 'vocab_context_meaning', state: 'learning', score: 48 }),
+                mastery({
+                    objectiveId: 'reading_detail',
+                    state: 'consolidated',
+                    score: 84,
+                    attempts: 8,
+                    correct: 7,
+                    qualifiedAttempts: 6,
+                    qualifiedCorrect: 5,
+                    independentAttempts: 3,
+                    confidence: 0.7
+                })
             ],
             learningTasks: [task({})]
         });
@@ -106,6 +128,7 @@ describe('daily practice planner', () => {
         expect(plan.steps).toHaveLength(3);
         expect(plan.steps[0].objectiveId).toBe('vocab_context_meaning');
         expect(plan.steps[0].supportLevel).toBe(3);
+        expect(plan.steps.some((step) => step.type === 'transfer')).toBe(false);
         expect(plan.rationale).toContain('starter');
     });
 
@@ -122,7 +145,7 @@ describe('daily practice planner', () => {
             ],
             masteryRecords: [
                 mastery({
-                    skillTag: 'preposition:under',
+                    objectiveId: 'preposition_place_time',
                     state: 'learning',
                     score: 45,
                     attempts: 4,
@@ -134,6 +157,42 @@ describe('daily practice planner', () => {
 
         const stepIds = plan.steps.map((step) => step.id);
         expect(stepIds).toHaveLength(new Set(stepIds).size);
-        expect(stepIds.filter((id) => id === 'practice_preposition_place_time_preposition_under')).toHaveLength(1);
+        expect(stepIds.filter((id) => id === 'practice_preposition_place_time')).toHaveLength(1);
+    });
+
+    test('blocks inference transfer until detail and vocabulary prerequisites are independently ready', () => {
+        const inference = mastery({
+            objectiveId: 'reading_inference',
+            state: 'consolidated',
+            score: 90,
+            independentAttempts: 6,
+            qualifiedAttempts: 8,
+            qualifiedCorrect: 8
+        });
+        const detail = mastery({
+            objectiveId: 'reading_detail',
+            state: 'consolidated',
+            score: 84,
+            independentAttempts: 3
+        });
+        const vocabNotReady = mastery({
+            objectiveId: 'vocab_context_meaning',
+            state: 'learning',
+            score: 72,
+            independentAttempts: 2
+        });
+
+        expect(getPrerequisiteReadiness('reading_inference', [inference, detail, vocabNotReady])).toEqual({
+            ready: false,
+            missing: ['vocab_context_meaning']
+        });
+        const plan = buildDailyPracticePlan({
+            now,
+            dueCards: [],
+            recentMistakes: [],
+            masteryRecords: [inference, detail, vocabNotReady],
+            learningTasks: []
+        });
+        expect(plan.steps.some((step) => step.type === 'transfer' && step.objectiveId === 'reading_inference')).toBe(false);
     });
 });

@@ -17,6 +17,11 @@ import type {
     EvidenceStrength,
     TransferDistance
 } from '@/lib/data/learningEvidenceContract';
+import {
+    evidenceStrengthForAttempt,
+    isIndependentEvidence,
+    resolveAssessmentRole
+} from '@/lib/data/learningEvidenceContract';
 import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
 
 export interface SkillStatSlice {
@@ -434,9 +439,14 @@ export interface ObjectiveMasteryRecord {
     state: MasteryState;
     attempts: number;
     correct: number;
+    qualifiedAttempts?: number;
+    qualifiedCorrect?: number;
+    independentAttempts?: number;
     attemptsByMode: ObjectiveAttemptsByMode;
     transferAttempts: number;
     transferCorrect: number;
+    delayedProbeAttempts?: number;
+    delayedProbeCorrect?: number;
     hintCount: number;
     hintRate: number;
     lastReviewedAt: number;
@@ -470,8 +480,12 @@ export interface ObjectiveMasteryAggregateObjectiveRow {
     state: MasteryState;
     attempts: number;
     correct: number;
+    qualifiedAttempts: number;
+    independentAttempts: number;
     confidence: number;
     transferAttempts: number;
+    delayedProbeAttempts: number;
+    evidenceStatus: 'insufficient' | 'developing' | 'retained';
     nextReviewAt: number;
 }
 
@@ -1614,24 +1628,40 @@ function objectiveModeWeight(mode?: LearningEventMode): number {
 function objectiveStateFromEvidence(input: {
     previousState: MasteryState;
     score: number;
-    attempts: number;
-    smoothedAccuracy: number;
+    qualifiedAttempts: number;
+    qualifiedAccuracy: number;
+    independentAttempts: number;
+    delayedProbeAttempts: number;
+    delayedProbeAccuracy: number;
     transferAttempts: number;
     transferAccuracy: number;
     confidence: number;
 }): MasteryState {
-    const { previousState, score, attempts, smoothedAccuracy, transferAttempts, transferAccuracy, confidence } = input;
-    if (attempts < 3 || confidence < 0.18) return 'new';
+    const {
+        previousState,
+        score,
+        qualifiedAttempts,
+        qualifiedAccuracy,
+        independentAttempts,
+        delayedProbeAttempts,
+        delayedProbeAccuracy,
+        transferAttempts,
+        transferAccuracy,
+        confidence
+    } = input;
+    if (qualifiedAttempts < 3 || confidence < 0.18) return 'new';
 
     if (previousState === 'mastered') {
-        if (score < 74 || smoothedAccuracy < 0.7 || confidence < 0.5) return 'consolidated';
+        if (score < 74 || qualifiedAccuracy < 0.7 || confidence < 0.5) return 'consolidated';
         return 'mastered';
     }
 
-    if (score >= 86 && attempts >= 10 && smoothedAccuracy >= 0.84 && transferAttempts >= 2 && transferAccuracy >= 0.75 && confidence >= 0.68) {
+    if (score >= 86 && qualifiedAttempts >= 10 && independentAttempts >= 3 && qualifiedAccuracy >= 0.84 &&
+        delayedProbeAttempts >= 2 && delayedProbeAccuracy >= 0.75 && transferAttempts >= 2 &&
+        transferAccuracy >= 0.75 && confidence >= 0.68) {
         return 'mastered';
     }
-    if (score >= 68 && attempts >= 6 && smoothedAccuracy >= 0.68 && confidence >= 0.42) {
+    if (score >= 68 && qualifiedAttempts >= 6 && independentAttempts >= 3 && qualifiedAccuracy >= 0.68 && confidence >= 0.42) {
         return 'consolidated';
     }
     if (score >= 32 || previousState === 'learning') return 'learning';
@@ -1643,17 +1673,38 @@ export function computeObjectiveMasteryUpdate(input: {
     previousState: MasteryState;
     attempts: number;
     correct: number;
+    qualifiedAttempts?: number;
+    qualifiedCorrect?: number;
+    independentAttempts?: number;
     attemptsByMode: ObjectiveAttemptsByMode;
     transferAttempts: number;
     transferCorrect: number;
+    delayedProbeAttempts?: number;
+    delayedProbeCorrect?: number;
     hintCount: number;
     result: LearningEventResult;
     mode?: LearningEventMode;
     attemptKind?: LearningEventAttemptKind;
     supportLevel?: LearningEventSupportLevel;
     latencyMs?: number;
+    evidenceStrength?: EvidenceStrength;
 }): { score: number; state: MasteryState; confidence: number; hintRate: number; nextReviewDelayMs: number; } {
     const smoothed = smoothAccuracy(input.correct, input.attempts);
+    const qualifiedAttempts = input.qualifiedAttempts ?? input.attempts;
+    const qualifiedCorrect = input.qualifiedCorrect ?? input.correct;
+    const qualifiedAccuracy = smoothAccuracy(qualifiedCorrect, qualifiedAttempts);
+    const independentAttempts = input.independentAttempts ?? qualifiedAttempts;
+    const delayedProbeAttempts = input.delayedProbeAttempts ?? 0;
+    const delayedProbeCorrect = input.delayedProbeCorrect ?? 0;
+    const delayedProbeAccuracy = delayedProbeAttempts > 0 ? delayedProbeCorrect / delayedProbeAttempts : 0;
+    const evidenceStrength = input.evidenceStrength || (
+        input.hintCount > 0 || (input.supportLevel ?? 3) >= 2
+            ? 'supported'
+            : input.attemptKind === 'transfer'
+                ? 'transfer-independent'
+                : 'independent'
+    );
+    const independentEvidence = isIndependentEvidence(evidenceStrength);
     const modeWeight = objectiveModeWeight(input.mode);
     const isTransfer = input.attemptKind === 'transfer';
     const transferAccuracy = input.transferAttempts > 0 ? input.transferCorrect / input.transferAttempts : 0;
@@ -1663,18 +1714,21 @@ export function computeObjectiveMasteryUpdate(input: {
     const hintPenalty = Math.min(12, hintRate * 24);
     const latencyPenalty = input.latencyMs && input.latencyMs > 20_000 ? 5 : input.latencyMs && input.latencyMs > 12_000 ? 2 : 0;
     const resultBias = input.result === 'correct' ? 4 * modeWeight : -7;
-    const targetScore = clamp(Math.round((smoothed * 100 * modeWeight) + transferBoost - supportPenalty - hintPenalty - latencyPenalty), 0, 100);
-    const weight = input.attempts < 8 ? 0.34 : 0.5;
-    const score = clamp(Math.round(input.previousScore * (1 - weight) + targetScore * weight + resultBias), 0, 100);
+    const evidenceAccuracy = independentEvidence ? qualifiedAccuracy : smoothed;
+    const targetScore = clamp(Math.round((evidenceAccuracy * 100 * modeWeight) + transferBoost - supportPenalty - hintPenalty - latencyPenalty), 0, 100);
+    const baseWeight = qualifiedAttempts < 8 ? 0.34 : 0.5;
+    const weight = independentEvidence ? baseWeight : Math.min(0.16, baseWeight);
+    const rawScore = clamp(Math.round(input.previousScore * (1 - weight) + targetScore * weight + resultBias * (independentEvidence ? 1 : 0.35)), 0, 100);
+    const score = independentEvidence ? rawScore : Math.min(67, rawScore);
 
     const productiveAttempts = (input.attemptsByMode.typing || 0) + (input.attemptsByMode['fill-blank'] || 0);
     const productiveRatio = input.attempts > 0 ? productiveAttempts / input.attempts : 0;
     const transferRatio = input.attempts > 0 ? input.transferAttempts / input.attempts : 0;
     const confidence = clamp(
-        Number((Math.min(1, input.attempts / 10) * 0.35 +
+        Number((Math.min(1, qualifiedAttempts / 10) * 0.35 +
             productiveRatio * 0.25 +
             transferRatio * 0.25 +
-            Math.min(1, smoothed) * 0.2 -
+            Math.min(1, qualifiedAccuracy) * 0.2 -
             hintRate * 0.18 -
             ((input.supportLevel || 0) / 3) * 0.08).toFixed(3)),
         0.05,
@@ -1684,8 +1738,11 @@ export function computeObjectiveMasteryUpdate(input: {
     const state = objectiveStateFromEvidence({
         previousState: input.previousState,
         score,
-        attempts: input.attempts,
-        smoothedAccuracy: smoothed,
+        qualifiedAttempts,
+        qualifiedAccuracy,
+        independentAttempts,
+        delayedProbeAttempts,
+        delayedProbeAccuracy,
         transferAttempts: input.transferAttempts,
         transferAccuracy,
         confidence
@@ -1725,6 +1782,20 @@ export async function updateObjectiveMastery(input: {
         question: input.question
     }).objectiveId;
     if (!objectiveId) return null;
+    const assessmentRole = resolveAssessmentRole({
+        assessmentRole: input.assessmentRole,
+        attemptKind: input.attemptKind
+    });
+    const evidenceStrength = input.evidenceStrength || evidenceStrengthForAttempt({
+        learningObjectiveId: objectiveId,
+        objectiveClassificationStatus: input.objectiveClassificationStatus || 'canonical',
+        assessmentRole,
+        reviewerStatus: input.reviewerStatus || 'unreviewed',
+        supportLevel: input.supportLevel,
+        hintUsed: input.hintUsed,
+        transferDistance: assessmentRole === 'transfer' ? 'near' : 'same-context'
+    });
+    if (evidenceStrength === 'no-credit') return null;
     const existing = await db.objectiveMastery.where('objectiveId').equals(objectiveId).first();
     const attemptsByMode = { ...(existing?.attemptsByMode || emptyAttemptsByMode()) };
     const mode = input.mode || 'choice';
@@ -1732,9 +1803,16 @@ export async function updateObjectiveMastery(input: {
 
     const attempts = (existing?.attempts || 0) + 1;
     const correct = (existing?.correct || 0) + (input.result === 'correct' ? 1 : 0);
-    const isTransfer = input.attemptKind === 'transfer';
+    const independentEvidence = isIndependentEvidence(evidenceStrength);
+    const qualifiedAttempts = (existing?.qualifiedAttempts || 0) + (independentEvidence ? 1 : 0);
+    const qualifiedCorrect = (existing?.qualifiedCorrect || 0) + (independentEvidence && input.result === 'correct' ? 1 : 0);
+    const independentAttempts = (existing?.independentAttempts || 0) + (evidenceStrength === 'independent' ? 1 : 0);
+    const isTransfer = evidenceStrength === 'transfer-independent';
     const transferAttempts = (existing?.transferAttempts || 0) + (isTransfer ? 1 : 0);
     const transferCorrect = (existing?.transferCorrect || 0) + (isTransfer && input.result === 'correct' ? 1 : 0);
+    const isDelayedProbe = evidenceStrength === 'delayed-independent';
+    const delayedProbeAttempts = (existing?.delayedProbeAttempts || 0) + (isDelayedProbe ? 1 : 0);
+    const delayedProbeCorrect = (existing?.delayedProbeCorrect || 0) + (isDelayedProbe && input.result === 'correct' ? 1 : 0);
     const hintCount = (existing?.hintCount || 0) + (input.hintUsed ? 1 : 0);
 
     const update = computeObjectiveMasteryUpdate({
@@ -1742,15 +1820,21 @@ export async function updateObjectiveMastery(input: {
         previousState: existing?.state || 'new',
         attempts,
         correct,
+        qualifiedAttempts,
+        qualifiedCorrect,
+        independentAttempts,
         attemptsByMode,
         transferAttempts,
         transferCorrect,
+        delayedProbeAttempts,
+        delayedProbeCorrect,
         hintCount,
         result: input.result,
         mode,
         attemptKind: input.attemptKind,
         supportLevel: input.supportLevel,
-        latencyMs: input.latencyMs
+        latencyMs: input.latencyMs,
+        evidenceStrength
     });
 
     const nextRecord: ObjectiveMasteryRecord = {
@@ -1760,9 +1844,14 @@ export async function updateObjectiveMastery(input: {
         state: update.state,
         attempts,
         correct,
+        qualifiedAttempts,
+        qualifiedCorrect,
+        independentAttempts,
         attemptsByMode,
         transferAttempts,
         transferCorrect,
+        delayedProbeAttempts,
+        delayedProbeCorrect,
         hintCount,
         hintRate: update.hintRate,
         lastReviewedAt: now,
@@ -1982,8 +2071,16 @@ export function computeObjectiveMasteryAggregateFromRows(
                 state: row.state,
                 attempts: row.attempts,
                 correct: row.correct,
+                qualifiedAttempts: row.qualifiedAttempts || 0,
+                independentAttempts: row.independentAttempts || 0,
                 confidence: row.confidence,
                 transferAttempts: row.transferAttempts,
+                delayedProbeAttempts: row.delayedProbeAttempts || 0,
+                evidenceStatus: row.state === 'mastered'
+                    ? 'retained' as const
+                    : (row.independentAttempts || 0) >= (objective?.evidenceRequirements.minimumIndependentAttempts || 3)
+                        ? 'developing' as const
+                        : 'insufficient' as const,
                 nextReviewAt: row.nextReviewAt
             };
         })
