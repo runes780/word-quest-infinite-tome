@@ -178,7 +178,7 @@ describe('guardian learning progress reward evidence', () => {
             protectedAttempts: 1,
             totalXp: 14,
             totalGold: 8,
-            strongEvidenceCount: 1
+            strongEvidenceCount: 0
         }));
         expect(JSON.stringify(summary)).not.toContain('Choose the cause.');
     });

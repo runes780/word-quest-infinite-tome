@@ -87,6 +87,7 @@ import type {
     TransferDistance
 } from '@/lib/data/learningEvidenceContract';
 import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
+import { evidenceStrengthForAttempt } from '@/lib/data/learningEvidenceContract';
 import { createCombatSlice } from '@/store/slices/combatSlice';
 import { createLearningSlice } from '@/store/slices/learningSlice';
 import { createEconomySlice } from '@/store/slices/economySlice';
@@ -439,6 +440,15 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
 
         // Get active blessing effect
         const blessing = normalizeBlessingModifiers(getCurrentBlessingEffect());
+        const rewardEvidenceStrength = evidenceStrengthForAttempt({
+            learningObjectiveId: currentQuestion.learningObjectiveId,
+            objectiveClassificationStatus: currentQuestion.objectiveClassificationStatus,
+            assessmentRole: currentQuestion.assessmentRole,
+            transferDistance: currentQuestion.transferDistance,
+            reviewerStatus: currentQuestion.reviewerStatus,
+            supportLevel: currentQuestion.supportLevel,
+            hintUsed: meta?.hintUsed
+        });
         const plannedProgressReward = planLearningProgressReward({
             source: sessionSource,
             questionHash,
@@ -446,6 +456,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             attemptKind: currentQuestion.attemptKind,
             supportLevel: currentQuestion.supportLevel,
             isImmediateRepair: currentQuestion.isImmediateRepair,
+            assessmentRole: currentQuestion.assessmentRole,
+            evidenceStrength: rewardEvidenceStrength,
             priorEvidence: userAnswers
         });
         const progressReward = plannedProgressReward?.counted

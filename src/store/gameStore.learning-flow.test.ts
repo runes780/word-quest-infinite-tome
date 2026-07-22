@@ -348,15 +348,15 @@ describe('learning pipeline regression (battle/srs)', () => {
         }));
     });
 
-    test('srs success earns a delayed-recall reward without changing FSRS rating rules', async () => {
+    test('ordinary SRS success stays supported practice unless it is a qualified delayed probe', async () => {
         useGameStore.getState().startGame([baseQuestion], 'srs context', 'srs');
         const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 1400 });
         await flush();
 
         expect(result.progressReward).toEqual({
-            kind: 'delayed-recall',
-            xp: 14,
-            gold: 8,
+            kind: 'supported-practice',
+            xp: 8,
+            gold: 4,
             counted: true
         });
         expect(reviewCard).toHaveBeenCalledWith(
@@ -367,7 +367,7 @@ describe('learning pipeline regression (battle/srs)', () => {
         expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
             source: 'srs',
             attemptKind: 'review',
-            progressRewardKind: 'delayed-recall'
+            progressRewardKind: 'supported-practice'
         }));
     });
 

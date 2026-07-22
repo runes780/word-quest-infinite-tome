@@ -17,6 +17,9 @@ const question: Monster = {
     objectiveConfidence: 0.91,
     sourceContextSpan: 'Rows of fruit trees covered the hillside.',
     attemptKind: 'transfer',
+    assessmentRole: 'transfer',
+    transferDistance: 'near',
+    reviewerStatus: 'system-reviewed',
     supportLevel: 1,
     causeTag: 'context_clue'
 };

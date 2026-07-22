@@ -145,7 +145,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
         const next = page.getByRole('button', { name: 'Next Level' });
         await expect(next).toBeVisible({ timeout: 6_000 });
-        await expect(page.getByRole('status')).toContainText(/Learning progress reward|Practice recorded/i);
+        await expect(page.getByRole('status')).toContainText(/Correct answer/i);
         if (confidenceVisible) {
             await expect(page.getByRole('status')).toContainText(/correct but unsure/i);
         }
