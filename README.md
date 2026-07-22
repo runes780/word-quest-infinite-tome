@@ -47,17 +47,17 @@ These materials are intended to make maintenance work visible without claiming a
 | Feature | Current status | Notes |
 | --- | --- | --- |
 | Game-based vocabulary battles | Implemented | Learners answer vocabulary, grammar, and reading questions through RPG-style battle encounters, rewards, mastery celebrations, and multiple question modes. |
-| SRS / FSRS review loop | Implemented, evolving | `ts-fsrs` powers local review cards, due-card selection, memory status, and SRS review sessions. Review results update scheduling. |
-| Mastery Engine | Implemented v1, experimental | Skill-level mastery records track attempts, correctness, scores, and states: `new`, `learning`, `consolidated`, `mastered`. Scheduling uses mastery, recent mistakes, and review risk. |
+| SRS / FSRS review loop | Implemented, evolving | `ts-fsrs` powers local review scheduling and answers “when should this item reappear?”. A normal SRS answer is not automatically labeled delayed-retention evidence. |
+| Evidence-calibrated objective mastery | Implemented v2, experimental | Versioned registered objectives keep supported, independent, 24h/7d delayed, and fresh-context transfer evidence separate. Unknown objectives are quarantined; mastery requires qualified delayed and transfer evidence. |
 | Metacognitive calibration | Implemented v1, experimental | Optional three-level confidence checks appear on diagnostic/transfer choice questions. High-confidence errors and low-confidence correct answers receive targeted feedback; aggregate counts remain local and do not affect score, rewards, FSRS, or mastery. |
-| Learning-progress rewards | Implemented v1, experimental | Per-answer XP and gold are derived from supported practice, independent recall, error repair, due review, or transfer evidence. Duplicate questions and per-kind/session caps prevent reward farming; score and combo remain battle feedback. |
+| Learning-progress rewards | Implemented v2, experimental | Per-answer XP and gold are derived from calibrated evidence. Repair is encouraged but not counted as strong evidence; unreviewed measurement labels earn no strong-evidence reward. Duplicate questions and per-kind/session caps prevent farming. |
 | Adaptive scaffold fading | Implemented v1, experimental | Support fades by one level only after two no-hint successes at the same objective and support level. Hint use and errors preserve or restore support; only pre-reviewed fresh-context items can become transfer checks, and every route change has an inspectable reason. |
 | Learning Events | Implemented | Battle, SRS, and daily challenge flows log answer, hint, and session events into IndexedDB for analytics and task progress. |
 | Daily Challenges / Questline | Partially implemented | Daily challenges and weekly learning tasks exist. Richer questline design remains on the roadmap. |
-| Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard shows learning history, weak skills, due FSRS cards, study-plan actions, repeated-cause evidence, engagement metrics, data consistency, API health, and session recovery status. Privacy-minimized image/print exports show their inclusion/exclusion contract and require a fresh acknowledgement before each export. |
+| Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard separates independent, delayed, and transfer evidence, hides objective percentages until enough qualified attempts exist, and provides a local AI-content approval/rejection queue. Approval makes an item eligible for measurement; it never means the learner mastered it. |
 | AI-assisted question generation | Implemented, optional | A provider-neutral adapter supports DeepSeek, OpenRouter, and OpenAI maintainer experiments. The plan → generate → critique pipeline applies lexical grounding, source-span checks, answer-integrity and age-appropriateness gates, bounded repair, and safe local fallback packs. |
 | Browser E2E | Implemented in CI | Playwright covers provider failure → fallback mission → six-question battle → report evidence → IndexedDB persistence → SRS dashboard. |
-| Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Settings can export and transactionally restore a versioned JSON backup of every IndexedDB table; compatibility tests cover schema v13 → v14 and reject future/corrupt files before writes. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented. |
+| Offline recovery and local persistence | Implemented | Dexie/IndexedDB schema v15 stores learning evidence and local content reviews. Versioned backups transactionally cover every table; migration tests conservatively downgrade legacy unsupported mastery and reject future/corrupt files before writes. No cloud sync is implemented. |
 | API stability monitoring | Implemented locally | Provider request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
 
 ## Architecture Overview
@@ -220,10 +220,12 @@ When updating learning data logic:
 
 The detailed roadmap lives in [ROADMAP.md](ROADMAP.md). Current public-facing priorities are:
 
-- **Mastery Engine:** stabilize skill-state transitions, review-risk weighting, weak-skill detection, and mastery-based reward feedback.
+- **Evidence-calibrated mastery:** evaluate the registered-objective, delayed-retention, transfer, and adult content-review contracts without treating pilot readiness as measured impact.
 - **Learning Questline:** evolve daily challenges and weekly tasks into clearer learning questlines with evidence and goal-based rewards.
 - **Guardian Intelligence:** make dashboard recommendations more actionable, evidence-backed, and measurable through accepted/completed study actions.
 - **Foundation for Scale:** keep splitting large UI/store modules, strengthen E2E coverage, improve local data consistency checks, and prepare clean seams for future account or sync features.
+
+The implementation rationale, teacher walkthrough, preregistered pilot metrics, and explicit research boundary are documented in [M4: Evidence-Calibrated Pilot Readiness](docs/M4_EVIDENCE_CALIBRATED_PILOT.md).
 
 ## Responsible AI and Safety
 
