@@ -5,6 +5,7 @@ import {
     currentPracticePlanStep,
     isPracticePlanComplete,
     completePracticePlanRunRecordStep,
+    loadPracticePlanStepLaunch,
     practicePlanProgressText
 } from './practicePlanRunner';
 import type { PracticePlan } from './dailyPracticePlan';
@@ -66,6 +67,37 @@ describe('practice plan runner', () => {
         expect(currentPracticePlanStep(afterSecond)).toBeNull();
         expect(isPracticePlanComplete(afterSecond)).toBe(true);
         expect(practicePlanProgressText(afterSecond)).toBe('2/2');
+    });
+
+    test('launches reviewed equivalent content for delayed probes and preserves measurement metadata', async () => {
+        const launch = await loadPracticePlanStepLaunch({
+            id: 'probe_day-1_family_present_routine_third_person',
+            type: 'review',
+            title: 'Recall Present Simple',
+            objectiveId: 'present_simple',
+            estimatedMinutes: 2,
+            questionCount: 1,
+            supportLevel: 0,
+            attemptKind: 'review',
+            assessmentRole: 'delayed-probe',
+            probeStage: 'day-1',
+            probeScheduledFor: 1000,
+            itemFamilyId: 'family_present_routine_third_person',
+            equivalenceGroup: 'equiv_present_routine_s',
+            originalContextId: 'family_present_routine_third_person_context_1',
+            rationale: 'retention check',
+            evidence: []
+        });
+
+        expect(launch.usedFallback).toBe(false);
+        expect(launch.monsters).toHaveLength(1);
+        expect(launch.monsters[0]).toEqual(expect.objectContaining({
+            assessmentRole: 'delayed-probe',
+            probeStage: 'day-1',
+            reviewerStatus: 'system-reviewed',
+            supportLevel: 0
+        }));
+        expect(launch.monsters[0].contextId).not.toBe('family_present_routine_third_person_context_1');
     });
 
     test('creates a persistable run record with before and after evidence', () => {

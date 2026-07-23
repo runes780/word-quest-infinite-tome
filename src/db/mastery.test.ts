@@ -83,6 +83,78 @@ describe('mastery update rules', () => {
         expect(transfer.confidence).toBeGreaterThan(base.confidence);
     });
 
+    test('supported and immediate-repair evidence cannot manufacture consolidation', () => {
+        const result = computeObjectiveMasteryUpdate({
+            previousScore: 66,
+            previousState: 'learning',
+            attempts: 20,
+            correct: 20,
+            qualifiedAttempts: 0,
+            qualifiedCorrect: 0,
+            independentAttempts: 0,
+            attemptsByMode: { choice: 20, 'fill-blank': 0, typing: 0 },
+            transferAttempts: 0,
+            transferCorrect: 0,
+            delayedProbeAttempts: 0,
+            delayedProbeCorrect: 0,
+            hintCount: 0,
+            result: 'correct',
+            mode: 'choice',
+            attemptKind: 'practice',
+            supportLevel: 2,
+            evidenceStrength: 'supported'
+        });
+
+        expect(result.score).toBeLessThan(68);
+        expect(result.state).toBe('new');
+    });
+
+    test('mastery requires both delayed and transfer evidence', () => {
+        const withoutDelayed = computeObjectiveMasteryUpdate({
+            previousScore: 92,
+            previousState: 'consolidated',
+            attempts: 12,
+            correct: 12,
+            qualifiedAttempts: 12,
+            qualifiedCorrect: 12,
+            independentAttempts: 8,
+            attemptsByMode: { choice: 2, 'fill-blank': 4, typing: 6 },
+            transferAttempts: 3,
+            transferCorrect: 3,
+            delayedProbeAttempts: 0,
+            delayedProbeCorrect: 0,
+            hintCount: 0,
+            result: 'correct',
+            mode: 'typing',
+            attemptKind: 'transfer',
+            supportLevel: 0,
+            evidenceStrength: 'transfer-independent'
+        });
+        const withDelayed = computeObjectiveMasteryUpdate({
+            previousScore: 92,
+            previousState: 'consolidated',
+            attempts: 14,
+            correct: 14,
+            qualifiedAttempts: 14,
+            qualifiedCorrect: 14,
+            independentAttempts: 8,
+            attemptsByMode: { choice: 2, 'fill-blank': 5, typing: 7 },
+            transferAttempts: 3,
+            transferCorrect: 3,
+            delayedProbeAttempts: 2,
+            delayedProbeCorrect: 2,
+            hintCount: 0,
+            result: 'correct',
+            mode: 'typing',
+            attemptKind: 'review',
+            supportLevel: 0,
+            evidenceStrength: 'delayed-independent'
+        });
+
+        expect(withoutDelayed.state).not.toBe('mastered');
+        expect(withDelayed.state).toBe('mastered');
+    });
+
     test('objective mastery aggregate groups objective rows into domain scores', () => {
         const now = Date.UTC(2026, 5, 1);
         const rows: ObjectiveMasteryRecord[] = [
@@ -122,6 +194,11 @@ describe('mastery update rules', () => {
 
         const snapshot = computeObjectiveMasteryAggregateFromRows(rows, 14, now);
         expect(snapshot.byObjective).toHaveLength(2);
+        expect(snapshot.byObjective.find((row) => row.objectiveId === 'vocab_context_meaning')).toEqual(expect.objectContaining({
+            independentAttempts: 0,
+            delayedProbeAttempts: 0,
+            evidenceStatus: 'insufficient'
+        }));
         expect(snapshot.byDomain.find((row) => row.domain === 'vocab')?.averageScore).toBe(80);
         expect(snapshot.byDomain.find((row) => row.domain === 'reading')?.averageScore).toBe(50);
         expect(snapshot.averageScore).toBe(65);

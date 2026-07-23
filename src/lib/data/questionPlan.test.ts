@@ -67,6 +67,14 @@ describe('validateQuestionPlan', () => {
         expect(result.errors.some((e) => e.includes('allowedWords'))).toBe(true);
     });
 
+    test('rejects objectives outside the reviewed catalog', () => {
+        const items = sixValidItems();
+        items[0].learningObjectiveId = 'invented_by_model';
+        const result = validateQuestionPlan(plan(items), MATERIAL, ALLOWED);
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e) => e.includes('reviewed objective catalog'))).toBe(true);
+    });
+
     test('rejects plan with fewer than 6 items', () => {
         const result = validateQuestionPlan(plan(sixValidItems().slice(0, 4)), MATERIAL, ALLOWED);
         expect(result.valid).toBe(false);
