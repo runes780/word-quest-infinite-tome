@@ -1,6 +1,7 @@
 import type { AIProvider } from './modelOptions';
-import { OpenRouterClient } from './openrouter';
+import { createAIClient, type AITextClient } from './providerClient';
 import { analyzeMaterialProfile } from './materialProfile';
+import type { MaterialProfile } from './materialProfile';
 import {
     PLAN_SYSTEM_PROMPT,
     CRITIC_SYSTEM_PROMPT,
@@ -19,12 +20,11 @@ import {
 import { assessQuestionQuality } from '@/lib/data/questionQuality';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import { replaceFailedMonsters } from '@/lib/data/safetyNet';
+import { fallbackToMonster, getBalancedFallbackQuestions } from '@/lib/data/fallbackQuestions';
 import type { Monster } from '@/store/gameStore';
 
 /** Minimal LLM interface so tests can inject a fake client. */
-export interface LlmClient {
-    generate(prompt: string, systemPrompt?: string): Promise<string>;
-}
+export type LlmClient = AITextClient;
 
 export interface QuestionPipelineOptions {
     /** Provide `client` (test/fake) OR apiKey+model+provider (production). */
@@ -51,7 +51,7 @@ export interface CriticReport {
     verdicts: CriticVerdict[];
 }
 
-export type DegradedPath = 'none' | 'planner_failed' | 'legacy_single_stage' | 'fallback_bank';
+export type DegradedPath = 'none' | 'legacy_single_stage' | 'fallback_bank';
 
 export interface QuestionPipelineResult {
     monsters: Monster[];
@@ -59,6 +59,8 @@ export interface QuestionPipelineResult {
     criticReport?: CriticReport;
     degradedPath: DegradedPath;
 }
+
+const FALLBACK_PACK_SIZE = 6;
 
 function parseJson(raw: string): unknown | null {
     try {
@@ -68,14 +70,119 @@ function parseJson(raw: string): unknown | null {
     }
 }
 
+function normalizeCriticReport(value: unknown): CriticReport {
+    if (!value || typeof value !== 'object') return { verdicts: [] };
+    const verdicts = (value as { verdicts?: unknown }).verdicts;
+    if (!Array.isArray(verdicts)) return { verdicts: [] };
+
+    return {
+        verdicts: verdicts.flatMap((candidate): CriticVerdict[] => {
+            if (!candidate || typeof candidate !== 'object') return [];
+            const raw = candidate as Record<string, unknown>;
+            if (!Number.isFinite(raw.id) || typeof raw.pass !== 'boolean') return [];
+            return [{
+                id: Number(raw.id),
+                pass: raw.pass,
+                axisFailures: Array.isArray(raw.axisFailures)
+                    ? raw.axisFailures.filter((item): item is string => typeof item === 'string')
+                    : [],
+                offendingWords: Array.isArray(raw.offendingWords)
+                    ? raw.offendingWords.filter((item): item is string => typeof item === 'string')
+                    : [],
+                reason: typeof raw.reason === 'string' ? raw.reason : '',
+                suggestedFix: typeof raw.suggestedFix === 'string' ? raw.suggestedFix : ''
+            }];
+        })
+    };
+}
+
+function buildFallbackPack(profile: MaterialProfile, count = FALLBACK_PACK_SIZE): Monster[] {
+    const fallbackQuestions = getBalancedFallbackQuestions(count, profile.maxQuestionDifficulty);
+    if (fallbackQuestions.length === 0) return [];
+
+    return Array.from({ length: count }, (_, index) =>
+        fallbackToMonster(fallbackQuestions[index % fallbackQuestions.length], index + 1)
+    );
+}
+
+function replaceWithFallbacks(
+    monsters: Monster[],
+    indices: number[],
+    profile: MaterialProfile
+): void {
+    if (indices.length === 0) return;
+    const replacements = getBalancedFallbackQuestions(
+        Math.max(indices.length, FALLBACK_PACK_SIZE),
+        profile.maxQuestionDifficulty
+    );
+    if (replacements.length === 0) return;
+
+    indices.forEach((index, replacementIndex) => {
+        const currentId = monsters[index]?.id ?? index + 1;
+        monsters[index] = fallbackToMonster(
+            replacements[replacementIndex % replacements.length],
+            currentId
+        );
+    });
+}
+
+function findPlanItem(plan: QuestionPlan, monster: Monster, fallbackIndex: number): QuestionPlanItem | undefined {
+    const exactMatch = plan.items.find((item) =>
+        item.learningObjectiveId === monster.learningObjectiveId &&
+        item.sourceSpan === monster.sourceContextSpan
+    );
+    if (exactMatch) return exactMatch;
+
+    const oneBasedIndex = Number.isInteger(monster.id) ? Number(monster.id) - 1 : -1;
+    if (oneBasedIndex >= 0 && oneBasedIndex < plan.items.length) {
+        return plan.items[oneBasedIndex];
+    }
+    return plan.items[fallbackIndex];
+}
+
+function enforceDeterministicQuality(
+    monsters: Monster[],
+    profile: MaterialProfile,
+    material: string,
+    plan?: QuestionPlan
+): Monster[] {
+    const desiredCount = plan
+        ? Math.min(8, Math.max(FALLBACK_PACK_SIZE, plan.items.length))
+        : FALLBACK_PACK_SIZE;
+    const safe = monsters.slice(0, desiredCount);
+    const rejectedIndices: number[] = [];
+
+    for (let index = 0; index < desiredCount; index += 1) {
+        const monster = safe[index];
+        if (!monster) {
+            rejectedIndices.push(index);
+            continue;
+        }
+        const planItem = plan ? findPlanItem(plan, monster, index) : undefined;
+        const report = assessQuestionQuality(monster, {
+            maxDifficulty: profile.maxQuestionDifficulty,
+            allowedSet: profile.vocabulary.allowed,
+            material,
+            target: planItem?.target,
+            domain: planItem?.domain,
+            readingSkill: planItem?.readingSkill
+        });
+        if (!report.accepted) rejectedIndices.push(index);
+    }
+
+    replaceWithFallbacks(safe, rejectedIndices, profile);
+    return safe;
+}
+
 export async function generateQuestionPack(
     text: string,
     opts: QuestionPipelineOptions
 ): Promise<QuestionPipelineResult> {
+    const provider = opts.apiProvider ?? 'openrouter';
     const mainClient: LlmClient = opts.client
-        ?? new OpenRouterClient(opts.apiKey as string, opts.model as string, opts.apiProvider);
+        ?? createAIClient({ apiKey: opts.apiKey as string, model: opts.model as string, provider });
     const criticClient: LlmClient = opts.client
-        ?? new OpenRouterClient(opts.apiKey as string, opts.criticModel ?? (opts.model as string), opts.apiProvider);
+        ?? createAIClient({ apiKey: opts.apiKey as string, model: opts.criticModel ?? (opts.model as string), provider });
 
     const profile = analyzeMaterialProfile(text);
 
@@ -107,9 +214,12 @@ export async function generateQuestionPack(
             );
             const parsed = parseJson(legacyRaw) as { monsters?: unknown[] } | null;
             const monsters = normalizeMissionMonsters(parsed?.monsters ?? [], { sourceText: text });
-            return { monsters, degradedPath: 'planner_failed' };
+            return {
+                monsters: enforceDeterministicQuality(monsters, profile, text),
+                degradedPath: 'legacy_single_stage'
+            };
         } catch {
-            return { monsters: [], degradedPath: 'fallback_bank' };
+            return { monsters: buildFallbackPack(profile), degradedPath: 'fallback_bank' };
         }
     }
 
@@ -120,15 +230,15 @@ export async function generateQuestionPack(
     try {
         genRaw = await mainClient.generate(generateLevelFromPlanPrompt(plan), PLAN_BOUND_GENERATOR_SYSTEM_PROMPT);
     } catch {
-        return { monsters: [], plan, degradedPath: 'fallback_bank' };
+        return { monsters: buildFallbackPack(profile), plan, degradedPath: 'fallback_bank' };
     }
     const genParsed = parseJson(genRaw) as { monsters?: unknown[] } | null;
-    const monsters = normalizeMissionMonsters(genParsed?.monsters ?? [], {
+    const monsters = enforceDeterministicQuality(normalizeMissionMonsters(genParsed?.monsters ?? [], {
         sourceText: text,
         allowedSet: profile.vocabulary.allowed,
         material: text,
         plan
-    });
+    }), profile, text, plan);
 
     // --- Stage 3: critique + repair ---
     let criticReport: CriticReport | undefined;
@@ -138,7 +248,7 @@ export async function generateQuestionPack(
                 generateCriticPrompt(text, plan.items, [{ levelTitle: plan.levelTitle, monsters }]),
                 CRITIC_SYSTEM_PROMPT
             );
-            criticReport = (parseJson(criticRaw) as CriticReport | null) ?? { verdicts: [] };
+            criticReport = normalizeCriticReport(parseJson(criticRaw));
         } catch {
             criticReport = { verdicts: [] };
         }
@@ -151,10 +261,7 @@ export async function generateQuestionPack(
                 const idx = monsters.findIndex((m) => m.id === verdict.id);
                 if (idx === -1) continue;
                 let repaired = false;
-                // verdict.id is the rejected monster's id = its true plan-item index. Monsters
-                // are role-reordered (>=5 items), so array position `idx` is NOT the plan index;
-                // look the item up by id so repair targets the same material span as the reject.
-                const fallbackItem: QuestionPlanItem = plan.items[verdict.id] ?? plan.items[idx] ?? plan.items[0];
+                const fallbackItem = findPlanItem(plan, monsters[idx], idx) ?? plan.items[0];
                 for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                     try {
                         const fixPrompt =
@@ -188,7 +295,8 @@ export async function generateQuestionPack(
 
             // SAFETY NET: a critic-rejected question that repair could not fix must
             // never ship. Replace it with a material-grounded template (preferred),
-            // falling back to a known-good fallback-bank question if the template fails.
+            // then let the final deterministic gate replace any invalid template
+            // with a known-good fallback-bank question.
             if (failedIndices.length > 0) {
                 const replaced = replaceFailedMonsters(monsters, failedIndices, plan, {
                     allowedSet: profile.vocabulary.allowed,
@@ -202,5 +310,10 @@ export async function generateQuestionPack(
         }
     }
 
-    return { monsters, plan, criticReport, degradedPath: 'none' };
+    return {
+        monsters: enforceDeterministicQuality(monsters, profile, text, plan),
+        plan,
+        criticReport,
+        degradedPath: 'none'
+    };
 }

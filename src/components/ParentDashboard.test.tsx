@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { downloadNodeAsImage } from '@/lib/exportReport';
+import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
+import { logGuardianDashboardEvent } from '@/db/db';
 import { ParentDashboard } from './ParentDashboard';
+import { SYNTHETIC_DASHBOARD_LABELS } from '../../tests/fixtures/syntheticLearning';
 
 const startGame = jest.fn();
 const scrollIntoView = jest.fn();
@@ -27,7 +29,7 @@ const buildMockDashboardViewModel = () => ({
             timestamp: Date.now(),
             score: 80,
             totalQuestions: 10,
-            levelTitle: 'Animal Habits Adventure',
+            levelTitle: SYNTHETIC_DASHBOARD_LABELS.missionTitle,
             totalCorrect: 8,
             accuracy: 0.8
         }],
@@ -93,7 +95,7 @@ const buildMockDashboardViewModel = () => ({
     mistakes: [{
         id: 1,
         questionId: 10,
-        questionText: 'Why did the bird fly south?',
+        questionText: SYNTHETIC_DASHBOARD_LABELS.mistakeQuestion,
         wrongAnswer: 'Because it was tired',
         correctAnswer: 'Because winter was coming',
         explanation: 'Cause and effect connects why and what happened.',
@@ -104,7 +106,7 @@ const buildMockDashboardViewModel = () => ({
     dueCards: [{
         id: 1,
         questionHash: 'q1',
-        question: 'Choose the cause.',
+        question: SYNTHETIC_DASHBOARD_LABELS.dueQuestion,
         options: ['wind', 'because', 'blue', 'cat'],
         correct_index: 1,
         type: 'reading',
@@ -132,7 +134,7 @@ const buildMockDashboardViewModel = () => ({
     learningTasks: [{
         taskId: 'weekly-reading',
         metric: 'battle_correct',
-        title: 'Reading Sprint',
+        title: SYNTHETIC_DASHBOARD_LABELS.taskTitle,
         description: 'Answer reading questions',
         goal: 20,
         progress: 12,
@@ -250,7 +252,28 @@ const buildMockDashboardViewModel = () => ({
         detail: 'Animal Habits Adventure',
         meta: '80% accuracy',
         timestamp: Date.now() - 1000
-    }]
+    }],
+    calibrationSummary: {
+        ratedAnswers: 4,
+        highConfidenceErrors: 1,
+        lowConfidenceCorrect: 1,
+        alignedJudgments: 1,
+        status: 'review-high-confidence-errors' as const
+    },
+    progressRewardSummary: {
+        countedRewards: 5,
+        protectedAttempts: 1,
+        totalXp: 66,
+        totalGold: 36,
+        strongEvidenceCount: 3,
+        byKind: {
+            'supported-practice': 2,
+            'independent-success': 0,
+            'repair-success': 1,
+            'delayed-recall': 1,
+            'transfer-success': 1
+        }
+    }
 });
 
 const mockGetGuardianDashboardViewModel = jest.fn(async () => buildMockDashboardViewModel());
@@ -304,6 +327,8 @@ describe('ParentDashboard visual information architecture', () => {
     beforeEach(() => {
         mockGetGuardianDashboardViewModel.mockClear();
         jest.mocked(downloadNodeAsImage).mockClear();
+        jest.mocked(openNodePrintView).mockClear();
+        jest.mocked(logGuardianDashboardEvent).mockClear();
         scrollIntoView.mockClear();
         scrollTo.mockClear();
         Element.prototype.scrollIntoView = scrollIntoView;
@@ -322,6 +347,10 @@ describe('ParentDashboard visual information architecture', () => {
         expect(mockGetGuardianDashboardViewModel).toHaveBeenCalledWith(14);
         expect(screen.getByText('Review Queue')).toBeInTheDocument();
         expect(screen.getByText('Learning Events')).toBeInTheDocument();
+        expect(await screen.findByText('Confidence Calibration Signals')).toBeInTheDocument();
+        expect(screen.getByText('Learning Progress Reward Evidence')).toBeInTheDocument();
+        expect(screen.getByText(/trace back only to local review, repair/i)).toBeInTheDocument();
+        expect(screen.getByText(/does not affect mastery, ranking, or final judgments/i)).toBeInTheDocument();
         expect(screen.getByText('Wrong battle answer')).toBeInTheDocument();
         expect(screen.getByText('Guardian Recommendations')).toBeInTheDocument();
         expect(screen.getByText('Why This Plan')).toBeInTheDocument();
@@ -505,6 +534,12 @@ describe('ParentDashboard visual information architecture', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Export Report' }));
 
+        const privacyDialog = screen.getByRole('dialog', { name: 'Confirm report export privacy' });
+        expect(privacyDialog).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Create PNG report' })).toBeDisabled();
+        fireEvent.click(screen.getByLabelText(/I understand this file leaves browser-local storage/));
+        fireEvent.click(screen.getByRole('button', { name: 'Create PNG report' }));
+
         await waitFor(() => {
             expect(downloadNodeAsImage).toHaveBeenCalled();
         });
@@ -518,7 +553,44 @@ describe('ParentDashboard visual information architecture', () => {
         expect(node).toHaveAttribute('data-testid', 'guardian-export-report');
         expect(node.textContent).toContain('Generated');
         expect(node.textContent).toContain('Last 14 days');
+        expect(node.textContent).toContain('Question text excluded from export');
+        expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.missionTitle);
+        expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.dueQuestion);
+        expect(node.textContent).not.toContain(SYNTHETIC_DASHBOARD_LABELS.mistakeQuestion);
         expect(filename).toMatch(/^word-quest-report-14d-\d{8}-\d{4}\.png$/);
         expect(options).toMatchObject({ backgroundColor: '#f8fafc' });
+        expect(logGuardianDashboardEvent).toHaveBeenCalledWith('report_export');
+    });
+
+    test('shows the export contract and cancellation does not export or log an event', async () => {
+        render(<ParentDashboard />);
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        expect(await screen.findByText('Check privacy before exporting')).toBeInTheDocument();
+        expect(screen.getByText(/Source text, questions, answers, mistake text/)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Download Snapshot' }));
+        expect(screen.getByText('Included')).toBeInTheDocument();
+        expect(screen.getByText('Excluded')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+        expect(screen.queryByRole('dialog', { name: 'Confirm report export privacy' })).not.toBeInTheDocument();
+        expect(downloadNodeAsImage).not.toHaveBeenCalled();
+        expect(openNodePrintView).not.toHaveBeenCalled();
+        expect(logGuardianDashboardEvent).not.toHaveBeenCalledWith('report_export');
+    });
+
+    test('requires the same acknowledgement before opening print or PDF', async () => {
+        render(<ParentDashboard />);
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+        await screen.findByText('Good morning, Guardian!');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Print / Save PDF' }));
+        const confirmButton = screen.getByRole('button', { name: 'Open print / PDF' });
+        expect(confirmButton).toBeDisabled();
+        fireEvent.click(screen.getByLabelText(/I understand this file leaves browser-local storage/));
+        fireEvent.click(confirmButton);
+
+        await waitFor(() => expect(openNodePrintView).toHaveBeenCalledTimes(1));
+        expect(logGuardianDashboardEvent).toHaveBeenCalledWith('report_export');
     });
 });

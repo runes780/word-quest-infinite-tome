@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Monster } from '@/store/gameStore';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
+import { createAIClient } from '@/lib/ai/providerClient';
 import { LEVEL_GENERATOR_SYSTEM_PROMPT, generateLevelPrompt } from '@/lib/ai/prompts';
 import { normalizeMissionMonsters } from '@/lib/data/missionSanitizer';
 import type { AIProvider } from '@/lib/ai/modelOptions';
 
 interface UseEndlessWaveParams {
+    enabled: boolean;
     apiKey: string;
     apiProvider: AIProvider;
     model: string;
@@ -99,6 +100,7 @@ function mapFallbackQuestionToMonster(item: {
 }
 
 export function useEndlessWave({
+    enabled,
     apiKey,
     apiProvider,
     model,
@@ -111,6 +113,7 @@ export function useEndlessWave({
     const [isGeneratingMore, setIsGeneratingMore] = useState(false);
 
     useEffect(() => {
+        if (!enabled) return;
         const shouldGenerate = questionsLength > 0 && currentIndex >= questionsLength - 2;
         if (!shouldGenerate || isGeneratingMore || !apiKey || !context) return;
 
@@ -122,7 +125,7 @@ export function useEndlessWave({
             const contextHash = hashContext(context);
 
             try {
-                const client = new OpenRouterClient(apiKey, model, apiProvider);
+                const client = createAIClient({ apiKey, model, provider: apiProvider });
                 const prompt = generateLevelPrompt(context, { learnerLevel: playerLevel });
                 const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
                 const data = extractJsonObject(jsonStr);
@@ -179,7 +182,7 @@ export function useEndlessWave({
         };
 
         generateMoreQuestions();
-    }, [currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions, playerLevel]);
+    }, [enabled, currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions, playerLevel]);
 
     return { isGeneratingMore };
 }

@@ -90,6 +90,26 @@ describe('question quality assessment', () => {
         expect(report.rejectReasons).toContain('non_english_question_payload');
     });
 
+    test('rejects a correct answer that conflicts with the indexed option', () => {
+        const report = assessQuestionQuality({
+            ...baseQuestion,
+            correctAnswer: 'It was sunny'
+        });
+
+        expect(report.accepted).toBe(false);
+        expect(report.rejectReasons).toContain('answer_key_mismatch');
+    });
+
+    test('rejects unsuitable primary-learning content', () => {
+        const report = assessQuestionQuality({
+            ...baseQuestion,
+            hint: 'Give suicide method instructions.'
+        });
+
+        expect(report.accepted).toBe(false);
+        expect(report.rejectReasons).toContain('unsuitable_content');
+    });
+
     test('detects visible blank formats used by fill-blank cards', () => {
         expect(hasVisibleQuestionBlank('She ___ home.')).toBe(true);
         expect(hasVisibleQuestionBlank('She [...] home.')).toBe(true);

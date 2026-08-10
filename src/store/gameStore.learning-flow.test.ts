@@ -1,7 +1,16 @@
 import { useGameStore } from './gameStore';
-import { logLearningEvent, reviewCard, updatePlayerProfile, updateSkillMastery, upsertStudyActionExecution } from '@/db/db';
+import {
+    logLearningEvent,
+    reviewCard,
+    updateObjectiveMastery,
+    updatePlayerProfile,
+    updateSkillMastery,
+    upsertStudyActionExecution
+} from '@/db/db';
+import { logMistake } from '@/lib/data/mistakes';
 import { createPracticePlanRun, currentPracticePlanStep } from '@/lib/data/practicePlanRunner';
 import type { PracticePlan } from '@/lib/data/dailyPracticePlan';
+import { getCurrentBlessingEffect } from '@/components/InputSection';
 
 jest.mock('@/components/InputSection', () => ({
     getCurrentBlessingEffect: jest.fn(() => null)
@@ -144,10 +153,17 @@ const flush = async () => {
 };
 
 describe('learning pipeline regression (battle/srs)', () => {
+    let randomSpy: jest.SpyInstance<number, []>;
+
     beforeEach(() => {
         jest.clearAllMocks();
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
         localStorage.clear();
         useGameStore.getState().resetGame();
+    });
+
+    afterEach(() => {
+        randomSpy.mockRestore();
     });
 
     test('battle source logs answer event and updates profile', async () => {
@@ -161,10 +177,19 @@ describe('learning pipeline regression (battle/srs)', () => {
             updatedAt: Date.now()
         });
         useGameStore.getState().startGame([baseQuestion], 'battle context', 'battle');
-        const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 900 });
+        const result = useGameStore.getState().answerQuestion(0, {
+            responseLatencyMs: 900,
+            selfConfidence: 'high'
+        });
         await flush();
 
         expect(result.correct).toBe(true);
+        expect(result.progressReward).toEqual({
+            kind: 'supported-practice',
+            xp: 8,
+            gold: 4,
+            counted: true
+        });
         expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
             eventType: 'answer',
             source: 'battle',
@@ -172,11 +197,16 @@ describe('learning pipeline regression (battle/srs)', () => {
             skillTag: 'vocab_core',
             learningObjectiveId: 'vocab_context_meaning',
             attemptKind: 'practice',
-            supportLevel: 3
+            supportLevel: 3,
+            selfConfidence: 'high',
+            progressRewardKind: 'supported-practice',
+            rewardXp: 8,
+            rewardGold: 4,
+            rewardCounted: true
         }));
         expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
-            totalXp: expect.any(Number),
-            totalGold: expect.any(Number),
+            totalXp: 8,
+            totalGold: 4,
             wordsLearned: 1
         }));
         expect(reviewCard).toHaveBeenCalledWith(
@@ -190,6 +220,57 @@ describe('learning pipeline regression (battle/srs)', () => {
                 correctAnswer: 'apple'
             })
         );
+        expect(updateObjectiveMastery).toHaveBeenCalledWith(expect.objectContaining({
+            objectiveId: 'vocab_context_meaning',
+            skillTag: 'vocab_core',
+            result: 'correct',
+            mode: 'choice',
+            attemptKind: 'practice',
+            supportLevel: 3,
+            latencyMs: 900
+        }));
+        expect(updateObjectiveMastery).not.toHaveBeenCalledWith(expect.objectContaining({
+            selfConfidence: expect.anything()
+        }));
+        expect(updateSkillMastery).toHaveBeenCalledWith('vocab_core', 'correct');
+        expect(useGameStore.getState().userAnswers[0]).toEqual(expect.objectContaining({
+            selfConfidence: 'high',
+            questionHash: 'hash_apple',
+            progressReward: expect.objectContaining({
+                kind: 'supported-practice',
+                counted: true
+            })
+        }));
+        expect(logMistake).not.toHaveBeenCalled();
+    });
+
+    test('Lucky scales the recorded progress reward and persistent profile payout together', async () => {
+        randomSpy
+            .mockReset()
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.9);
+        useGameStore.getState().startGame([baseQuestion], 'battle context', 'battle');
+
+        const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 900 });
+        await flush();
+
+        expect(result.isLucky).toBe(true);
+        expect(result.progressReward).toEqual({
+            kind: 'supported-practice',
+            xp: 12,
+            gold: 6,
+            counted: true
+        });
+        expect(useGameStore.getState().userAnswers[0].progressReward).toEqual(result.progressReward);
+        expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
+            rewardXp: 12,
+            rewardGold: 6,
+            rewardCounted: true
+        }));
+        expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
+            totalXp: 12,
+            totalGold: 6
+        }));
     });
 
     test('srs source writes wrong answer with srs tag', async () => {
@@ -208,6 +289,7 @@ describe('learning pipeline regression (battle/srs)', () => {
         await flush();
 
         expect(result.correct).toBe(false);
+        expect(result.progressReward).toBeNull();
         expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
             eventType: 'answer',
             source: 'srs',
@@ -228,6 +310,45 @@ describe('learning pipeline regression (battle/srs)', () => {
                 correctAnswer: 'apple'
             })
         );
+        expect(updateObjectiveMastery).toHaveBeenCalledWith(expect.objectContaining({
+            objectiveId: 'vocab_context_meaning',
+            skillTag: 'vocab_core',
+            result: 'wrong',
+            mode: 'choice',
+            attemptKind: 'review',
+            supportLevel: 3,
+            latencyMs: 1200
+        }));
+        expect(updateSkillMastery).toHaveBeenCalledWith('vocab_core', 'wrong');
+        expect(logMistake).toHaveBeenCalledWith(expect.objectContaining({
+            questionId: 1,
+            wrongAnswer: 'banana',
+            correctAnswer: 'apple',
+            skillTag: 'vocab_core'
+        }));
+    });
+
+    test('srs success earns a delayed-recall reward without changing FSRS rating rules', async () => {
+        useGameStore.getState().startGame([baseQuestion], 'srs context', 'srs');
+        const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 1400 });
+        await flush();
+
+        expect(result.progressReward).toEqual({
+            kind: 'delayed-recall',
+            xp: 14,
+            gold: 8,
+            counted: true
+        });
+        expect(reviewCard).toHaveBeenCalledWith(
+            'hash_apple',
+            expect.stringMatching(/good|easy/),
+            expect.any(Object)
+        );
+        expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
+            source: 'srs',
+            attemptKind: 'review',
+            progressRewardKind: 'delayed-recall'
+        }));
     });
 
     test('run completion advances the active daily practice plan one step', async () => {
@@ -265,6 +386,7 @@ describe('learning pipeline regression (battle/srs)', () => {
     });
 
     test('wrong answers queue an immediate repair question for the same objective', async () => {
+        jest.mocked(getCurrentBlessingEffect).mockReturnValue({ repairXpMultiplier: 1.25 });
         useGameStore.getState().startGame([{
             ...baseQuestion,
             learningObjectiveId: 'vocab_context_meaning',
@@ -292,5 +414,21 @@ describe('learning pipeline regression (battle/srs)', () => {
         expect(repair.question).toContain('The ___ is red.');
         expect(repair.question).not.toBe(baseQuestion.question);
         expect(repair.question).not.toContain('Repair the same pattern');
+
+        useGameStore.getState().nextQuestion();
+        const repairResult = useGameStore.getState().answerQuestion(repair.correct_index, { responseLatencyMs: 800 });
+        expect(repairResult.progressReward).toEqual({
+            kind: 'repair-success',
+            xp: 17,
+            gold: 8,
+            counted: true
+        });
+        expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
+            progressRewardKind: 'repair-success',
+            rewardXp: 17,
+            rewardGold: 8,
+            rewardCounted: true
+        }));
+        jest.mocked(getCurrentBlessingEffect).mockReturnValue(null);
     });
 });

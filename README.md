@@ -28,6 +28,20 @@ This repository is not a generic Next.js demo. It is a working prototype of reus
 
 The project is serious but early-stage. It does not claim school deployment, production users, downloads, or measured learning impact.
 
+## Open Source Maintainer Support
+
+This repository is prepared for open-source maintainer support and Codex-assisted maintenance workflows:
+
+- [Codex for OSS application notes](docs/OPEN_SOURCE_APPLICATION.md) summarize the maintainer role, project qualification argument, API-credit use cases, and Codex Security review areas.
+- [Privacy and AI safety](docs/PRIVACY_AND_AI_SAFETY.md) documents local learning-data boundaries, AI provider expectations, prompt-injection risks, API key handling, and report-export privacy.
+- [Generated content evaluation](docs/GENERATED_CONTENT_EVAL.md) defines the seven-axis automated baseline, a ten-case multi-material/multi-difficulty offline matrix, per-axis regression trends, and required human review.
+- [Codex workflows](docs/CODEX_WORKFLOWS.md) defines review, triage, release, and test-expansion prompts for safe maintainer automation.
+- [Open-source issue backlog](docs/OPEN_SOURCE_ISSUE_BACKLOG.md) lists ready-to-create public issues for privacy hardening, tests, generated-content evaluation, release process, and refactoring.
+- [Release checklist](docs/RELEASE_CHECKLIST.md) defines the verification, privacy, screenshot, and changelog gate before publishing a release.
+- [Agent guidance](AGENTS.md) gives repo-specific rules for Codex and other coding agents.
+
+These materials are intended to make maintenance work visible without claiming adoption metrics the project does not yet have.
+
 ## Core Features
 
 | Feature | Current status | Notes |
@@ -35,21 +49,26 @@ The project is serious but early-stage. It does not claim school deployment, pro
 | Game-based vocabulary battles | Implemented | Learners answer vocabulary, grammar, and reading questions through RPG-style battle encounters, rewards, mastery celebrations, and multiple question modes. |
 | SRS / FSRS review loop | Implemented, evolving | `ts-fsrs` powers local review cards, due-card selection, memory status, and SRS review sessions. Review results update scheduling. |
 | Mastery Engine | Implemented v1, experimental | Skill-level mastery records track attempts, correctness, scores, and states: `new`, `learning`, `consolidated`, `mastered`. Scheduling uses mastery, recent mistakes, and review risk. |
+| Metacognitive calibration | Implemented v1, experimental | Optional three-level confidence checks appear on diagnostic/transfer choice questions. High-confidence errors and low-confidence correct answers receive targeted feedback; aggregate counts remain local and do not affect score, rewards, FSRS, or mastery. |
+| Learning-progress rewards | Implemented v1, experimental | Per-answer XP and gold are derived from supported practice, independent recall, error repair, due review, or transfer evidence. Duplicate questions and per-kind/session caps prevent reward farming; score and combo remain battle feedback. |
 | Learning Events | Implemented | Battle, SRS, and daily challenge flows log answer, hint, and session events into IndexedDB for analytics and task progress. |
 | Daily Challenges / Questline | Partially implemented | Daily challenges and weekly learning tasks exist. Richer questline design remains on the roadmap. |
-| Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard shows learning history, weak skills, due FSRS cards, study-plan actions, repeated-cause evidence, engagement metrics, data consistency, API health, and session recovery status. |
-| AI-assisted question generation | Implemented, optional | OpenRouter-based streaming generation creates mission questions from study text. Sanitizers and fallback questions reduce malformed or unsuitable output. |
-| Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented yet. |
-| API stability monitoring | Implemented locally | OpenRouter request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
+| Teacher / Guardian Dashboard | Implemented as local dashboard | The dashboard shows learning history, weak skills, due FSRS cards, study-plan actions, repeated-cause evidence, engagement metrics, data consistency, API health, and session recovery status. Privacy-minimized image/print exports show their inclusion/exclusion contract and require a fresh acknowledgement before each export. |
+| AI-assisted question generation | Implemented, optional | A provider-neutral adapter supports DeepSeek, OpenRouter, and OpenAI maintainer experiments. The plan → generate → critique pipeline applies lexical grounding, source-span checks, answer-integrity and age-appropriateness gates, bounded repair, and safe local fallback packs. |
+| Browser E2E | Implemented in CI | Playwright covers provider failure → fallback mission → six-question battle → report evidence → IndexedDB persistence → SRS dashboard. |
+| Offline recovery and local persistence | Implemented | Dexie/IndexedDB stores learning data. Settings can export and transactionally restore a versioned JSON backup of every IndexedDB table; compatibility tests cover schema v13 → v14 and reject future/corrupt files before writes. Zustand persistence and localStorage snapshots support settings and session recovery. No cloud sync is implemented. |
+| API stability monitoring | Implemented locally | Provider request attempts, retries, rate-limit hits, latency, and success/error outcomes can be logged and shown in the dashboard. |
 
 ## Architecture Overview
 
 ```mermaid
 flowchart TD
     Learner["Learner interaction"] --> Input["InputSection: study text, samples, settings"]
-    Input --> AI["AI service layer: OpenRouter client"]
-    AI --> Generator["Question generation prompts"]
-    Generator --> Sanitizer["Mission sanitizer and fallback questions"]
+    Input --> AI["AI service layer: provider-neutral adapter"]
+    AI --> Planner["Question planner"]
+    Planner --> Generator["Plan-bound generator"]
+    Generator --> Critic["Critic + deterministic quality gate"]
+    Critic --> Sanitizer["Mission sanitizer and fallback questions"]
     Sanitizer --> Battle["Battle loop"]
     Input --> Daily["Daily challenge"]
     Input --> SRS["SRS review dashboard"]
@@ -113,9 +132,9 @@ Additional image-generation prompts are documented in [docs/image-prompts.md](do
 
 Prerequisites:
 
-- Node.js 20 or newer
+- Node.js 24 LTS (see `.nvmrc`; supported range is `>=24 <27`)
 - npm
-- Optional: an OpenRouter API key for AI-generated missions
+- Optional: a DeepSeek, OpenRouter, or OpenAI API key for AI-generated missions
 
 Install dependencies:
 
@@ -137,9 +156,12 @@ Run quality checks:
 npm run lint
 npm test
 npm run build
+npm run test:e2e
 ```
 
-AI-generated missions require a local API key entered through the app settings. Do not commit API keys, real student data, or identifiable child information.
+AI-generated missions require a local API key entered through the app settings. OpenAI support is intended for maintainer experiments and uses the Responses API with `store: false`; the browser still sends the key directly, so use a restricted development key rather than a production or classroom credential. Do not commit API keys, real student data, or identifiable child information.
+
+The settings panel can create and restore local IndexedDB backups. These JSON files contain full learning history, question text, mistakes, mastery, review state, and dashboard evidence and are not encrypted. Keep them in trusted storage and never attach a real learner backup to a public issue or pull request. API keys and other localStorage settings are deliberately excluded.
 
 This project keeps `"private": true` in `package.json` because it is a Next.js application, not an npm package intended for publication. The GitHub repository itself is open source under the MIT License.
 
@@ -151,13 +173,22 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 ├── src/components/             # Learning UI: battle, SRS, daily challenge, reports, dashboard
 ├── src/components/battle/      # Battle scene, HUD, question panel, endless-wave hook
 ├── src/db/                     # Dexie/IndexedDB schema, FSRS, learning events, mastery, metrics
-├── src/lib/ai/                 # OpenRouter client, prompts, AI request metric logging
+├── src/lib/ai/                 # Provider adapters, prompts, AI request metric logging
 ├── src/lib/data/               # Mission sanitizing, history, mistakes, study plans, consistency checks
 ├── src/store/                  # Zustand game/settings stores and domain modules
-├── src/e2e/                    # Learning main-flow regression test
+├── src/store/slices/           # Learning, combat, and economy state/action boundaries
+├── tests/browser/              # Playwright learning main-flow regression
+├── tests/fixtures/             # Public-safe synthetic learning fixtures
 ├── docs/assets/                # README visuals and screenshots
 ├── docs/superpowers/           # Design specs + implementation plans (per-phase workflow)
+├── docs/PRIVACY_AND_AI_SAFETY.md
+├── docs/GENERATED_CONTENT_EVAL.md
+├── docs/CODEX_WORKFLOWS.md
+├── docs/OPEN_SOURCE_APPLICATION.md
+├── docs/RELEASE_CHECKLIST.md
 ├── ROADMAP.md                  # Product and engineering roadmap
+├── CHANGELOG.md                # Public release and readiness notes
+├── AGENTS.md                   # Coding-agent and maintainer workflow rules
 └── TODO.md                     # Execution checklist
 ```
 
@@ -167,7 +198,8 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 2. Use `npm test` for unit and integration regression checks.
 3. Use `npm run lint` before submitting changes.
 4. Use `npm run build` to verify the Next.js production build.
-5. Add focused tests when changing learning data logic, mastery state transitions, FSRS behavior, AI prompt contracts, or dashboard calculations.
+5. Use `npm run test:e2e` after a production build for the browser learning-flow gate.
+6. Add focused tests when changing learning data logic, mastery state transitions, FSRS behavior, AI prompt contracts, or dashboard calculations.
 
 When adding a feature:
 
@@ -205,6 +237,8 @@ The detailed roadmap lives in [ROADMAP.md](ROADMAP.md). Current public-facing pr
 - Local-first development is encouraged. Store only what the learning loop needs.
 - API keys are entered locally for development and must never be committed.
 - Treat dashboard analytics as learning support evidence, not as a high-stakes assessment system.
+
+See [Privacy and AI safety](docs/PRIVACY_AND_AI_SAFETY.md) for the full contributor checklist.
 
 ## Contributing
 

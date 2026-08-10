@@ -1,5 +1,57 @@
 const isBrowser = typeof window !== 'undefined';
 
+const PRIVATE_EXPORT_SELECTOR = '[data-export-private="true"], input, textarea, select';
+
+function escapeHtml(value: string) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+/**
+ * Build a detached, inert copy for report export. The source DOM is never
+ * mutated, and fields explicitly marked private cannot enter an image/print
+ * payload even if a future dashboard change accidentally renders them.
+ */
+export function createPrivacySafeExportClone(node: HTMLElement) {
+    const clone = node.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll(PRIVATE_EXPORT_SELECTOR).forEach((element) => element.remove());
+    clone.querySelectorAll<HTMLElement>('*').forEach((element) => {
+        for (const attribute of Array.from(element.attributes)) {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'contenteditable') {
+                element.removeAttribute(attribute.name);
+            }
+            if ((name === 'src' || name === 'srcset') && !attribute.value.startsWith('data:')) {
+                element.removeAttribute(attribute.name);
+            }
+            if (name === 'href' && !attribute.value.startsWith('#')) {
+                element.removeAttribute(attribute.name);
+            }
+        }
+    });
+    return clone;
+}
+
+function privacySafeDocumentStyles() {
+    return Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .filter((styleNode) => {
+            if (styleNode.tagName.toLowerCase() === 'style') return true;
+            const href = (styleNode as HTMLLinkElement).href;
+            if (!href) return false;
+            try {
+                return new URL(href, window.location.href).origin === window.location.origin;
+            } catch {
+                return false;
+            }
+        })
+        .map((styleNode) => styleNode.outerHTML)
+        .join('\n');
+}
+
 export interface ExportImageOptions {
     backgroundColor?: string;
     pixelRatio?: number;
@@ -11,9 +63,15 @@ export async function downloadNodeAsImage(
     options: ExportImageOptions = {}
 ) {
     if (!isBrowser || !node) return;
+    const exportNode = createPrivacySafeExportClone(node);
+    exportNode.style.position = 'fixed';
+    exportNode.style.left = '-100000px';
+    exportNode.style.top = '0';
+    exportNode.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(exportNode);
     try {
         const { toPng } = await import('html-to-image');
-        const dataUrl = await toPng(node, {
+        const dataUrl = await toPng(exportNode, {
             pixelRatio: options.pixelRatio ?? 2,
             cacheBust: true,
             backgroundColor: options.backgroundColor ?? '#f8fafc'
@@ -25,15 +83,15 @@ export async function downloadNodeAsImage(
     } catch (error) {
         console.error('downloadNodeAsImage error', error);
         throw error;
+    } finally {
+        exportNode.remove();
     }
 }
 
 export function openNodePrintView(node: HTMLElement | null, title = 'Word Quest Progress Report') {
     if (!isBrowser || !node) return;
-    const html = node.outerHTML;
-    const documentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-        .map((styleNode) => styleNode.outerHTML)
-        .join('\n');
+    const html = createPrivacySafeExportClone(node).outerHTML;
+    const documentStyles = privacySafeDocumentStyles();
     const printWindow = window.open('', '_blank', 'width=1024,height=768');
     if (!printWindow) {
         console.error('Popup blocked while attempting to open print view.');
@@ -42,7 +100,7 @@ export function openNodePrintView(node: HTMLElement | null, title = 'Word Quest 
     printWindow.document.write(`<!doctype html>
         <html>
             <head>
-                <title>${title}</title>
+                <title>${escapeHtml(title)}</title>
                 ${documentStyles}
                 <style>
                     @page { margin: 12mm; }

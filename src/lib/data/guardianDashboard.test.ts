@@ -1,6 +1,8 @@
 import type { HistoryRecord, LearningEvent, LearningTask } from '@/db/db';
 import type { MistakeRecord } from '@/db/db';
 import { buildGuardianActivityFeed } from './guardianDashboard';
+import { buildCalibrationSummary } from './metacognitiveCalibration';
+import { buildLearningProgressRewardSummary } from './learningProgressRewards';
 
 const now = Date.UTC(2026, 5, 1, 8, 0, 0);
 
@@ -133,5 +135,50 @@ describe('buildGuardianActivityFeed', () => {
         });
 
         expect(feed).toHaveLength(2);
+    });
+});
+
+describe('guardian confidence calibration evidence', () => {
+    test('keeps guardian evidence aggregate and excludes original question content', () => {
+        const summary = buildCalibrationSummary([
+            event({ result: 'wrong', selfConfidence: 'high' }),
+            event({ result: 'correct', selfConfidence: 'low' })
+        ]);
+
+        expect(summary).toEqual(expect.objectContaining({
+            ratedAnswers: 2,
+            highConfidenceErrors: 1,
+            lowConfidenceCorrect: 1
+        }));
+        expect(JSON.stringify(summary)).not.toContain('Choose the cause.');
+    });
+});
+
+describe('guardian learning progress reward evidence', () => {
+    test('summarizes traceable payouts without retaining question content', () => {
+        const summary = buildLearningProgressRewardSummary([
+            event({
+                result: 'correct',
+                progressRewardKind: 'repair-success',
+                rewardXp: 14,
+                rewardGold: 8,
+                rewardCounted: true
+            }),
+            event({
+                result: 'correct',
+                progressRewardKind: 'supported-practice',
+                rewardCounted: false,
+                rewardProtectionReason: 'kind-cap'
+            })
+        ]);
+
+        expect(summary).toEqual(expect.objectContaining({
+            countedRewards: 1,
+            protectedAttempts: 1,
+            totalXp: 14,
+            totalGold: 8,
+            strongEvidenceCount: 1
+        }));
+        expect(JSON.stringify(summary)).not.toContain('Choose the cause.');
     });
 });

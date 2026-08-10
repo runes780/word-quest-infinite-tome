@@ -13,13 +13,11 @@ const customJestConfig = {
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
     },
-    // Live (real-LLM / browser) tests are opt-in only. The default suite ignores
-    // any *.live.test.* file; set LIVE_TESTS=1 to include them. (jest appends
-    // CLI --testPathIgnorePatterns rather than replacing it, so the env var is
-    // the reliable switch — e.g.  LIVE_TESTS=1 jest questionPipeline.live)
+    // Live real-LLM tests are opt-in. Browser specs always run through
+    // Playwright, not Jest's jsdom environment.
     testPathIgnorePatterns: process.env.LIVE_TESTS === '1'
-        ? ['/node_modules/']
-        : ['/node_modules/', '\\.live\\.test\\.[jt]sx?$'],
+        ? ['/node_modules/', '/tests/browser/']
+        : ['/node_modules/', '/tests/browser/', '\\.live\\.test\\.[jt]sx?$'],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

@@ -1,7 +1,8 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Sword, HelpCircle, Lightbulb } from 'lucide-react';
+import { Brain, Shield, Sparkles, Sword, HelpCircle, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
@@ -12,6 +13,9 @@ import { inferVerbFromMode } from '@/lib/data/questionTemplates';
 import type { Monster, Verb } from '@/store/gameStore';
 import type { translations } from '@/lib/translations';
 import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives';
+import type { LearningEventSelfConfidence } from '@/db/db';
+import { calibrationSignalFor, shouldCollectSelfConfidence } from '@/lib/data/metacognitiveCalibration';
+import type { LearningProgressReward, LearningProgressRewardKind } from '@/lib/data/learningProgressRewards';
 
 interface BattleQuestionPanelProps {
     currentQuestion: Monster;
@@ -27,7 +31,10 @@ interface BattleQuestionPanelProps {
     bossShieldProgress: number;
     bossComboThreshold: number;
     clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
+    selfConfidence?: LearningEventSelfConfidence;
+    progressReward: LearningProgressReward | null;
     onToggleHint: () => void;
+    onConfidenceChange: (confidence: LearningEventSelfConfidence) => void;
     onChoiceSelect: (index: number) => void;
     onTypingAnswer: (correct: boolean, input: string) => void;
     onFillBlankAnswer: (correct: boolean, input: string) => void;
@@ -52,7 +59,10 @@ export function BattleQuestionPanel({
     bossShieldProgress,
     bossComboThreshold,
     clarityEffect,
+    selfConfidence,
+    progressReward,
     onToggleHint,
+    onConfidenceChange,
     onChoiceSelect,
     onTypingAnswer,
     onFillBlankAnswer,
@@ -62,6 +72,7 @@ export function BattleQuestionPanel({
     onOpenMentor,
     onNext
 }: BattleQuestionPanelProps) {
+    const feedbackRef = useRef<HTMLDivElement | null>(null);
     const uiLanguage = language === 'zh' ? 'zh' : 'en';
     const verb: Verb = currentQuestion.verb ?? inferVerbFromMode(currentQuestion.questionMode || 'choice');
     const bossGateLabel = currentQuestion.isBoss && currentQuestion.bossStage && currentQuestion.bossTotalStages
@@ -79,6 +90,30 @@ export function BattleQuestionPanel({
     const repairLabel = currentQuestion.isImmediateRepair
         ? (uiLanguage === 'zh' ? '补救反击' : 'Counter-Attack')
         : null;
+    const collectSelfConfidence = shouldCollectSelfConfidence(
+        currentQuestion.attemptKind,
+        currentQuestion.questionMode || 'choice'
+    );
+    const calibrationSignal = showResult
+        ? calibrationSignalFor(selfConfidence, isCorrect)
+        : null;
+    const confidenceOptions: Array<{ value: LearningEventSelfConfidence; label: string }> = [
+        { value: 'low', label: t.battle.confidenceLow },
+        { value: 'medium', label: t.battle.confidenceMedium },
+        { value: 'high', label: t.battle.confidenceHigh }
+    ];
+    const progressRewardLabels: Record<LearningProgressRewardKind, string> = {
+        'supported-practice': t.battle.rewardSupportedPractice,
+        'independent-success': t.battle.rewardIndependentSuccess,
+        'repair-success': t.battle.rewardRepairSuccess,
+        'delayed-recall': t.battle.rewardDelayedRecall,
+        'transfer-success': t.battle.rewardTransferSuccess
+    };
+
+    useEffect(() => {
+        if (!showResult || typeof feedbackRef.current?.scrollIntoView !== 'function') return;
+        feedbackRef.current.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+    }, [currentQuestion.id, showResult]);
 
     return (
         <div className="flex flex-col justify-center space-y-6">
@@ -96,7 +131,7 @@ export function BattleQuestionPanel({
                         {ttsEnabled && (
                             <button
                                 onClick={onSpeakQuestion}
-                                className="text-xs text-primary hover:text-primary/80 underline"
+                                className="min-h-11 rounded-lg px-2 text-xs text-primary underline hover:bg-primary/10 hover:text-primary/80"
                             >
                                 {t.battle.readQuestion}
                             </button>
@@ -104,7 +139,7 @@ export function BattleQuestionPanel({
                         {currentQuestion.hint && !showResult && (
                             <button
                                 onClick={onToggleHint}
-                                className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                                className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
                             >
                                 <Lightbulb className="w-3 h-3" />
                                 {showHint ? t.battle.hideHint : t.battle.hint}
@@ -142,6 +177,35 @@ export function BattleQuestionPanel({
                 <h3 className="text-2xl md:text-3xl font-bold text-foreground mb-4 leading-tight">
                     {currentQuestion.question}
                 </h3>
+
+                {collectSelfConfidence && !showResult && (
+                    <fieldset className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 p-3">
+                        <legend className="px-1 text-xs font-black text-foreground">
+                            {t.battle.confidencePrompt}
+                        </legend>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                            {confidenceOptions.map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => onConfidenceChange(option.value)}
+                                    aria-pressed={selfConfidence === option.value}
+                                    className={cn(
+                                        'min-h-11 flex-1 rounded-xl border px-3 py-2 text-sm font-bold sm:flex-none',
+                                        selfConfidence === option.value
+                                            ? 'border-primary bg-primary text-primary-foreground'
+                                            : 'border-border bg-background/70 text-muted-foreground hover:border-primary hover:text-primary'
+                                    )}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                            {t.battle.confidencePurpose}
+                        </p>
+                    </fieldset>
+                )}
 
                 <AnimatePresence>
                     {showHint && (
@@ -246,6 +310,7 @@ export function BattleQuestionPanel({
             <AnimatePresence mode="wait">
                 {showResult && (
                     <motion.div
+                        ref={feedbackRef}
                         initial={{ y: 20, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: -20, opacity: 0 }}
@@ -255,6 +320,9 @@ export function BattleQuestionPanel({
                                 ? "bg-green-500/10 border-green-500/30 shadow-green-500/10"
                                 : "bg-destructive/10 border-destructive/30 shadow-destructive/10"
                         )}
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
                     >
                         <div className="flex items-start justify-between gap-4">
                             <div>
@@ -266,12 +334,44 @@ export function BattleQuestionPanel({
                                     {ttsEnabled && (
                                         <button
                                             onClick={onSpeakExplanation}
-                                            className="text-xs text-primary underline"
+                                            className="min-h-11 rounded-lg px-2 text-xs text-primary underline hover:bg-primary/10"
                                         >
                                             {t.battle.readExplanation}
                                         </button>
                                     )}
                                 </div>
+                                {progressReward && (
+                                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-foreground">
+                                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                                {progressReward.counted
+                                                    ? t.battle.progressRewardCue
+                                                    : t.battle.rewardProtected}
+                                            </p>
+                                            <p className="mt-1 leading-relaxed">
+                                                {progressReward.counted
+                                                    ? `${progressRewardLabels[progressReward.kind]} · +${progressReward.xp} XP · +${progressReward.gold} Gold`
+                                                    : t.battle.rewardProtectedDetail}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                                {calibrationSignal && (
+                                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 p-3 text-sm text-foreground">
+                                        <Brain className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-300" />
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                                                {t.battle.calibrationCue}
+                                            </p>
+                                            <p className="mt-1 leading-relaxed">
+                                                {calibrationSignal === 'high-confidence-error'
+                                                    ? t.battle.highConfidenceError
+                                                    : t.battle.lowConfidenceCorrect}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 {currentQuestion.isBoss && currentMonsterHp > 0 && (
                                     <p className="text-xs text-muted-foreground mt-2">
                                         {t.battle.shieldProgress}: {bossShieldProgress}/{bossComboThreshold}
@@ -285,7 +385,7 @@ export function BattleQuestionPanel({
                                 {!isCorrect && (
                                     <button
                                         onClick={onOpenMentor}
-                                        className="px-4 py-2 bg-background/50 hover:bg-background/80 text-foreground rounded-lg border border-border transition-colors flex items-center justify-center gap-2 text-sm font-bold"
+                                        className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-background/50 px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-background/80"
                                     >
                                         <HelpCircle className="w-4 h-4" />
                                         {t.battle.analyze}
@@ -293,7 +393,7 @@ export function BattleQuestionPanel({
                                 )}
                                 <button
                                     onClick={onNext}
-                                    className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all shadow-lg hover:shadow-primary/25 font-black uppercase tracking-wide"
+                                    className="min-h-11 rounded-lg bg-primary px-6 py-2 font-black uppercase tracking-wide text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25"
                                 >
                                     {t.battle.nextLevel}
                                 </button>

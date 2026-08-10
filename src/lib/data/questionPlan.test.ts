@@ -90,4 +90,28 @@ describe('validateQuestionPlan', () => {
         const result = validateQuestionPlan(plan(items), MATERIAL, ALLOWED);
         expect(result.valid).toBe(true);
     });
+
+    test('rejects a non-array items payload without throwing', () => {
+        const malformed = {
+            levelTitle: 'Garden',
+            materialSummary: 'x',
+            vocabularyAllowed: [],
+            items: 'not-an-array'
+        } as unknown as QuestionPlan;
+        expect(() => validateQuestionPlan(malformed, MATERIAL, ALLOWED)).not.toThrow();
+        const result = validateQuestionPlan(malformed, MATERIAL, ALLOWED);
+        expect(result.valid).toBe(false);
+        expect(result.errors).toContain('Plan items must be an array.');
+    });
+
+    test('rejects malformed item objects without throwing', () => {
+        const malformed = plan(sixValidItems()) as unknown as { items: unknown[] };
+        malformed.items[2] = null;
+        malformed.items[3] = { sourceSpan: 'She waters the plants.' };
+        expect(() => validateQuestionPlan(malformed as unknown as QuestionPlan, MATERIAL, ALLOWED)).not.toThrow();
+        const result = validateQuestionPlan(malformed as unknown as QuestionPlan, MATERIAL, ALLOWED);
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((error) => error.includes('item[2] must be an object'))).toBe(true);
+        expect(result.errors.some((error) => error.includes('item[3] role is invalid'))).toBe(true);
+    });
 });

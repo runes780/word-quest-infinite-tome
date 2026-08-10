@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { BattleHud } from './BattleHud';
 import { translations } from '@/lib/translations';
 
@@ -17,6 +17,7 @@ describe('BattleHud responsive layout', () => {
                 knowledgeCardsCount={0}
                 rootFragments={0}
                 fragmentsUntilCraft={5}
+                shopLabel="Merchant"
                 onOpenShop={jest.fn()}
                 t={translations.en}
             />
@@ -25,5 +26,6 @@ describe('BattleHud responsive layout', () => {
         const hud = container.firstElementChild;
         expect(hud).toHaveClass('flex-wrap');
         expect(hud).toHaveClass('gap-4');
+        expect(screen.getByRole('button', { name: 'Merchant: 15' })).toBeInTheDocument();
     });
 });

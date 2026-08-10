@@ -4,6 +4,18 @@
 > 基线日期：2026-02-08  
 > 维护规则：完成即勾选，延期需写原因
 
+## 2026-07-15 质量与隐私收尾
+
+- [x] 审阅并加固 PR #12 的 plan/generate/critique 降级与确定性质量门
+- [x] 新增 Playwright 浏览器 E2E 并接入 CI
+- [x] 修复普通任务被无尽波次扩展、无法到达报告页的问题
+- [x] 完成学习数据与报告导出隐私威胁模型
+- [x] 导出报告仅保留聚合证据与受控目标分类
+- [x] 建立公开安全的合成学习夹具
+- [x] 建立 7 轴生成内容评测基线并保留人工复核
+- [x] 拦截答案键冲突与明确不适龄内容
+- [x] PR #12 合并后建立下一阶段独立 PR：`gameStore` 领域切片
+
 ---
 
 ## 本周优先（2026-02-09 ~ 2026-02-16）
@@ -100,9 +112,15 @@
 - [x] `gameStore` 第二阶段拆分：抽离 `economyRewards`（relic/奖励/成长计算）
 - [x] `gameStore` 第三阶段拆分：抽离 `sessionRecovery`（存档保存/恢复/清理）
 - [x] `gameStore` 第四阶段拆分：抽离 `combatResolution`（答题战斗结算纯逻辑）
-- [ ] `gameStore` 按领域拆分（learning/combat/economy）
-- [ ] `BattleInterface` 拆分子模块
-- [x] 建立学习主流程 E2E（mission -> battle -> srs -> report）
+- [x] `gameStore` 按领域拆分（learning/combat/economy 状态与领域内动作；跨域流程保留编排层）
+- [x] 建立统一 AI Provider 适配接口，并增加 OpenAI Responses API 维护者实验选项（`store=false`、合成请求测试、本地回退）
+- [x] 扩展生成内容离线评测矩阵（叙事/步骤/说明材料，easy/medium/hard，七轴正反例与趋势对比）
+- [x] 增加 IndexedDB 全表版本化备份/原子恢复（隐私确认、v13→v14 兼容、未来/损坏文件写前拒绝）
+- [x] 增加报告导出可见隐私契约与逐次确认（图片/打印统一，取消不导出且不记录事件）
+- [x] 升级并收紧 GitHub Actions（Node 24 LTS、不可变 SHA、只读权限、并发取消、超时、显式评测门禁）
+- [x] `BattleInterface` 完成答题编排、战斗反馈、库存/通知子模块拆分（524→277 行，定时器卸载清理与聚焦测试）
+- [x] 缩小 `gameStore` 跨域编排层：统一 answer→learningEvent/FSRS/mastery/mistake 证据契约并增加 store 集成一致性测试（1146→1048 行）
+- [x] 建立学习主流程浏览器 E2E（provider fallback -> mission -> battle -> report -> persistence -> srs）
 - [x] 增加数据一致性巡检（events/profile/dashboard）
 
 ### 性能与稳定性
@@ -119,7 +137,19 @@
 
 ## 研发治理（持续项）
 
+### 学习科学与体验 M0（2026-07-15）
+
+- [x] 移除无 API Key 首次进入的强制设置弹窗
+- [x] 提供明确的本地合成练习主入口，并将 AI 连接标为可选增强
+- [x] 解释今日路径使用本机学习证据且允许改选
+- [x] 修复移动端任务切换与答题反馈可见位置
+- [x] 为战斗反馈、语音输入、商店与设置补齐状态播报和可访问名称
+- [x] 让 Framer Motion 与 CSS 动画尊重 reduced-motion
+- [x] M1：元认知把握度字段、差异化反馈、聚合摘要、备份兼容和一致性测试（不参与分数/FSRS/mastery）
+- [x] M2：基于到期复习、补救与迁移的学习进步奖励、解释性反馈、三层防刷与聚合证据
+- [ ] M3：支架淡出与迁移闭环（需新里程碑评审）
+
 - [ ] 所有新功能必须附带验收指标
 - [ ] 所有数据字段变更必须补迁移与回归
 - [ ] 每周固定更新 `ROADMAP.md` 与本 TODO
-- [ ] 发布前执行：`tsc --noEmit` + `npm test` + 关键路径手测
+- [ ] 发布前执行：`npm run lint` + `npm test` + `npm run build` + `npm run test:e2e`

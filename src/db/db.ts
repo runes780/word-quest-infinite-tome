@@ -148,6 +148,14 @@ export type LearningEventMode = 'choice' | 'typing' | 'fill-blank';
 export type LearningEventResult = 'correct' | 'wrong';
 export type LearningEventAttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
 export type LearningEventSupportLevel = 0 | 1 | 2 | 3;
+export type LearningEventSelfConfidence = 'low' | 'medium' | 'high';
+export type LearningEventProgressRewardKind =
+    | 'supported-practice'
+    | 'independent-success'
+    | 'repair-success'
+    | 'delayed-recall'
+    | 'transfer-success';
+export type LearningEventRewardProtectionReason = 'duplicate-evidence' | 'kind-cap' | 'session-cap';
 
 export interface LearningEvent {
     id?: number;
@@ -165,6 +173,12 @@ export interface LearningEvent {
     result?: LearningEventResult;
     hintUsed?: boolean;
     latencyMs?: number;
+    selfConfidence?: LearningEventSelfConfidence;
+    progressRewardKind?: LearningEventProgressRewardKind;
+    rewardXp?: number;
+    rewardGold?: number;
+    rewardCounted?: boolean;
+    rewardProtectionReason?: LearningEventRewardProtectionReason;
     source: LearningEventSource;
     timestamp: number;
 }
@@ -181,6 +195,12 @@ export interface LearningEvidence {
     result?: LearningEventResult;
     hintUsed?: boolean;
     latencyMs?: number;
+    selfConfidence?: LearningEventSelfConfidence;
+    progressRewardKind?: LearningEventProgressRewardKind;
+    rewardXp?: number;
+    rewardGold?: number;
+    rewardCounted?: boolean;
+    rewardProtectionReason?: LearningEventRewardProtectionReason;
 }
 
 export type LearningTaskMetric = 'daily_sessions' | 'srs_answers' | 'battle_correct';
@@ -255,7 +275,7 @@ export type AIRequestOutcome = 'success' | 'error' | 'timeout';
 
 export interface AIRequestMetric {
     id?: number;
-    provider: 'openrouter' | 'deepseek';
+    provider: 'openrouter' | 'deepseek' | 'openai';
     model: string;
     isFreeModel: boolean;
     outcome: AIRequestOutcome;
@@ -432,6 +452,8 @@ export interface PracticePlanRunRecord {
     updatedAt: number;
 }
 
+export const CURRENT_DB_SCHEMA_VERSION = 14;
+
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
     mistakes!: Table<MistakeRecord>;
@@ -448,8 +470,8 @@ export class WordQuestDB extends Dexie {
     objectiveMastery!: Table<ObjectiveMasteryRecord>;
     practicePlanRuns!: Table<PracticePlanRunRecord>;
 
-    constructor() {
-        super('WordQuestDB');
+    constructor(name = 'WordQuestDB') {
+        super(name);
         this.version(1).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId'
@@ -567,7 +589,7 @@ export class WordQuestDB extends Dexie {
             sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
             skillMastery: '++id, skillTag, state, score, updatedAt'
         });
-        this.version(14).stores({
+        this.version(CURRENT_DB_SCHEMA_VERSION).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId, skillTag',
             questionCache: '++id, contextHash, timestamp, used',

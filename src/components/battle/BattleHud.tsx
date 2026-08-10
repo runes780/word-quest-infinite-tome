@@ -15,6 +15,7 @@ interface BattleHudProps {
     knowledgeCardsCount: number;
     rootFragments: number;
     fragmentsUntilCraft: number;
+    shopLabel: string;
     onOpenShop: () => void;
     t: {
         battle: {
@@ -43,6 +44,7 @@ export function BattleHud({
     knowledgeCardsCount,
     rootFragments,
     fragmentsUntilCraft,
+    shopLabel,
     onOpenShop,
     t
 }: BattleHudProps) {
@@ -93,9 +95,11 @@ export function BattleHud({
 
                 <div className="flex flex-1 basis-[9rem] items-center justify-end gap-3 sm:flex-none sm:gap-4">
                     <motion.button
+                        type="button"
                         animate={{ scale: goldScale }}
                         onClick={onOpenShop}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-lg border border-yellow-500/30 transition-colors relative z-50"
+                        aria-label={`${shopLabel}: ${playerStats.gold}`}
+                        className="relative z-50 flex min-h-11 items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-1.5 text-yellow-600 transition-colors hover:bg-yellow-500/20 dark:text-yellow-400"
                     >
                         <Coins className="w-4 h-4" />
                         <span className="font-mono font-bold">{playerStats.gold}</span>

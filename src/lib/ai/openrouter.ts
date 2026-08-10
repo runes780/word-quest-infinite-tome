@@ -1,6 +1,6 @@
 
 import { logOpenRouterMetric } from './metrics';
-import type { AIProvider } from './modelOptions';
+import type { ChatCompletionsProvider } from './modelOptions';
 
 export interface OpenRouterResponse {
     choices: {
@@ -76,7 +76,7 @@ export class OpenRouterClient {
     constructor(
         private apiKey: string,
         private model: string,
-        private provider: AIProvider = 'openrouter'
+        private provider: ChatCompletionsProvider = 'openrouter'
     ) {
         this.isFreeModel = provider === 'openrouter' && model.endsWith(':free');
         this.scheduler = this.isFreeModel ? sharedSchedulers.free : sharedSchedulers.paid;

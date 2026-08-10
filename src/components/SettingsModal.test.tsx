@@ -40,5 +40,6 @@ describe('SettingsModal responsive sizing', () => {
         expect(screen.getByTestId('settings-modal-body').className).toContain('overflow-y-auto');
         expect(screen.getByTestId('settings-modal-body').className).toContain('min-h-0');
         expect(screen.getByTestId('settings-modal-footer').className).toContain('shrink-0');
+        expect(screen.getByRole('button', { name: 'OpenAI' })).toBeInTheDocument();
     });
 });

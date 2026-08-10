@@ -2,10 +2,10 @@
 
 import { useGameStore } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { OpenRouterClient } from '@/lib/ai/openrouter';
+import { createAIClient } from '@/lib/ai/providerClient';
 import { buildReportSystemPrompt, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
-import { Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
+import { Brain, Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
@@ -24,6 +24,8 @@ import {
     practicePlanProgressText
 } from '@/lib/data/practicePlanRunner';
 import { buildSessionLearningClosure } from '@/lib/data/sessionLearningClosure';
+import { buildCalibrationSummary } from '@/lib/data/metacognitiveCalibration';
+import { buildLearningProgressRewardSummary } from '@/lib/data/learningProgressRewards';
 
 import { translations } from '@/lib/translations';
 
@@ -38,7 +40,6 @@ export function MissionReport() {
         skillStats,
         addToRevengeQueue,
         recordRunCompletion,
-        runObjectiveBonuses,
         activePracticePlanRun,
         startGame
     } = useGameStore();
@@ -55,6 +56,8 @@ export function MissionReport() {
     const [historyLogged, setHistoryLogged] = useState(false);
     const nextPlanStep = currentPracticePlanStep(activePracticePlanRun);
     const planComplete = isPracticePlanComplete(activePracticePlanRun);
+    const calibrationSummary = useMemo(() => buildCalibrationSummary(userAnswers), [userAnswers]);
+    const progressRewardSummary = useMemo(() => buildLearningProgressRewardSummary(userAnswers), [userAnswers]);
 
     useEffect(() => {
         if (historyLogged || questions.length === 0 || userAnswers.length === 0) return;
@@ -123,7 +126,7 @@ export function MissionReport() {
         setIsLoading(true);
         setAnalysisError(null);
         try {
-            const client = new OpenRouterClient(apiKey, model, apiProvider);
+            const client = createAIClient({ apiKey, model, provider: apiProvider });
             const prompt = generateReportPrompt(score, questions.length, userAnswers);
             const jsonStr = await client.generate(prompt, buildReportSystemPrompt(language));
             const cleanJson = jsonStr.replace(/```json\n?|\n?```/g, '').trim();
@@ -207,19 +210,45 @@ export function MissionReport() {
                         </div>
                     </div>
 
-                    {runObjectiveBonuses.length > 0 && (
-                        <div className="mb-8 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-left">
-                            <div className="text-sm font-bold text-emerald-400 uppercase tracking-wide mb-2">
-                                {language === 'zh' ? '目标奖励' : 'Objective Rewards'}
-                            </div>
-                            <div className="space-y-2">
-                                {runObjectiveBonuses.map((bonus) => (
-                                    <div key={bonus.id} className="text-sm">
-                                        <div className="font-semibold text-emerald-300">{runBonusTitle(bonus, language)}</div>
-                                        <div className="text-xs text-muted-foreground">{runBonusDescription(bonus, language)}</div>
-                                        <div className="text-xs text-emerald-400">+{bonus.xp} XP · +{bonus.gold} Gold</div>
+                    {progressRewardSummary.countedRewards > 0 && (
+                        <div className="mb-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-left">
+                            <div className="flex items-start gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+                                    <Sparkles className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-sm font-black text-foreground">
+                                            {language === 'zh' ? '学习进步奖励' : 'Learning Progress Rewards'}
+                                        </p>
+                                        <span className="rounded-full bg-background/70 px-2 py-1 text-xs font-black text-emerald-700 dark:text-emerald-300">
+                                            +{progressRewardSummary.totalXp} XP · +{progressRewardSummary.totalGold} Gold
+                                        </span>
                                     </div>
-                                ))}
+                                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '进步证据' : 'Evidence'}
+                                            value={progressRewardSummary.countedRewards}
+                                        />
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '错因修复' : 'Repairs'}
+                                            value={progressRewardSummary.byKind['repair-success']}
+                                        />
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '到期提取' : 'Due recall'}
+                                            value={progressRewardSummary.byKind['delayed-recall']}
+                                        />
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '迁移成功' : 'Transfer'}
+                                            value={progressRewardSummary.byKind['transfer-success']}
+                                        />
+                                    </div>
+                                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                                        {language === 'zh'
+                                            ? `XP 与金币来自可回溯的学习证据；分数和连击只保留战斗反馈。${progressRewardSummary.protectedAttempts > 0 ? `另有 ${progressRewardSummary.protectedAttempts} 次重复或超限练习已记录但未重复发奖。` : ''}`
+                                            : `XP and gold come from traceable learning evidence; score and combo remain battle feedback only.${progressRewardSummary.protectedAttempts > 0 ? ` ${progressRewardSummary.protectedAttempts} repeated or capped attempts were recorded without another payout.` : ''}`}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -308,6 +337,47 @@ export function MissionReport() {
                             <p className="mt-4 text-xs font-semibold text-muted-foreground">
                                 {sessionClosure.followUp}
                             </p>
+                        </div>
+                    )}
+
+                    {calibrationSummary.ratedAnswers > 0 && (
+                        <div className="mb-8 rounded-2xl border border-blue-500/25 bg-blue-500/10 p-5 text-left">
+                            <div className="flex items-start gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-300">
+                                    <Brain className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-sm font-black text-foreground">
+                                            {language === 'zh' ? '把握度校准摘要' : 'Confidence Calibration Summary'}
+                                        </p>
+                                        <span className="rounded-full bg-background/70 px-2 py-1 text-xs font-bold text-blue-700 dark:text-blue-300">
+                                            {language === 'zh'
+                                                ? `${calibrationSummary.ratedAnswers} 次可选自评`
+                                                : `${calibrationSummary.ratedAnswers} optional ratings`}
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                        <div className="rounded-xl border border-border/60 bg-background/50 p-3">
+                                            <p className="text-xs font-semibold text-muted-foreground">
+                                                {language === 'zh' ? '高把握错误' : 'High-confidence errors'}
+                                            </p>
+                                            <p className="mt-1 text-xl font-black text-foreground">{calibrationSummary.highConfidenceErrors}</p>
+                                        </div>
+                                        <div className="rounded-xl border border-border/60 bg-background/50 p-3">
+                                            <p className="text-xs font-semibold text-muted-foreground">
+                                                {language === 'zh' ? '低把握正确' : 'Low-confidence correct'}
+                                            </p>
+                                            <p className="mt-1 text-xl font-black text-foreground">{calibrationSummary.lowConfidenceCorrect}</p>
+                                        </div>
+                                    </div>
+                                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                                        {language === 'zh'
+                                            ? '这些信号只帮助选择复盘重点，不参与掌握度或最终评价。'
+                                            : 'These signals only help prioritize review; they do not affect mastery or final judgments.'}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     )}
 
@@ -489,6 +559,15 @@ function ClosureTile({ title, value, detail }: { title: string; value: string; d
     );
 }
 
+function ProgressRewardMetric({ label, value }: { label: string; value: number }) {
+    return (
+        <div className="rounded-xl border border-border/60 bg-background/50 p-3">
+            <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+            <p className="mt-1 text-xl font-black text-foreground">{value}</p>
+        </div>
+    );
+}
+
 function evidenceStateLabel(state: string, language: 'en' | 'zh') {
     if (language === 'zh') {
         return {
@@ -504,34 +583,6 @@ function evidenceStateLabel(state: string, language: 'en' | 'zh') {
         'needs-repair': 'Needs repair',
         practice: 'Practicing'
     }[state] || 'Practicing';
-}
-
-function runBonusTitle(
-    bonus: { id: string; title: string; skillTag?: string },
-    language: 'en' | 'zh'
-) {
-    if (language !== 'zh') return bonus.title;
-    if (bonus.id.startsWith('bonus_review')) return '复习完成';
-    if (bonus.id.startsWith('bonus_breakthrough')) return '薄弱点突破';
-    if (bonus.id.startsWith('bonus_transfer')) return '迁移检查点';
-    return bonus.title;
-}
-
-function runBonusDescription(
-    bonus: { id: string; description: string; skillTag?: string },
-    language: 'en' | 'zh'
-) {
-    if (language !== 'zh') return bonus.description;
-    if (bonus.id.startsWith('bonus_review')) return '完成了一轮有效的 SRS 复习。';
-    if (bonus.id.startsWith('bonus_breakthrough')) {
-        const label = bonus.skillTag ? formatLearningLabel(bonus.skillTag, language) : '相关技能';
-        return `${label} 出现明显进步。`;
-    }
-    if (bonus.id.startsWith('bonus_transfer')) {
-        const label = bonus.skillTag ? formatLearningLabel(bonus.skillTag, language) : '相关技能';
-        return `${label} 在独立回忆中保持稳定。`;
-    }
-    return bonus.description;
 }
 
 function buildLearningClosure(

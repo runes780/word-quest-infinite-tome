@@ -72,7 +72,9 @@ import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
 import type { Monster } from '@/store/gameStore';
 import type { PracticePlan, PracticePlanEvidence } from '@/lib/data/dailyPracticePlan';
 import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
-import { formatLearningLabel } from '@/lib/data/learningObjectives';
+import { formatLearningLabel, mapSkillTagToObjectiveId, objectiveTitle } from '@/lib/data/learningObjectives';
+import type { CalibrationSummary } from '@/lib/data/metacognitiveCalibration';
+import type { LearningProgressRewardSummary } from '@/lib/data/learningProgressRewards';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -158,9 +160,12 @@ export function ParentDashboard() {
     const [sessionRecovery, setSessionRecovery] = useState<SessionRecoverySnapshot | null>(null);
     const [dailyPracticePlan, setDailyPracticePlan] = useState<PracticePlan | null>(null);
     const [activityFeed, setActivityFeed] = useState<GuardianActivityFeedItem[]>([]);
+    const [calibrationSummary, setCalibrationSummary] = useState<CalibrationSummary | null>(null);
+    const [progressRewardSummary, setProgressRewardSummary] = useState<LearningProgressRewardSummary | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
+    const [pendingExport, setPendingExport] = useState<'image' | 'pdf' | null>(null);
     const reportRef = useRef<HTMLDivElement | null>(null);
     const exportReportRef = useRef<HTMLDivElement | null>(null);
     const [exportGeneratedAt, setExportGeneratedAt] = useState(() => Date.now());
@@ -280,6 +285,8 @@ export function ParentDashboard() {
             setSessionRecovery(dashboard.sessionRecovery);
             setDailyPracticePlan(dashboard.dailyPracticePlan);
             setActivityFeed(dashboard.activityFeed);
+            setCalibrationSummary(dashboard.calibrationSummary ?? null);
+            setProgressRewardSummary(dashboard.progressRewardSummary ?? null);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load dashboard data.');
@@ -620,6 +627,13 @@ export function ParentDashboard() {
         }
     };
 
+    const handleConfirmedExport = async () => {
+        const exportType = pendingExport;
+        setPendingExport(null);
+        if (exportType === 'image') await handleExportImage();
+        if (exportType === 'pdf') await handleExportPdf();
+    };
+
     return (
         <>
             <button
@@ -751,8 +765,9 @@ export function ParentDashboard() {
                                             {repeatedAlert?.active && <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500" />}
                                         </button>
                                         <button
-                                            onClick={handleExportImage}
+                                            onClick={() => setPendingExport('image')}
                                             disabled={!hasHistory || isLoading || exporting !== null}
+                                            aria-describedby="report-export-privacy-summary"
                                             className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50"
                                         >
                                             {exporting === 'image' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
@@ -855,6 +870,62 @@ export function ParentDashboard() {
                                         </Panel>
 
                                         <Panel title={isZh ? '学习事件' : 'Learning Events'} subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
+                                            {progressRewardSummary && progressRewardSummary.countedRewards > 0 && (
+                                                <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-left">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-sm font-black text-emerald-950">
+                                                            {isZh ? '学习进步奖励证据' : 'Learning Progress Reward Evidence'}
+                                                        </p>
+                                                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-emerald-700">
+                                                            +{progressRewardSummary.totalXp} XP · +{progressRewardSummary.totalGold} Gold
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                                        <MiniMetric
+                                                            label={isZh ? '强学习证据' : 'Strong evidence'}
+                                                            value={progressRewardSummary.strongEvidenceCount}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '防刷保护' : 'Protected attempts'}
+                                                            value={progressRewardSummary.protectedAttempts}
+                                                        />
+                                                    </div>
+                                                    <p className="mt-3 text-xs leading-relaxed text-emerald-800">
+                                                        {isZh
+                                                            ? '奖励只回溯到本机的复习、修复、独立提取和迁移证据；不作为掌握度、排名或最终评价。'
+                                                            : 'Rewards trace back only to local review, repair, independent-recall, and transfer evidence; they are not mastery, ranking, or final judgments.'}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {calibrationSummary && calibrationSummary.ratedAnswers > 0 && (
+                                                <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-left">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-sm font-black text-blue-950">
+                                                            {isZh ? '把握度校准信号' : 'Confidence Calibration Signals'}
+                                                        </p>
+                                                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-blue-700">
+                                                            {isZh
+                                                                ? `${calibrationSummary.ratedAnswers} 次可选自评`
+                                                                : `${calibrationSummary.ratedAnswers} optional ratings`}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                                        <MiniMetric
+                                                            label={isZh ? '高把握错误' : 'High-confidence errors'}
+                                                            value={calibrationSummary.highConfidenceErrors}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '低把握正确' : 'Low-confidence correct'}
+                                                            value={calibrationSummary.lowConfidenceCorrect}
+                                                        />
+                                                    </div>
+                                                    <p className="mt-3 text-xs leading-relaxed text-blue-800">
+                                                        {isZh
+                                                            ? '仅用于选择复盘重点，不参与掌握度、排名或最终评价。'
+                                                            : 'Used only to prioritize review; it does not affect mastery, ranking, or final judgments.'}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {learningEvents.length > 0 ? (
                                                 <div className="space-y-4">
                                                     {learningEvents.map((event) => (
@@ -992,17 +1063,38 @@ export function ParentDashboard() {
                                     </section>
 
                                     <div className="mt-5 flex flex-wrap gap-3">
+                                        <div
+                                            id="report-export-privacy-summary"
+                                            data-export-private="true"
+                                            className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                                                <div>
+                                                    <p className="font-black">
+                                                        {isZh ? '导出前请检查隐私' : 'Check privacy before exporting'}
+                                                    </p>
+                                                    <p className="mt-1 leading-relaxed text-amber-900/80">
+                                                        {isZh
+                                                            ? '导出只包含聚合指标和受控学习分类，不包含原文、题目、答案、错题文本、任务标题或 API Key。文件会离开浏览器本地存储，分享前仍需人工检查。'
+                                                            : 'Exports include aggregate metrics and controlled learning categories only. Source text, questions, answers, mistake text, mission/task titles, and API keys are excluded. The file leaves browser-local storage, so review it before sharing.'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <button
-                                            onClick={handleExportImage}
+                                            onClick={() => setPendingExport('image')}
                                             disabled={!hasHistory || isLoading || exporting !== null}
+                                            aria-describedby="report-export-privacy-summary"
                                             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
                                         >
                                             <Download className="h-4 w-4" />
                                             {t.dashboard.exportImage}
                                         </button>
                                         <button
-                                            onClick={handleExportPdf}
+                                            onClick={() => setPendingExport('pdf')}
                                             disabled={!hasHistory || isLoading || exporting !== null}
+                                            aria-describedby="report-export-privacy-summary"
                                             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"
                                         >
                                             <Printer className="h-4 w-4" />
@@ -1030,7 +1122,6 @@ export function ParentDashboard() {
                                     masteryAverage={masteryAverage}
                                     profileLevelHelper={profileLevelHelper}
                                     completedMissions={completedMissions}
-                                    latestMission={latestMission}
                                     totalQuestions={snapshot?.totals.total || 0}
                                     correctQuestions={snapshot?.totals.correct || 0}
                                     averageAccuracy={averageAccuracy}
@@ -1049,10 +1140,113 @@ export function ParentDashboard() {
                                 />
                             </div>
                         )}
+                        {pendingExport && (
+                            <ReportExportPrivacyDialog
+                                exportType={pendingExport}
+                                isZh={isZh}
+                                onCancel={() => setPendingExport(null)}
+                                onConfirm={() => void handleConfirmedExport()}
+                            />
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
         </>
+    );
+}
+
+function ReportExportPrivacyDialog({
+    exportType,
+    isZh,
+    onCancel,
+    onConfirm
+}: {
+    exportType: 'image' | 'pdf';
+    isZh: boolean;
+    onCancel: () => void;
+    onConfirm: () => void;
+}) {
+    const [acknowledged, setAcknowledged] = useState(false);
+    const actionLabel = exportType === 'image'
+        ? (isZh ? '创建 PNG 报告' : 'Create PNG report')
+        : (isZh ? '打开打印 / PDF' : 'Open print / PDF');
+
+    return (
+        <div
+            className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/70 p-4"
+            onClick={onCancel}
+        >
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="report-export-privacy-title"
+                className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 text-slate-950 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="flex items-start gap-3">
+                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-700">
+                        <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <h2 id="report-export-privacy-title" className="text-xl font-black">
+                            {isZh ? '确认报告导出隐私' : 'Confirm report export privacy'}
+                        </h2>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                            {isZh
+                                ? '这不是完整学习数据备份。报告经过少披露处理，但下载或打印后的文件可以被复制、同步或公开分享。'
+                                : 'This is not a full learning-data backup. The report is privacy-minimized, but a downloaded or printed file can still be copied, synced, or shared publicly.'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                        <p className="font-black text-emerald-900">{isZh ? '包含' : 'Included'}</p>
+                        <p className="mt-1 leading-relaxed text-emerald-800">
+                            {isZh ? '聚合掌握度、正确率、数量、复习状态和受控学习分类。' : 'Aggregate mastery, accuracy, counts, review status, and controlled learning categories.'}
+                        </p>
+                    </div>
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm">
+                        <p className="font-black text-blue-900">{isZh ? '已排除' : 'Excluded'}</p>
+                        <p className="mt-1 leading-relaxed text-blue-800">
+                            {isZh ? '原文、题目、答案、错题、任务标题、自由文本和凭据。' : 'Source text, questions, answers, mistakes, titles, free text, and credentials.'}
+                        </p>
+                    </div>
+                </div>
+
+                <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 text-sm font-semibold text-slate-700">
+                    <input
+                        type="checkbox"
+                        checked={acknowledged}
+                        onChange={(event) => setAcknowledged(event.target.checked)}
+                        className="mt-0.5 h-4 w-4"
+                    />
+                    <span>
+                        {isZh
+                            ? '我知道文件将离开浏览器本地存储，并会在分享前检查其中是否仍有隐私信息。'
+                            : 'I understand this file leaves browser-local storage, and I will review it for private information before sharing.'}
+                    </span>
+                </label>
+
+                <div className="mt-5 flex justify-end gap-3">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+                    >
+                        {isZh ? '取消' : 'Cancel'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={!acknowledged}
+                        className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {actionLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -1064,7 +1258,6 @@ function ExportReportSnapshot({
     masteryAverage,
     profileLevelHelper,
     completedMissions,
-    latestMission,
     totalQuestions,
     correctQuestions,
     averageAccuracy,
@@ -1088,7 +1281,6 @@ function ExportReportSnapshot({
     masteryAverage: number;
     profileLevelHelper: string;
     completedMissions: number;
-    latestMission: string;
     totalQuestions: number;
     correctQuestions: number;
     averageAccuracy: number;
@@ -1162,7 +1354,7 @@ function ExportReportSnapshot({
                         <ExportStatCard
                             label={isZh ? '完成任务' : 'Missions'}
                             value={formatNumber(completedMissions)}
-                            helper={latestMission}
+                            helper={isZh ? '仅导出任务数量，不包含任务标题' : 'Mission titles are excluded from exports'}
                             icon={Trophy}
                             tone="amber"
                         />
@@ -1245,7 +1437,7 @@ function ExportReportSnapshot({
 
                         <ExportSection
                             title={isZh ? '今晚建议' : 'Recommended Next Actions'}
-                            subtitle={dailyPracticePlan ? practicePlanRationaleText(dailyPracticePlan, isZh) : (isZh ? '基于近期证据生成' : 'Based on recent evidence')}
+                            subtitle={isZh ? '基于本机聚合证据生成；原题和原文不导出' : 'Based on aggregate local evidence; source text and questions are excluded'}
                             icon={Sparkles}
                             badge={dailyPracticePlan ? `${dailyPracticePlan.estimatedMinutes}m` : undefined}
                         >
@@ -1253,14 +1445,14 @@ function ExportReportSnapshot({
                                 <div className="mb-4 flex flex-wrap gap-2">
                                     {dailyPracticePlan.evidence.slice(0, 3).map((row, index) => (
                                         <span key={`${row.label}-${index}`} className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                                            {practicePlanEvidenceLabel(row.label, isZh)}: {practicePlanEvidenceValue(row, isZh)}
+                                            {practicePlanEvidenceLabel(row.label, isZh)}: {exportPracticeEvidenceValue(row, isZh)}
                                         </span>
                                     ))}
                                 </div>
                             )}
                             <div className="space-y-3">
                                 {visibleActions.map((action) => (
-                                    <ExportActionRow key={action.id} action={action} />
+                                    <ExportActionRow key={action.id} action={action} isZh={isZh} />
                                 ))}
                             </div>
                         </ExportSection>
@@ -1387,7 +1579,7 @@ function ExportSkillRow({ row, tone, isZh }: { row: SkillAccuracyRow; tone: Tone
     return (
         <div className="grid grid-cols-[minmax(0,1fr)_190px_48px] items-center gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
             <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(row.skill, isZh)}</p>
+                <p className="truncate text-sm font-black text-slate-900">{exportObjectiveLabel(row.skill, isZh)}</p>
                 <p className="text-xs font-semibold text-slate-500">{row.correct}/{row.total} {isZh ? '正确' : 'correct'}</p>
             </div>
             <div className="h-2.5 rounded-full bg-slate-100">
@@ -1412,8 +1604,10 @@ function ExportReviewRow({ card, index, isZh }: { card: FSRSCard; index: number;
                 <BookOpen className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-slate-900">{formatSkillLabel(card.skillTag || card.type || 'review', isZh)}</p>
-                <p className="truncate text-xs font-semibold text-slate-500">{card.question}</p>
+                <p className="truncate text-sm font-black text-slate-900">{exportObjectiveLabel(card.skillTag || card.type || 'review', isZh)}</p>
+                <p className="truncate text-xs font-semibold text-slate-500">
+                    {isZh ? '题目原文已从导出中排除' : 'Question text excluded from export'}
+                </p>
             </div>
             <div className="shrink-0 text-right">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-black ${priorityToneClass(priority)}`}>{priority}</span>
@@ -1456,19 +1650,38 @@ function ExportDailyTrend({ rows, isZh }: { rows: DailyAccuracyRow[]; isZh: bool
     );
 }
 
-function ExportActionRow({ action }: { action: TonightActionItem; }) {
+function ExportActionRow({ action, isZh }: { action: TonightActionItem; isZh: boolean; }) {
+    const description = exportActionDescription(action.id, isZh);
     return (
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-sm font-black text-slate-900">{action.title}</p>
-                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{action.description}</p>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{description}</p>
                 </div>
                 <PriorityBadge priority={action.priority} />
             </div>
             <p className="mt-2 text-xs font-black text-slate-600">{action.evidence}</p>
         </div>
     );
+}
+
+function exportObjectiveLabel(value: string, isZh: boolean) {
+    const objectiveId = mapSkillTagToObjectiveId({ skillTag: value, type: value });
+    return objectiveTitle(objectiveId, isZh ? 'zh' : 'en');
+}
+
+function exportActionDescription(actionId: string, isZh: boolean) {
+    if (actionId === 'targeted_pack') {
+        return isZh ? '完成一组针对近期重复错误类型的练习。' : 'Complete a short practice set for a recent repeated error type.';
+    }
+    if (actionId === 'srs_focus') {
+        return isZh ? '优先完成到期复习，降低遗忘风险。' : 'Prioritize due reviews to reduce forgetting risk.';
+    }
+    if (actionId === 'questline_push') {
+        return isZh ? '完成一个短学习任务，保持练习节奏。' : 'Complete one short learning task to maintain practice rhythm.';
+    }
+    return isZh ? '根据聚合学习证据安排短练习。' : 'Use aggregate learning evidence to schedule a short practice.';
 }
 
 function ExportMiniMetric({ label, value }: { label: string; value: string | number; }) {
@@ -2066,6 +2279,14 @@ function practicePlanEvidenceValue(row: PracticePlanEvidence, isZh: boolean) {
     if (row.source === 'task') return row.value.replace(' - ', ' · ');
     if (row.source === 'starter') return '先收集第一轮本地学习证据';
     return row.value;
+}
+
+function exportPracticeEvidenceValue(row: PracticePlanEvidence, isZh: boolean) {
+    if (row.source === 'srs') return isZh ? '存在到期复习项目' : 'Due review items detected';
+    if (row.source === 'mistake') return isZh ? '存在近期错误信号' : 'Recent error signals detected';
+    if (row.source === 'mastery') return isZh ? '掌握状态需要短练习' : 'Mastery state needs short practice';
+    if (row.source === 'task') return isZh ? '存在进行中的学习任务' : 'An active learning task is available';
+    return isZh ? '正在建立本机学习基线' : 'Building a local learning baseline';
 }
 
 function formatPercent(value: number) {

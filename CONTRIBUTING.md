@@ -44,6 +44,8 @@ Before posting:
 4. Update documentation when behavior or setup changes.
 5. Run `npm run lint`, `npm test`, and `npm run build`.
 
+For report or screenshot changes, also verify that the exported artifact contains only aggregate evidence and controlled learning-objective categories. Raw study text, questions, answers, mission/task titles, and mistake evidence must remain local and must be covered by a synthetic regression test.
+
 ## Coding Style
 
 - Follow the existing TypeScript, React, and Zustand patterns.
@@ -89,6 +91,14 @@ Update the README, roadmap, TODO, or inline documentation when a change affects:
 - Prompts and tests must use synthetic or generic examples.
 - Do not send identifiable children, school rosters, private records, or sensitive student data to an AI provider.
 - Keep fallback behavior graceful when API calls fail, time out, or hit rate limits.
+
+See [docs/PRIVACY_AND_AI_SAFETY.md](docs/PRIVACY_AND_AI_SAFETY.md) for the full privacy and AI safety checklist.
+
+Use [docs/GENERATED_CONTENT_EVAL.md](docs/GENERATED_CONTENT_EVAL.md) when changing prompts, question generation, hints, explanations, distractors, or mission sanitization.
+
+## Codex and Agentic Contributions
+
+Agentic coding tools are welcome when they follow the repository rules in [AGENTS.md](AGENTS.md). Codex-specific review, triage, release, and test-expansion prompts are documented in [docs/CODEX_WORKFLOWS.md](docs/CODEX_WORKFLOWS.md).
 
 ## Privacy Rule
 

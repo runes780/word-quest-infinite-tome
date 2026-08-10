@@ -5,6 +5,18 @@ describe('model options', () => {
         expect(getDefaultModelForProvider('deepseek')).toBe('deepseek-v4-flash');
     });
 
+    test('defaults OpenAI maintainer experiments to the cost-sensitive Luna model', () => {
+        expect(getDefaultModelForProvider('openai')).toBe('gpt-5.6-luna');
+        expect(buildModelOptions({
+            provider: 'openai',
+            remoteModels: [],
+            freeOnly: true
+        })).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: 'gpt-5.6-luna' }),
+            expect.objectContaining({ id: 'gpt-5.6' })
+        ]));
+    });
+
     test('offers official DeepSeek choices before the remote model list is loaded', () => {
         const options = buildModelOptions({
             provider: 'deepseek',

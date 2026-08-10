@@ -1,8 +1,8 @@
 # Word Quest: Infinite Tome 路线图（2026）
 
-> 基线日期：2026-02-08  
+> 基线日期：2026-07-15
 > 适用对象：产品、研发、教学设计、数据分析  
-> 当前版本：v1.1-dev（学习闭环与数据一致性已完成第一轮）
+> 当前版本：0.1.0 pre-release（学习闭环、题目质量与本地隐私基线）
 
 ---
 
@@ -199,6 +199,7 @@
 - 已启动架构拆分第二阶段：`gameStore` 抽离 `economyRewards`（relic 配置、掉落保底、XP/Gold 增益、成长结算）模块。
 - 已启动架构拆分第三阶段：`gameStore` 抽离会话恢复存取到 `sessionRecovery` 模块，主 store 不再内联 localStorage 细节。
 - 已启动架构拆分第四阶段：`gameStore` 抽离答题战斗结算纯逻辑到 `combatResolution` 模块，并补齐模块级单测。
+- 已完成领域 slice 基线：learning、combat、economy 分别拥有领域内状态和动作；跨域答题、结算、恢复流程保留在可审阅的编排层。
 
 ### 目标
 - 为后续账号体系、班级协作、多端同步打好基础。
@@ -298,3 +299,28 @@ globalLevel 1–2（识别 / 拼写）→ 3 级解锁 listen 🔓 → 5 级解�
 ### 关联文档
 - 设计 spec：`docs/superpowers/specs/2026-06-26-verb-progression-design.md`
 - 各阶段 plan：`docs/superpowers/plans/2026-06-27-verb-progression-p1-templates.md`、`2026-06-27-verb-progression-p2-listen-unlock.md`、`2026-06-28-verb-progression-p2b-build.md`、`2026-06-28-verb-progression-p4-codex.md`、`2026-06-28-verb-progression-p4b-lucky.md`
+
+## 7. 2026-07-15 工程基线与后续方向
+
+### 已完成基线
+
+- 题目生成升级为 `plan -> generate -> critique`，并在任何模型失败或不合格输出时回退到安全本地题包。
+- 题目计划、答案键、词汇难度、1T 语篇接地、阅读技能和不适龄内容均有确定性校验。
+- Playwright 覆盖“服务商失败 -> 本地回退 -> 6 题战斗 -> 学习证据落库 -> SRS 面板”，并纳入 CI。
+- 普通任务恢复为有限 6 题流程；无尽波次保留为未来显式开关能力。
+- 报告导出收紧为聚合指标和受控学习目标分类，排除原题、原文、任务标题、错题文本和任意表单值。
+- 建立 7 轴生成内容评测基线：结构、答案完整性、语篇接地、干扰项、支架、难度、安全；始终要求人工复核。
+- 建立可公开使用的合成学习夹具，禁止从浏览器配置或本机存储读取测试凭据。
+- 建立统一 AI Provider 适配层；DeepSeek/OpenRouter 保持兼容，OpenAI 维护者实验走 Responses API、`store=false` 与相同的本地安全回退。
+- 将生成内容离线评测扩展为 10 个合成正反例，覆盖叙事/步骤/说明材料与 easy/medium/hard，并按七个质量轴记录基准差值。
+- 增加 IndexedDB 全表版本化 JSON 备份/恢复：设置页隐私确认、v13→v14 补空兼容、未来/损坏格式拒绝、单事务全量替换与重载提示。
+- 为报告图片与打印/PDF 导出增加常驻隐私说明、包含/排除字段对照和逐次勾选确认；取消时不生成文件也不记录导出事件。
+- CI 升级到 Node 24 LTS，并对 GitHub Actions 采用完整 SHA 固定、只读令牌、并发取消、超时和显式生成内容评测门禁。
+- 将 `BattleInterface` 从 524 行缩减到 277 行：答题编排、导师触发规则、动画/音效、库存与通知均进入独立可测试模块，并清理卸载后的反馈定时器。
+- 将 `gameStore` 的答案学习证据编排统一为纯契约模块，确保 userAnswers、learningEvents、FSRS、objective/skill mastery 与 mistakes 共用同一题目元数据和结果，并以纯函数与 store 集成测试双层保护。
+
+### 下一阶段（需新里程碑）
+
+当前质量、隐私与可靠性收尾路线图已完成。云端同步、生产 AI 凭据代理、真实学习场景试点或高影响教学逻辑调整均需要单独的产品/隐私评审和新里程碑，不在本阶段静默开启。
+
+学习科学、游戏化与体验方向已完成专项审计，详见 [`docs/LEARNING_SCIENCE_UX_ROADMAP.md`](docs/LEARNING_SCIENCE_UX_ROADMAP.md)。M0“零阻力、本地优先学习入口”已实现；元认知校准、学习进步奖励、支架淡出和真实试点仍按独立里程碑推进，且不得绕过学习数据与隐私评审。

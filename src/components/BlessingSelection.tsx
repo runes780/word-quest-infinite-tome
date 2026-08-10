@@ -41,7 +41,7 @@ export interface BlessingEffect {
 
     // Educational effects
     hintRevealChance?: number;  // % chance to auto-reveal hint
-    wrongAnswerXp?: number;     // XP even on wrong answers (learning reward)
+    repairXpMultiplier?: number; // Bonus only after a successful error repair
     bonusForSpeed?: boolean;    // Bonus XP for fast answers
 
     // Negative trade-offs (for balance)
@@ -106,13 +106,13 @@ export const BLESSING_POOL: Blessing[] = [
     },
     {
         id: 'quick_learner',
-        name: 'Quick Learner',
-        nameZh: '快速学习者',
-        description: 'Gain 5 XP even on wrong answers. Mistakes are lessons.',
-        descriptionZh: '答错也能获得 5 经验值。错误也是学习。',
+        name: 'Repair Scholar',
+        nameZh: '修复学者',
+        description: '+25% XP after successfully repairing a mistake.',
+        descriptionZh: '错因修复成功后，获得的经验值 +25%。',
         icon: <BookOpen className="w-8 h-8" />,
         rarity: 'uncommon',
-        effect: { wrongAnswerXp: 5 }
+        effect: { repairXpMultiplier: 1.25 }
     },
     {
         id: 'intuition',

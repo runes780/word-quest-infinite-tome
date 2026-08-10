@@ -4,6 +4,7 @@ import { InputSection } from './InputSection';
 const startGame = jest.fn();
 const setSettingsOpen = jest.fn();
 const mockRecognizeImageText = jest.fn();
+let mockApiKey = 'test-key';
 
 jest.mock('next/image', () => ({
     __esModule: true,
@@ -35,7 +36,7 @@ jest.mock('@/store/gameStore', () => ({
 
 jest.mock('@/store/settingsStore', () => ({
     useSettingsStore: () => ({
-        apiKey: 'test-key',
+        apiKey: mockApiKey,
         apiProvider: 'openrouter',
         model: 'openai/gpt-4o-mini',
         setSettingsOpen,
@@ -98,6 +99,7 @@ describe('InputSection material intake', () => {
     beforeEach(() => {
         jest.useFakeTimers();
         jest.clearAllMocks();
+        mockApiKey = 'test-key';
         mockRecognizeImageText.mockResolvedValue('Mock OCR text from the textbook image.');
         global.URL.createObjectURL = jest.fn(() => 'blob:preview');
         global.URL.revokeObjectURL = jest.fn();
@@ -115,6 +117,33 @@ describe('InputSection material intake', () => {
         expect(screen.getByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...')).toBeInTheDocument();
         expect(screen.getByText('Paste, drag, or upload screenshots and notes. Image OCR runs locally; extracted text stays editable.')).toBeInTheDocument();
         expect(screen.queryByText('Or snap a photo of your textbook')).not.toBeInTheDocument();
+    });
+
+    test('lets a learner start a synthetic local quest without an API key', async () => {
+        mockApiKey = '';
+        render(<InputSection />);
+
+        expect(await screen.findByText('Local practice is ready')).toBeInTheDocument();
+        expect(screen.getByText(/nothing is sent to an AI provider/i)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Start local quest' }));
+
+        expect(startGame).toHaveBeenCalledWith(
+            expect.arrayContaining([expect.objectContaining({ question: expect.any(String) })]),
+            expect.stringContaining('Daily Learning Path'),
+            'battle'
+        );
+        expect(setSettingsOpen).not.toHaveBeenCalled();
+    });
+
+    test('keeps AI connection optional and explicitly opens settings on request', async () => {
+        mockApiKey = '';
+        render(<InputSection />);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Connect AI' }));
+
+        expect(setSettingsOpen).toHaveBeenCalledWith(true);
+        expect(startGame).not.toHaveBeenCalled();
     });
 
     test('accepts pasted image files and appends OCR text to the editable material', async () => {

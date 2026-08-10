@@ -179,7 +179,7 @@ function sanitizeContext(text: string): string {
   const internalFieldPattern = /^\s*["']?(?:id|type|skillTag|difficulty|questionMode|question|options|correct_index|correctIndex|correctAnswer|hint|explanation|learningObjectiveId|sourceContextSpan|supportLevel|attemptKind|causeTag|contextHash|level_title|monsters|apiProvider|apiKey|model|modelName|provider)["']?\s*[:=]/i;
   const uiLabelPattern = /^\s*(?:open guardian dashboard|guardian dashboard|ai learning companion|quick actions|system status|settings|open system status|open recommendations|open report trends|open mission follow-through|word quest|battle configuration|json only)\s*$/i;
   const jsonSyntaxPattern = /^\s*[{}\[\],]+\s*$/;
-  const providerConfigPattern = /\b(?:openrouter|deepseek|gemini|claude|api provider|model name|api key)\b/i;
+  const providerConfigPattern = /\b(?:openai|openrouter|deepseek|gemini|claude|api provider|model name|api key)\b/i;
 
   const keptLines = cleaned
     .split(/\r?\n/)
@@ -368,7 +368,7 @@ per plan item, following each item exactly. The plan is authoritative — do not
 
 # Output (strict JSON only)
 { "level_title": string, "monsters": [ {
-  "id": number (match the plan item index),
+  "id": number (match the plan item id),
   "type": "vocab" | "grammar" | "reading" (match item.domain),
   "skillTag": string,
   "difficulty": "easy" | "medium" | "hard" (match item.difficulty),
@@ -414,7 +414,7 @@ ${allowed.join(', ')}
 
 export function generateLevelFromPlanPrompt(plan: QuestionPlan): string {
     const items = plan.items.map((item: QuestionPlanItem, index: number) => ({
-        index,
+        id: index + 1,
         role: item.role,
         domain: item.domain,
         learningObjectiveId: item.learningObjectiveId,

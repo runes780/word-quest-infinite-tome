@@ -9,6 +9,7 @@ import {
     hashQuestion,
     logLearningEvent,
     LearningEventSource,
+    LearningEventSelfConfidence,
     SkillMasteryRecord,
     MasteryState,
     updateSkillMastery,
@@ -24,7 +25,6 @@ import {
     applyQuestionDefaults,
     applyLearningMetadataForSource,
     buildImmediateRepairQuestion,
-    buildRunObjectiveBonuses,
     expandBossGateQuestions,
     computeSkillPriority as computeSkillPriorityFromModule,
     findWeakSkill,
@@ -42,9 +42,7 @@ import {
     type PracticePlanRun
 } from '@/lib/data/practicePlanRunner';
 import {
-    loadInitialRevengeQueue,
     persistRevengeQueue,
-    sanitizeForQueue,
     type RevengeEntry
 } from '@/store/modules/revengeQueue';
 import {
@@ -67,6 +65,17 @@ import {
     loadSavedGameStateSnapshot,
     saveGameStateSnapshot
 } from '@/store/modules/sessionRecovery';
+import {
+    buildAnswerLearningEvidence,
+    buildUserAnswer
+} from '@/store/modules/answerLearningEvidence';
+import {
+    planLearningProgressReward,
+    type LearningProgressReward
+} from '@/lib/data/learningProgressRewards';
+import { createCombatSlice } from '@/store/slices/combatSlice';
+import { createLearningSlice } from '@/store/slices/learningSlice';
+import { createEconomySlice } from '@/store/slices/economySlice';
 
 // Achievement stats update helper
 let pendingAchievements: Achievement[] = [];
@@ -221,6 +230,10 @@ export interface UserAnswer {
     attemptKind?: AttemptKind;
     supportLevel?: SupportLevel;
     causeTag?: string;
+    selfConfidence?: LearningEventSelfConfidence;
+    questionHash?: string;
+    isImmediateRepair?: boolean;
+    progressReward?: LearningProgressReward;
 }
 
 export interface MasteryCelebration {
@@ -242,7 +255,7 @@ export interface RunObjectiveBonus {
     skillTag?: string;
 }
 
-interface GameState {
+export interface GameState {
     health: number;
     maxHealth: number;
     score: number;
@@ -282,15 +295,16 @@ interface GameState {
 
     // Actions
     startGame: (questions: Monster[], context: string, source?: LearningEventSource, practicePlanRun?: PracticePlanRun | null) => void;
-    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number }) => {
+    answerQuestion: (optionIndex: number, meta?: { userResponse?: string; responseLatencyMs?: number; selfConfidence?: LearningEventSelfConfidence }) => {
         correct: boolean;
         explanation: string;
         damageDealt: number;
         isCritical: boolean;
         isSuperEffective: boolean;
-        isLucky: boolean;
+        isLucky?: boolean;
         repairQueued?: boolean;
         feedbackFocus?: string;
+        progressReward: LearningProgressReward | null;
     };
     nextQuestion: () => void;
     addQuestions: (newQuestions: QuestionInput[]) => void;
@@ -319,43 +333,10 @@ interface GameState {
     clearPendingUnlock: () => void;
 }
 
-export const useGameStore = create<GameState>((set, get) => ({
-    health: 3,
-    maxHealth: 3,
-    score: 0,
-    questions: [],
-    currentIndex: 0,
-    isGameOver: false,
-    isVictory: false,
-
-    playerStats: {
-        level: 1,
-        xp: 0,
-        maxXp: 100,
-        streak: 0,
-        gold: 0
-    },
-    currentMonsterHp: 1,
-    context: '',
-    inventory: [],
-    userAnswers: [],
-    pendingRewards: [],
-    showRewardScreen: false,
-    skillStats: {},
-    revengeQueue: loadInitialRevengeQueue(),
-    bossShieldProgress: 0,
-    clarityEffect: null,
-    knowledgeCards: [],
-    rootFragments: 0,
-    sessionSource: 'battle',
-    questionStartedAt: Date.now(),
-    masteryBySkill: {},
-    reviewRiskBySkill: {},
-    recentMistakeBySkill: {},
-    masteryCelebrations: [],
-    runObjectiveBonuses: [],
-    activePracticePlanRun: null,
-    activePracticePlanStepId: null,
+export const useGameStore = create<GameState>()((set, get, store) => ({
+    ...createCombatSlice(set, get, store),
+    ...createLearningSlice(set, get, store),
+    ...createEconomySlice({ updateAchievementStats })(set, get, store),
     unlockedVerbs: ['recognize', 'recall'],
     pendingUnlock: [],
 
@@ -432,27 +413,35 @@ export const useGameStore = create<GameState>((set, get) => ({
         const { questions, currentIndex, health, maxHealth, score, playerStats, currentMonsterHp, userAnswers, skillStats, bossShieldProgress, inventory, questionStartedAt, sessionSource, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill } = get();
         const currentQuestion = questions[currentIndex];
         const isCorrect = optionIndex === currentQuestion.correct_index;
+        const answerResult = isCorrect ? 'correct' : 'wrong';
         const skillKey = getSkillKey(currentQuestion);
         const responseLatencyMs = meta?.responseLatencyMs ?? Math.max(0, Date.now() - questionStartedAt);
         const selectedOption = resolveSelectedOption(optionIndex, currentQuestion.options, meta?.userResponse);
+        const questionHash = hashQuestion(currentQuestion.question);
         const updatedSkillStats = buildUpdatedSkillStats(skillStats, skillKey, isCorrect);
 
         // Get active blessing effect
         const blessing = normalizeBlessingModifiers(getCurrentBlessingEffect());
-
-        // Record Answer
-        const newAnswer: UserAnswer = {
-            questionId: currentQuestion.id,
-            questionText: currentQuestion.question,
-            userChoice: selectedOption,
-            correctChoice: currentQuestion.options[currentQuestion.correct_index],
+        const plannedProgressReward = planLearningProgressReward({
+            source: sessionSource,
+            questionHash,
             isCorrect,
-            learningObjectiveId: currentQuestion.learningObjectiveId,
             attemptKind: currentQuestion.attemptKind,
             supportLevel: currentQuestion.supportLevel,
-            causeTag: currentQuestion.causeTag
-        };
-        set({ userAnswers: [...userAnswers, newAnswer] });
+            isImmediateRepair: currentQuestion.isImmediateRepair,
+            priorEvidence: userAnswers
+        });
+        let progressReward = plannedProgressReward?.counted
+            ? {
+                ...plannedProgressReward,
+                xp: Math.floor(
+                    applyXpBonus(plannedProgressReward.xp, inventory) *
+                    blessing.xpMultiplier *
+                    (plannedProgressReward.kind === 'repair-success' ? blessing.repairXpMultiplier : 1)
+                ),
+                gold: Math.floor(applyGoldBonus(plannedProgressReward.gold, inventory) * blessing.goldMultiplier)
+            }
+            : plannedProgressReward;
 
         let damageDealt = 0;
         let isCritical = false;
@@ -484,12 +473,19 @@ export const useGameStore = create<GameState>((set, get) => ({
             isCritical = combatOutcome.isCritical;
             isSuperEffective = combatOutcome.isSuperEffective;
             isLucky = combatOutcome.isLucky;
+            if (isLucky && progressReward?.counted) {
+                progressReward = {
+                    ...progressReward,
+                    xp: Math.floor(progressReward.xp * 1.5),
+                    gold: Math.floor(progressReward.gold * 1.5)
+                };
+            }
             nextBossShieldProgress = combatOutcome.nextBossShieldProgress;
             nextMonsterHp = combatOutcome.nextMonsterHp;
 
-            // XP Calculation with blessing multiplier
-            const xpBase = 20 + (isCritical ? 10 : 0);
-            const xpGain = Math.floor(applyXpBonus(xpBase, inventory) * blessing.xpMultiplier * (isLucky ? 1.5 : 1));
+            // Learning progress evidence determines XP and gold. Combat criticals
+            // still affect score and damage, but no longer inflate learning rewards.
+            const xpGain = progressReward?.xp || 0;
             let newXp = playerStats.xp + xpGain;
             let newLevel = playerStats.level;
             let newMaxXp = playerStats.maxXp;
@@ -503,9 +499,7 @@ export const useGameStore = create<GameState>((set, get) => ({
                 set({ health: maxHealth });
             }
 
-            // Gold calculation with blessing multiplier
-            const goldBase = 15 + (isCritical ? 10 : 0);
-            const goldGain = Math.floor(applyGoldBonus(goldBase, inventory) * blessing.goldMultiplier * (isLucky ? 1.5 : 1));
+            const goldGain = progressReward?.gold || 0;
             const newStreak = playerStats.streak + 1;
 
             set({
@@ -555,99 +549,6 @@ export const useGameStore = create<GameState>((set, get) => ({
                 get().syncUnlocksFromProfile(profile);
             }).catch(console.error);
 
-            logLearningEvent({
-                eventType: 'answer',
-                questionId: currentQuestion.id,
-                questionHash: hashQuestion(currentQuestion.question),
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                objectiveConfidence: currentQuestion.objectiveConfidence,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                causeTag: currentQuestion.causeTag,
-                mode: currentQuestion.questionMode,
-                result: 'correct',
-                hintUsed: false,
-                latencyMs: responseLatencyMs,
-                source: sessionSource
-            }).catch(console.error);
-
-            updateObjectiveMastery({
-                objectiveId: currentQuestion.learningObjectiveId,
-                skillTag: currentQuestion.skillTag,
-                type: currentQuestion.type,
-                question: currentQuestion.question,
-                result: 'correct',
-                mode: currentQuestion.questionMode,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                hintUsed: false,
-                latencyMs: responseLatencyMs
-            }).catch(console.error);
-
-            // Update FSRS card scheduling (mark as 'good' for correct answer)
-            const questionHash = hashQuestion(currentQuestion.question);
-            reviewCard(questionHash, isCritical ? 'easy' : 'good', {
-                question: currentQuestion.question,
-                options: currentQuestion.options,
-                correct_index: currentQuestion.correct_index,
-                type: currentQuestion.type,
-                explanation: currentQuestion.explanation,
-                hint: currentQuestion.hint,
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                questionMode: currentQuestion.questionMode,
-                correctAnswer: currentQuestion.correctAnswer
-            }).catch(console.error);
-
-            updateSkillMastery(skillKey, 'correct')
-                .then((record) => {
-                    const previousState = masteryBySkill[skillKey]?.state || 'new';
-                    const upgraded = isMasteryUpgrade(previousState, record.state);
-                    const rewardPayload = upgraded ? masteryBonusByState[record.state] : null;
-                    const celebration: MasteryCelebration | null = rewardPayload
-                        ? {
-                            id: `mastery_${skillKey}_${Date.now()}`,
-                            skillTag: skillKey,
-                            fromState: previousState,
-                            toState: record.state,
-                            bonusXp: rewardPayload.xp,
-                            bonusGold: rewardPayload.gold,
-                            timestamp: Date.now()
-                        }
-                        : null;
-
-                    set((state) => ({
-                        masteryBySkill: {
-                            ...state.masteryBySkill,
-                            [skillKey]: record
-                        },
-                        ...(rewardPayload && celebration
-                            ? {
-                                playerStats: applyProgressionReward(state.playerStats, rewardPayload.xp, rewardPayload.gold),
-                                masteryCelebrations: [...state.masteryCelebrations, celebration]
-                            }
-                            : {})
-                    }));
-                    if (rewardPayload) {
-                        updateAchievementStats({
-                            totalGoldEarned: rewardPayload.gold,
-                            totalXpEarned: rewardPayload.xp
-                        });
-                        updatePlayerProfile({
-                            totalXp: rewardPayload.xp,
-                            totalGold: rewardPayload.gold,
-                            dailyXpEarned: rewardPayload.xp
-                        }).then((profile) => {
-                            // P2: sync newly-unlocked verbs from profile
-                            get().syncUnlocksFromProfile(profile);
-                        }).catch(console.error);
-                    }
-                })
-                .catch(console.error);
-
             // Blessing: Heal on streak threshold (e.g., Vampiric Wisdom)
             if (blessing.healOnCorrectThreshold > 0 && blessing.healAmount > 0 && newStreak % blessing.healOnCorrectThreshold === 0) {
                 get().heal(blessing.healAmount);
@@ -664,7 +565,6 @@ export const useGameStore = create<GameState>((set, get) => ({
                 playerXp: playerStats.xp,
                 damageTakenMultiplier: blessing.damageTakenMultiplier,
                 goldPenalty: blessing.goldPenalty,
-                wrongAnswerXp: blessing.wrongAnswerXp,
                 isBoss: Boolean(currentQuestion.isBoss),
                 bossShieldProgress
             });
@@ -702,83 +602,87 @@ export const useGameStore = create<GameState>((set, get) => ({
                 }
             });
 
-            logMistake({
-                questionId: currentQuestion.id,
-                questionText: currentQuestion.question,
-                wrongAnswer: selectedOption,
-                correctAnswer: currentQuestion.options[currentQuestion.correct_index],
-                explanation: currentQuestion.explanation,
-                options: currentQuestion.options,
-                correctIndex: currentQuestion.correct_index,
-                type: currentQuestion.type,
-                skillTag: currentQuestion.skillTag
-            });
-
             // Track achievement stats for wrong answer
             updateAchievementStats({
                 totalWrong: 1,
                 totalQuestions: 1,
                 currentStreak: 0,
             });
-
-            // Update FSRS card scheduling (mark as 'again' for wrong answer)
-            const questionHash = hashQuestion(currentQuestion.question);
-            reviewCard(questionHash, 'again', {
-                question: currentQuestion.question,
-                options: currentQuestion.options,
-                correct_index: currentQuestion.correct_index,
-                type: currentQuestion.type,
-                explanation: currentQuestion.explanation,
-                hint: currentQuestion.hint,
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                questionMode: currentQuestion.questionMode,
-                correctAnswer: currentQuestion.correctAnswer
-            }).catch(console.error);
-
-            updateSkillMastery(skillKey, 'wrong')
-                .then((record) => {
-                    set((state) => ({
-                        masteryBySkill: {
-                            ...state.masteryBySkill,
-                            [skillKey]: record
-                        }
-                    }));
-                })
-                .catch(console.error);
-
-            logLearningEvent({
-                eventType: 'answer',
-                questionId: currentQuestion.id,
-                questionHash: hashQuestion(currentQuestion.question),
-                skillTag: currentQuestion.skillTag,
-                learningObjectiveId: currentQuestion.learningObjectiveId,
-                objectiveConfidence: currentQuestion.objectiveConfidence,
-                sourceContextSpan: currentQuestion.sourceContextSpan,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                causeTag: currentQuestion.causeTag,
-                mode: currentQuestion.questionMode,
-                result: 'wrong',
-                hintUsed: false,
-                latencyMs: responseLatencyMs,
-                source: sessionSource
-            }).catch(console.error);
-
-            updateObjectiveMastery({
-                objectiveId: currentQuestion.learningObjectiveId,
-                skillTag: currentQuestion.skillTag,
-                type: currentQuestion.type,
-                question: currentQuestion.question,
-                result: 'wrong',
-                mode: currentQuestion.questionMode,
-                attemptKind: currentQuestion.attemptKind,
-                supportLevel: currentQuestion.supportLevel,
-                hintUsed: false,
-                latencyMs: responseLatencyMs
-            }).catch(console.error);
         }
+
+        const newAnswer = buildUserAnswer({
+            question: currentQuestion,
+            selectedOption,
+            result: answerResult,
+            selfConfidence: meta?.selfConfidence,
+            questionHash,
+            progressReward
+        });
+        set((state) => ({ userAnswers: [...state.userAnswers, newAnswer] }));
+
+        const evidence = buildAnswerLearningEvidence({
+            question: currentQuestion,
+            selectedOption,
+            result: answerResult,
+            questionHash,
+            responseLatencyMs,
+            source: sessionSource,
+            isCritical,
+            selfConfidence: meta?.selfConfidence,
+            progressReward
+        });
+        if (evidence.mistake) {
+            void logMistake(evidence.mistake);
+        }
+        reviewCard(
+            evidence.review.questionHash,
+            evidence.review.rating,
+            evidence.review.questionData
+        ).catch(console.error);
+        logLearningEvent(evidence.learningEvent).catch(console.error);
+        updateObjectiveMastery(evidence.objectiveMastery).catch(console.error);
+        updateSkillMastery(skillKey, evidence.masteryResult)
+            .then((record) => {
+                const previousState = masteryBySkill[skillKey]?.state || 'new';
+                const upgraded = isCorrect && isMasteryUpgrade(previousState, record.state);
+                const rewardPayload = upgraded ? masteryBonusByState[record.state] : null;
+                const celebration: MasteryCelebration | null = rewardPayload
+                    ? {
+                        id: `mastery_${skillKey}_${Date.now()}`,
+                        skillTag: skillKey,
+                        fromState: previousState,
+                        toState: record.state,
+                        bonusXp: rewardPayload.xp,
+                        bonusGold: rewardPayload.gold,
+                        timestamp: Date.now()
+                    }
+                    : null;
+
+                set((state) => ({
+                    masteryBySkill: {
+                        ...state.masteryBySkill,
+                        [skillKey]: record
+                    },
+                    ...(rewardPayload && celebration
+                        ? {
+                            playerStats: applyProgressionReward(state.playerStats, rewardPayload.xp, rewardPayload.gold),
+                            masteryCelebrations: [...state.masteryCelebrations, celebration]
+                        }
+                        : {})
+                }));
+                if (rewardPayload) {
+                    updateAchievementStats({
+                        totalGoldEarned: rewardPayload.gold,
+                        totalXpEarned: rewardPayload.xp
+                    });
+                    updatePlayerProfile({
+                        totalXp: rewardPayload.xp,
+                        totalGold: rewardPayload.gold,
+                        dailyXpEarned: rewardPayload.xp
+                    }).catch(console.error);
+                }
+            })
+            .catch(console.error);
 
         return {
             correct: isCorrect,
@@ -788,130 +692,9 @@ export const useGameStore = create<GameState>((set, get) => ({
             isSuperEffective,
             isLucky,
             repairQueued,
-            feedbackFocus: repairQueued ? 'immediate_repair' : undefined
+            feedbackFocus: repairQueued ? 'immediate_repair' : undefined,
+            progressReward
         };
-    },
-
-    addQuestions: (newQuestions) => {
-        const { questions } = get();
-        // Process new questions to add RPG stats
-        const { sessionSource, masteryBySkill } = get();
-        const processedQuestions = newQuestions.map((q, idx) => {
-            const prepared = applyQuestionDefaults(q, questions.length + idx);
-            return applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)]);
-        });
-        // choice->listen flip applied after processing (operates on Monster[], type-safe);
-        // index basis is identical to the input order.
-        const flipped = applyUnlockedVerbs(processedQuestions, get().unlockedVerbs);
-        const built = applyBuildVerb(flipped, get().unlockedVerbs);
-        set({ questions: [...questions, ...built] });
-    },
-
-    nextQuestion: () => {
-        const { currentIndex, questions, currentMonsterHp } = get();
-        const currentQuestion = questions[currentIndex];
-        if (currentQuestion?.isBoss && currentMonsterHp > 0) {
-            return;
-        }
-
-        // Boss gates are expanded into three distinct encounters before the run starts.
-
-        if (currentIndex < questions.length - 1) {
-            const nextIndex = currentIndex + 1;
-            const nextMonster = questions[nextIndex];
-            set({
-                currentIndex: nextIndex,
-                currentMonsterHp: nextMonster.hp || 1,
-                bossShieldProgress: 0,
-                clarityEffect: null,
-                questionStartedAt: Date.now()
-            });
-        } else {
-            // Endless Mode Trigger would go here
-            set({ isVictory: true });
-        }
-    },
-
-    injectQuestion: (question) => {
-        const { questions, currentIndex } = get();
-        const newQuestions = [...questions];
-        const prepared = applyQuestionDefaults(question, currentIndex + 1);
-        const { sessionSource, masteryBySkill } = get();
-        newQuestions.splice(
-            currentIndex + 1,
-            0,
-            applyLearningMetadataForSource(prepared, sessionSource, masteryBySkill[getSkillKey(prepared)])
-        );
-        set({ questions: newQuestions });
-    },
-
-    heal: (amount) => set((state) => ({
-        health: Math.min(state.health + amount, state.maxHealth)
-    })),
-
-    addGold: (amount) => set((state) => ({
-        playerStats: { ...state.playerStats, gold: state.playerStats.gold + applyGoldBonus(amount, state.inventory) }
-    })),
-
-    spendGold: (amount) => {
-        const { playerStats } = get();
-        if (playerStats.gold >= amount) {
-            set({ playerStats: { ...playerStats, gold: playerStats.gold - amount } });
-            return true;
-        }
-        return false;
-    },
-
-    addItem: (item) => {
-        set((state) => ({
-            inventory: [...state.inventory, item]
-        }));
-        if (item.type.startsWith('relic_')) {
-            const nextInventory = [...get().inventory];
-            const uniqueRelics = new Set(nextInventory.filter((entry) => entry.type.startsWith('relic_')).map((entry) => entry.type)).size;
-            updateAchievementStats({ relicsOwned: uniqueRelics });
-        }
-    },
-
-    useItem: (itemId) => {
-        const { inventory, health, maxHealth, questions, currentIndex, clarityEffect } = get();
-        const itemIndex = inventory.findIndex(i => i.id === itemId);
-        if (itemIndex === -1) return;
-
-        const item = inventory[itemIndex];
-        let consumed = false;
-
-        if (item.type === 'potion_health') {
-            if (health < maxHealth) {
-                set({ health: Math.min(health + 1, maxHealth) });
-                consumed = true;
-            }
-        } else if (item.type === 'potion_clarity') {
-            const currentQuestion = questions[currentIndex];
-            if (currentQuestion) {
-                const alreadyApplied = clarityEffect && clarityEffect.questionId === currentQuestion.id;
-                if (!alreadyApplied) {
-                    const wrongIndexes = currentQuestion.options
-                        .map((_, idx) => idx)
-                        .filter(idx => idx !== currentQuestion.correct_index);
-                    if (wrongIndexes.length > 0) {
-                        const shuffled = [...wrongIndexes].sort(() => Math.random() - 0.5);
-                        const hidden = shuffled.slice(0, Math.min(2, shuffled.length));
-                        set({ clarityEffect: { questionId: currentQuestion.id, hiddenOptions: hidden } });
-                        consumed = true;
-                    }
-                }
-            }
-        }
-
-        if (consumed) {
-            const newInventory = [...inventory];
-            newInventory.splice(itemIndex, 1);
-            set({ inventory: newInventory });
-            if (item.type === 'potion_health' || item.type === 'potion_clarity') {
-                updateAchievementStats({ potionsUsed: 1 });
-            }
-        }
     },
 
     resetGame: () => set((state) => ({
@@ -1109,7 +892,6 @@ export const useGameStore = create<GameState>((set, get) => ({
         });
     },
 
-    closeRewardScreen: () => set({ showRewardScreen: false, pendingRewards: [] }),
     recordHintUsed: () => {
         updateAchievementStats({ hintsUsed: 1 });
         const state = get();
@@ -1147,28 +929,10 @@ export const useGameStore = create<GameState>((set, get) => ({
             vocabMastered,
             grammarMastered
         });
-        const objectiveBonuses = buildRunObjectiveBonuses(state.sessionSource, state.skillStats, state.userAnswers);
-        if (objectiveBonuses.length > 0) {
-            const totalObjectiveXp = objectiveBonuses.reduce((sum, bonus) => sum + bonus.xp, 0);
-            const totalObjectiveGold = objectiveBonuses.reduce((sum, bonus) => sum + bonus.gold, 0);
-            set((current) => ({
-                playerStats: applyProgressionReward(current.playerStats, totalObjectiveXp, totalObjectiveGold),
-                runObjectiveBonuses: objectiveBonuses
-            }));
-            updateAchievementStats({
-                totalGoldEarned: totalObjectiveGold,
-                totalXpEarned: totalObjectiveXp
-            });
-            updatePlayerProfile({
-                totalXp: totalObjectiveXp,
-                totalGold: totalObjectiveGold,
-                dailyXpEarned: totalObjectiveXp
-            }).then((profile) => {
-                get().syncUnlocksFromProfile(profile);
-            }).catch(console.error);
-        } else {
-            set({ runObjectiveBonuses: [] });
-        }
+        // Per-answer progress rewards already account for review, repair and
+        // transfer evidence. Do not grant a second end-of-run payout for the
+        // same evidence.
+        set({ runObjectiveBonuses: [] });
         const activeStep = currentPracticePlanStep(state.activePracticePlanRun);
         if (state.activePracticePlanRun && activeStep?.id === state.activePracticePlanStepId) {
             set({
@@ -1201,17 +965,6 @@ export const useGameStore = create<GameState>((set, get) => ({
             }
         }).catch(console.error);
     },
-    addToRevengeQueue: (question) => {
-        set((state) => {
-            const entry = sanitizeForQueue(question);
-            const exists = state.revengeQueue.some((q) => q.question === entry.question && q.correct_index === entry.correct_index);
-            if (exists) return state;
-            const updated = [...state.revengeQueue, entry].slice(-10);
-            persistRevengeQueue(updated);
-            return { revengeQueue: updated };
-        });
-    },
-
     // Error Recovery Methods
     hasSavedGame: () => {
         const saved = loadSavedGameStateSnapshot<Monster, PlayerStats, Item, KnowledgeCard, LearningEventSource>();
@@ -1295,10 +1048,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     clearSavedGame: () => {
         clearSavedGameStateSnapshot();
     },
-
-    dismissMasteryCelebration: (id) => set((state) => ({
-        masteryCelebrations: state.masteryCelebrations.filter((entry) => entry.id !== id)
-    })),
 
     // P2: silent set of unlocked verbs (used at profile load — no toast)
     setUnlockedVerbs: (verbs: Verb[]) => set({ unlockedVerbs: verbs }),
