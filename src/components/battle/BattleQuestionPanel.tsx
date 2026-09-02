@@ -243,7 +243,7 @@ export function BattleQuestionPanel({
                         }
                     />
                 ) : (!currentQuestion.questionMode || currentQuestion.questionMode === 'choice') ? (
-                    <div className="grid grid-cols-1 gap-3">
+                    <div data-testid="choice-options" className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                         {currentQuestion.options.map((option, index) => {
                             const clarityDisabled = !!(clarityEffect && clarityEffect.questionId === currentQuestion.id && clarityEffect.hiddenOptions.includes(index));
                             return (
@@ -255,7 +255,7 @@ export function BattleQuestionPanel({
                                     onClick={() => onChoiceSelect(index)}
                                     disabled={showResult || clarityDisabled}
                                     className={cn(
-                                        "w-full p-4 rounded-xl border-2 text-left font-medium transition-all relative overflow-hidden group hover:shadow-md hover:scale-[1.02]",
+                                        "w-full rounded-xl border-2 p-4 text-left font-medium transition-all relative overflow-hidden group hover:shadow-md hover:scale-[1.02] xl:p-3",
                                         clarityDisabled && "opacity-40 pointer-events-none grayscale",
                                         selectedOption === index
                                             ? isCorrect

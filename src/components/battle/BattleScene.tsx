@@ -95,6 +95,7 @@ export function BattleScene({
                                 alt={heroAsset.alt}
                                 width={220}
                                 height={220}
+                                loading="eager"
                                 sizes="160px"
                                 className="h-[118%] w-[118%] object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.35)]"
                                 draggable={false}
@@ -162,6 +163,7 @@ export function BattleScene({
                                 alt={monsterAsset.alt}
                                 width={220}
                                 height={220}
+                                loading="eager"
                                 sizes="160px"
                                 className="relative z-10 h-[118%] w-[118%] object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.4)] transform hover:scale-110 transition-transform duration-300"
                                 draggable={false}

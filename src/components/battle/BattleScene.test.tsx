@@ -39,8 +39,12 @@ describe('BattleScene art assets', () => {
             />
         );
 
-        expectImageSrc(screen.getByAltText(/hero/i), '/assets/battle/hero-book-knight.png');
-        expectImageSrc(screen.getByAltText(/vocab/i), '/assets/battle/monster-vocab.png');
+        const hero = screen.getByAltText(/hero/i);
+        const monster = screen.getByAltText(/vocab/i);
+        expectImageSrc(hero, '/assets/battle/hero-book-knight.png');
+        expectImageSrc(monster, '/assets/battle/monster-vocab.png');
+        expect(hero).toHaveAttribute('loading', 'eager');
+        expect(monster).toHaveAttribute('loading', 'eager');
     });
 
     test('renders image-backed attack effect when the answer is correct', () => {

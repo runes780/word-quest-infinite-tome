@@ -187,7 +187,7 @@ export function BattleInterface() {
     }
 
     return (
-        <div className="w-full max-w-4xl mx-auto p-4">
+        <div data-testid="battle-shell" className="w-full max-w-6xl mx-auto p-4">
             <BattleHud
                 health={health}
                 maxHealth={maxHealth}
@@ -237,7 +237,7 @@ export function BattleInterface() {
             </AnimatePresence>
 
             {/* Main Battle Grid */}
-            <div className="grid lg:grid-cols-2 gap-8 items-stretch min-h-[500px]">
+            <div data-testid="battle-grid" className="grid min-h-[500px] items-stretch gap-6 lg:grid-cols-2">
                 <BattleScene
                     currentQuestion={currentQuestion}
                     showResult={showResult}

@@ -62,6 +62,7 @@ describe('BattleQuestionPanel learning metadata', () => {
         expect(screen.getByText('Boss Gate 2/3')).toBeInTheDocument();
         expect(screen.getByText('Basic Past Tense')).toBeInTheDocument();
         expect(screen.getByText('scaffolded')).toBeInTheDocument();
+        expect(screen.getByTestId('choice-options')).toHaveClass('xl:grid-cols-2');
     });
 
     test('shows lightweight game labels for transfer and repair moments', () => {

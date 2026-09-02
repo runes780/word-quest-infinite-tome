@@ -94,6 +94,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     await page.getByRole('button', { name: 'Skip', exact: true }).click();
 
     let confidenceSelections = 0;
+    let verifiedDesktopChoiceLayout = false;
 
     for (let questionNumber = 0; questionNumber < SYNTHETIC_FALLBACK_ANSWERS.length; questionNumber += 1) {
         const questionHeading = page.locator('h3.text-2xl').first();
@@ -114,6 +115,17 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
             await textInput.fill(answer);
             await page.getByRole('button', { name: 'Submit Answer' }).click();
         } else {
+            if (!verifiedDesktopChoiceLayout) {
+                const optionBoxes = await page.getByTestId('choice-options').locator('button').evaluateAll((buttons) =>
+                    buttons.map((button) => {
+                        const box = button.getBoundingClientRect();
+                        return { left: Math.round(box.left), bottom: Math.round(box.bottom) };
+                    })
+                );
+                expect(new Set(optionBoxes.map((box) => box.left)).size).toBe(2);
+                expect(optionBoxes.every((box) => box.bottom <= 720)).toBe(true);
+                verifiedDesktopChoiceLayout = true;
+            }
             await page.getByRole('button', { name: answer, exact: true }).click();
         }
 
@@ -141,6 +153,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     expect(counts.fsrsCards).toBeGreaterThanOrEqual(SYNTHETIC_FALLBACK_ANSWERS.length);
     expect(counts.history).toBeGreaterThanOrEqual(1);
     expect(confidenceSelections).toBeGreaterThanOrEqual(1);
+    expect(verifiedDesktopChoiceLayout).toBe(true);
     await expect.poll(() => readConfidenceEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
     await expect.poll(() => readProgressRewardEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
 

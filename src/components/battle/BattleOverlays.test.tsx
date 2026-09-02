@@ -11,10 +11,11 @@ jest.mock('@/components/AchievementSystem', () => ({
 }));
 
 describe('BattleOverlays', () => {
-    test('shows an explicit empty inventory state', () => {
+    test('keeps an accessible empty state without covering battle controls', () => {
         render(<BattleInventoryBar inventory={[]} emptyLabel="No items" onUseItem={jest.fn()} />);
 
         expect(screen.getByText('No items')).toBeInTheDocument();
+        expect(screen.queryByTestId('battle-inventory-bar')).not.toBeInTheDocument();
     });
 
     test('routes item use by stable item id', () => {
@@ -34,6 +35,7 @@ describe('BattleOverlays', () => {
             />
         );
 
+        expect(screen.getByTestId('battle-inventory-bar')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: /health potion/i }));
         expect(onUseItem).toHaveBeenCalledWith('potion-1');
     });
@@ -62,4 +64,3 @@ describe('BattleOverlays', () => {
         expect(screen.getByText('+4 Gold')).toBeInTheDocument();
     });
 });
-

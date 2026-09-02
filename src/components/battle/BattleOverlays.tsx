@@ -61,11 +61,12 @@ interface BattleInventoryBarProps {
 }
 
 export function BattleInventoryBar({ inventory, emptyLabel, onUseItem }: BattleInventoryBarProps) {
+    if (inventory.length === 0) {
+        return <span className="sr-only" aria-live="polite">{emptyLabel}</span>;
+    }
+
     return (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-black/80 backdrop-blur rounded-2xl border border-white/10 shadow-xl z-40">
-            {inventory.length === 0 && (
-                <div className="px-4 py-2 text-xs text-muted-foreground italic">{emptyLabel}</div>
-            )}
+        <div data-testid="battle-inventory-bar" className="fixed bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-black/80 backdrop-blur rounded-2xl border border-white/10 shadow-xl z-40">
             {inventory.map((item) => {
                 const itemAsset = getItemAsset(item.type);
                 return (

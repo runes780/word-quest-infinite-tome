@@ -142,4 +142,11 @@ describe('BattleInterface productive recall combat feedback', () => {
 
         expect(screen.getByText('-1')).toBeInTheDocument();
     });
+
+    test('uses the wider battle layout so answers stay reachable beside long questions', () => {
+        render(<BattleInterface />);
+
+        expect(screen.getByTestId('battle-shell')).toHaveClass('max-w-6xl');
+        expect(screen.getByTestId('battle-grid')).toHaveClass('gap-6', 'lg:grid-cols-2');
+    });
 });
