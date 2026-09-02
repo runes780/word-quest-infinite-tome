@@ -22,11 +22,13 @@ function hasPersistedLanguage(): boolean {
  */
 export function SettingsHydration() {
     useEffect(() => {
-        void useSettingsStore.persist.rehydrate().then(() => {
+        const restoreSettings = async () => {
+            await useSettingsStore.persist.rehydrate();
             if (!hasPersistedLanguage()) {
                 useSettingsStore.getState().setLanguage(detectPreferredLanguage());
             }
-        });
+        };
+        void restoreSettings();
     }, []);
 
     return null;

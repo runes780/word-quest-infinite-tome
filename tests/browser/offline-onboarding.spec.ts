@@ -19,7 +19,10 @@ test('cold start offers a local quest without opening AI settings', async ({ pag
     await expect(page.getByRole('button', { name: /^Merchant:/ })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 
-    await page.getByRole('button', { name: 'waters', exact: true }).click();
+    // The starter quest shows its own sample questions (the pack planner puts
+    // recognition items first), not the fallback bank: "Yesterday I ___ to the
+    // park." -> went.
+    await page.getByRole('button', { name: 'went', exact: true }).click();
 
     const result = page.getByRole('status');
     await expect(result).toContainText(/Correct answer/i);

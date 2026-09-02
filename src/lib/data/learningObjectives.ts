@@ -217,7 +217,21 @@ export function canonicalizeLearningObjective(input: {
     const aliasedObjectiveId = OBJECTIVE_ALIAS_MAP[normalizedSuggestion];
     const sourceContextSpan = input.sourceContextSpan?.trim() || undefined;
     const questionObjective = inferObjectiveFromQuestion(input);
-    if (suggested && (!questionObjective || questionObjective === suggested.objectiveId)) {
+    // A question-text sniff must not override an explicitly declared objective
+    // when the skill tag independently agrees with the declaration AND the
+    // sniff crosses into another domain — e.g. spotting "was" inside a quoted
+    // source span must not relabel a reading-detail question as past tense.
+    // Within the same domain the sniff still corrects mislabeled AI objectives.
+    const declaredObjectiveId = suggested?.objectiveId || aliasedObjectiveId;
+    const declaredObjective = declaredObjectiveId ? getLearningObjective(declaredObjectiveId) : undefined;
+    const skillObjective = input.skillTag ? inferObjectiveFromSkillTag(input.skillTag) : undefined;
+    const sniffConflictsAcrossDomains = Boolean(
+        questionObjective &&
+        declaredObjective &&
+        skillObjective === declaredObjectiveId &&
+        getLearningObjective(questionObjective)?.domain !== declaredObjective.domain
+    );
+    if (suggested && (!questionObjective || questionObjective === suggested.objectiveId || sniffConflictsAcrossDomains)) {
         return {
             objectiveId: suggested.objectiveId,
             confidence: 0.86,
@@ -229,7 +243,7 @@ export function canonicalizeLearningObjective(input: {
         };
     }
 
-    if (aliasedObjectiveId && (!questionObjective || questionObjective === aliasedObjectiveId)) {
+    if (aliasedObjectiveId && (!questionObjective || questionObjective === aliasedObjectiveId || sniffConflictsAcrossDomains)) {
         return {
             objectiveId: aliasedObjectiveId,
             confidence: 0.8,
