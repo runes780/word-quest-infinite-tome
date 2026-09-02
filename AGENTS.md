@@ -52,3 +52,6 @@ Reviewers and Codex should pay close attention to:
 - Prefer small pure helpers for learning-domain calculations.
 - Update `README.md`, `ROADMAP.md`, `TODO.md`, `docs/PRIVACY_AND_AI_SAFETY.md`, or `docs/CODEX_WORKFLOWS.md` when behavior, setup, AI provider behavior, or privacy assumptions change.
 - Before claiming a change is ready, verify the full check sequence and include the exact commands run.
+- Working branches must be pushed to the remote on the same day they receive commits; never let work exist only on one machine.
+- Stacked PRs must state "Stacked on #NN" in the description and be merged bottom-up.
+- Agent-created PRs stay drafts until a human reviewer marks them ready; merging a draft requires the maintainer's explicit instruction.
