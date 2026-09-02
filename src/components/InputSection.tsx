@@ -239,8 +239,12 @@ export function InputSection() {
             sourceText: `${sample.title}\n${sample.context}`
         }).map((monster) => ({
             ...monster,
-            learningObjectiveId: step?.objectiveId || monster.learningObjectiveId,
-            supportLevel: step?.supportLevel ?? monster.supportLevel,
+            // Each sample question carries its own sanitized objective (e.g. a
+            // past-tense cloze is past_tense_basic). A plan step's objective
+            // describes the step, not every sample question, so it must not
+            // relabel them; it only fills in when a question has none.
+            learningObjectiveId: monster.learningObjectiveId || step?.objectiveId,
+            supportLevel: monster.supportLevel ?? step?.supportLevel,
             attemptKind: step?.attemptKind || 'diagnostic',
             sourceContextSpan: 'daily_plan'
         }));

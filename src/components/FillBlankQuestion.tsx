@@ -24,19 +24,17 @@ export function FillBlankQuestion({ question, onAnswer, disabled }: FillBlankQue
     // Get correct answer
     const correctAnswer = question.correctAnswer || question.options[question.correct_index];
 
-    // Parse question to find blank position (marked with ___ or [blank])
+    // Parse question to find blank position. A blank is a [blank] marker or a
+    // run of 2+ underscores; the whole run must be consumed, otherwise a
+    // 5-underscore blank leaves stray "__" rendered next to the input.
     const parseQuestion = (): { before: string; after: string } => {
         const text = question.question;
-        const blankPatterns = ['___', '[blank]', '____', '_____', '______'];
-
-        for (const pattern of blankPatterns) {
-            const idx = text.indexOf(pattern);
-            if (idx !== -1) {
-                return {
-                    before: text.slice(0, idx),
-                    after: text.slice(idx + pattern.length)
-                };
-            }
+        const blankMatch = text.match(/\[blank\]|_{2,}/);
+        if (blankMatch && blankMatch.index !== undefined) {
+            return {
+                before: text.slice(0, blankMatch.index),
+                after: text.slice(blankMatch.index + blankMatch[0].length)
+            };
         }
 
         // If no blank marker, append blank at end

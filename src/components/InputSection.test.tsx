@@ -146,6 +146,40 @@ describe('InputSection material intake', () => {
         expect(setSettingsOpen).not.toHaveBeenCalled();
     });
 
+    test('starter quest keeps each question own objective instead of the plan step label', async () => {
+        mockApiKey = '';
+        const { getDailyPracticePlan } = jest.requireMock('@/lib/data/dailyPracticePlan') as {
+            getDailyPracticePlan: jest.Mock;
+        };
+        getDailyPracticePlan.mockResolvedValueOnce({
+            estimatedMinutes: 8,
+            steps: [{
+                id: 'step-1',
+                type: 'practice',
+                title: 'Vocabulary practice',
+                objectiveId: 'vocab_context_meaning',
+                estimatedMinutes: 5,
+                questionCount: 5,
+                supportLevel: 3,
+                attemptKind: 'practice',
+                rationale: 'test',
+                evidence: []
+            }]
+        });
+        render(<InputSection />);
+
+        await screen.findByText('Local practice is ready');
+        fireEvent.click(screen.getByRole('button', { name: 'Start local quest' }));
+
+        expect(startGame).toHaveBeenCalledTimes(1);
+        const monsters = startGame.mock.calls[0][0] as Array<{ question: string; learningObjectiveId?: string }>;
+        const football = monsters.find((monster) => monster.question.includes('football'));
+        expect(football).toBeDefined();
+        // The past-tense cloze must keep its own inferred objective, not the
+        // plan step's vocabulary label.
+        expect(football?.learningObjectiveId).toBe('past_tense_basic');
+    });
+
     test('keeps AI connection optional and explicitly opens settings on request', async () => {
         mockApiKey = '';
         render(<InputSection />);
