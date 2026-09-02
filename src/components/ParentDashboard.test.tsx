@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { downloadNodeAsImage, openNodePrintView } from '@/lib/exportReport';
 import { logGuardianDashboardEvent } from '@/db/db';
 import { ParentDashboard } from './ParentDashboard';
@@ -7,6 +7,8 @@ import { SYNTHETIC_DASHBOARD_LABELS } from '../../tests/fixtures/syntheticLearni
 const startGame = jest.fn();
 const scrollIntoView = jest.fn();
 const scrollTo = jest.fn();
+const mockGetContentReviewQueue = jest.fn(async () => []);
+const mockReviewCachedQuestion = jest.fn(async () => undefined);
 
 const mockMetric = {
     currentRate: 0.72,
@@ -130,6 +132,29 @@ const buildMockDashboardViewModel = () => ({
             { skillTag: 'vocabulary', attempts: 20, correct: 13, smoothedAccuracy: 0.65, currentState: 'learning', currentScore: 65 }
         ],
         stateCounts: { new: 1, learning: 3, consolidated: 2, mastered: 1 }
+    },
+    objectiveMastery: {
+        windowDays: 14,
+        generatedAt: Date.now(),
+        averageScore: 76,
+        byObjective: [{
+            objectiveId: 'reading_inference',
+            title: 'Reading Inference',
+            domain: 'reading',
+            score: 76,
+            state: 'consolidated',
+            attempts: 6,
+            correct: 5,
+            qualifiedAttempts: 4,
+            independentAttempts: 2,
+            confidence: 0.8,
+            transferAttempts: 1,
+            delayedProbeAttempts: 1,
+            evidenceStatus: 'retained',
+            nextReviewAt: Date.now() + 86400000
+        }],
+        byDomain: [{ domain: 'reading', averageScore: 76, objectiveCount: 1, masteredCount: 0, learningCount: 1 }],
+        stateCounts: { new: 0, learning: 0, consolidated: 1, mastered: 0 }
     },
     learningTasks: [{
         taskId: 'weekly-reading',
@@ -323,6 +348,11 @@ jest.mock('@/lib/data/targetedReview', () => ({
     buildTargetedReviewPack: jest.fn(() => ({ monsters: [] }))
 }));
 
+jest.mock('@/lib/data/contentReview', () => ({
+    getContentReviewQueue: (...args: unknown[]) => mockGetContentReviewQueue(...args),
+    reviewCachedQuestion: (...args: unknown[]) => mockReviewCachedQuestion(...args)
+}));
+
 jest.mock('@/db/db', () => ({
     computeStudyActionExecutionSummaryFromRows: jest.fn(() => ({
         windowDays: 14,
@@ -343,6 +373,8 @@ describe('ParentDashboard visual information architecture', () => {
         jest.mocked(downloadNodeAsImage).mockClear();
         jest.mocked(openNodePrintView).mockClear();
         jest.mocked(logGuardianDashboardEvent).mockClear();
+        mockGetContentReviewQueue.mockClear();
+        mockReviewCachedQuestion.mockClear();
         scrollIntoView.mockClear();
         scrollTo.mockClear();
         Element.prototype.scrollIntoView = scrollIntoView;
@@ -382,8 +414,9 @@ describe('ParentDashboard visual information architecture', () => {
             expect(screen.getByText('17')).toBeInTheDocument();
         });
 
-        expect(screen.getByText('Level 5 · 432 XP')).toBeInTheDocument();
-        expect(screen.getByText('35/50 XP today')).toBeInTheDocument();
+        expect(screen.getByText('Retained Objectives')).toBeInTheDocument();
+        expect(within(screen.getByLabelText('Open mastery evidence')).getByText('1/1')).toBeInTheDocument();
+        expect(screen.getByText('35/50 XP optional goal')).toBeInTheDocument();
         expect(screen.getByText('9')).toBeInTheDocument();
     });
 
@@ -422,7 +455,7 @@ describe('ParentDashboard visual information architecture', () => {
         expect(scrollTo).toHaveBeenCalled();
 
         scrollTo.mockClear();
-        fireEvent.click(screen.getByLabelText('Open streak evidence'));
+        fireEvent.click(screen.getByLabelText('Open learning rhythm evidence'));
         expect(scrollTo).toHaveBeenCalled();
     });
 
@@ -469,7 +502,7 @@ describe('ParentDashboard visual information architecture', () => {
         expect(overview.className).toContain('xl:grid-cols-3');
         expect(overview.className).toContain('2xl:grid-cols-5');
 
-        const masteryPanel = screen.getByLabelText('Mastery Progress');
+        const masteryPanel = screen.getByLabelText('Learning Evidence Progress');
         expect(masteryPanel).toHaveClass('min-w-0');
         expect(masteryPanel.parentElement?.className).toContain('xl:grid-cols-2');
         expect(masteryPanel.parentElement?.className).toContain('2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_minmax(0,0.9fr)]');
@@ -509,9 +542,10 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('1/5 requests collected')).toBeInTheDocument();
         expect(screen.getByText('Shown after 5 requests')).toBeInTheDocument();
         expect(screen.getByText('1 sample · p95 2963ms')).toBeInTheDocument();
-        expect(screen.queryByText('0%')).not.toBeInTheDocument();
-        expect(screen.queryByText('100%')).not.toBeInTheDocument();
-        expect(screen.queryByText('No incidents reported')).not.toBeInTheDocument();
+        const aiMonitorPanel = screen.getByLabelText('AI Request Monitor');
+        expect(within(aiMonitorPanel).queryByText('0%')).not.toBeInTheDocument();
+        expect(within(aiMonitorPanel).queryByText('100%')).not.toBeInTheDocument();
+        expect(within(aiMonitorPanel).queryByText('No incidents reported')).not.toBeInTheDocument();
     });
 
     test('shows the latest execution result on guardian recommendation cards', async () => {
@@ -539,6 +573,41 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Completed today · 8 min tracked')).toBeInTheDocument();
     });
 
+    test('keeps AI questions out of measurement until an educator explicitly approves them', async () => {
+        const question = {
+            id: 17,
+            question: 'Which sentence describes a routine?',
+            options: ['Mina walks to the library.', 'Mina walked yesterday.'],
+            correct_index: 0,
+            type: 'grammar' as const,
+            explanation: 'The present simple describes a routine.',
+            skillTag: 'grammar:present_simple',
+            learningObjectiveId: 'present_simple',
+            itemFamilyId: 'present-simple-routine-ai-1',
+            assessmentRole: 'practice' as const,
+            transferDistance: 'near' as const,
+            reviewerStatus: 'unreviewed' as const,
+            contextHash: 'synthetic-context',
+            timestamp: Date.now(),
+            used: false
+        };
+        mockGetContentReviewQueue.mockResolvedValueOnce([{ question }]);
+
+        render(<ParentDashboard />);
+        fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
+
+        expect(await screen.findByText(question.question)).toBeInTheDocument();
+        expect(screen.getByText(/Approval does not mean mastery/i)).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Approve for measurement' }));
+
+        await waitFor(() => {
+            expect(mockReviewCachedQuestion).toHaveBeenCalledWith({
+                question,
+                decision: 'educator-approved'
+            });
+        });
+    });
+
     test('exports a print-ready report snapshot with generation time instead of the scrollable dashboard', async () => {
         render(<ParentDashboard />);
 
@@ -548,7 +617,9 @@ describe('ParentDashboard visual information architecture', () => {
             expect(screen.getByText('Good morning, Guardian!')).toBeInTheDocument();
         });
 
-        fireEvent.click(screen.getByRole('button', { name: 'Export Report' }));
+        const exportButton = screen.getByRole('button', { name: 'Export Report' });
+        await waitFor(() => expect(exportButton).toBeEnabled());
+        fireEvent.click(exportButton);
 
         const privacyDialog = screen.getByRole('dialog', { name: 'Confirm report export privacy' });
         expect(privacyDialog).toBeInTheDocument();
@@ -584,7 +655,9 @@ describe('ParentDashboard visual information architecture', () => {
 
         expect(await screen.findByText('Check privacy before exporting')).toBeInTheDocument();
         expect(screen.getByText(/Source text, questions, answers, mistake text/)).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Download Snapshot' }));
+        const downloadButton = screen.getByRole('button', { name: 'Download Snapshot' });
+        await waitFor(() => expect(downloadButton).toBeEnabled());
+        fireEvent.click(downloadButton);
         expect(screen.getByText('Included')).toBeInTheDocument();
         expect(screen.getByText('Excluded')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -600,7 +673,9 @@ describe('ParentDashboard visual information architecture', () => {
         fireEvent.click(screen.getByLabelText('Open Guardian Dashboard'));
         await screen.findByText('Good morning, Guardian!');
 
-        fireEvent.click(screen.getByRole('button', { name: 'Print / Save PDF' }));
+        const printButton = screen.getByRole('button', { name: 'Print / Save PDF' });
+        await waitFor(() => expect(printButton).toBeEnabled());
+        fireEvent.click(printButton);
         const confirmButton = screen.getByRole('button', { name: 'Open print / PDF' });
         expect(confirmButton).toBeDisabled();
         fireEvent.click(screen.getByLabelText(/I understand this file leaves browser-local storage/));

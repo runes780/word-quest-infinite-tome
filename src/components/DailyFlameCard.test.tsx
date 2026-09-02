@@ -14,7 +14,7 @@ const needsPracticeStatus: DailyFlameStatus = {
 };
 
 describe('DailyFlameCard', () => {
-    test('invites new learners to start today instead of showing a zero-day streak', () => {
+    test('invites new learners to start with a small step instead of showing a zero-day streak', () => {
         render(
             <DailyFlameCard
                 status={{
@@ -31,19 +31,20 @@ describe('DailyFlameCard', () => {
             />
         );
 
-        expect(screen.getByText('点亮今日火苗')).toBeInTheDocument();
-        expect(screen.queryByText('0 天火苗')).not.toBeInTheDocument();
+        expect(screen.getByText('开始今天的小步学习')).toBeInTheDocument();
+        expect(screen.queryByText(/0 个活跃学习日/)).not.toBeInTheDocument();
     });
 
-    test('shows remaining XP and current streak for today', () => {
+    test('frames the XP target as optional and keeps progress accessible', () => {
         render(<DailyFlameCard status={needsPracticeStatus} language="en" />);
 
-        expect(screen.getByText('6 day flame')).toBeInTheDocument();
-        expect(screen.getByText('30 XP to protect today')).toBeInTheDocument();
-        expect(screen.getByText('40%')).toBeInTheDocument();
+        expect(screen.getByText('6 active learning days')).toBeInTheDocument();
+        expect(screen.getByText("30 XP completes today's optional goal")).toBeInTheDocument();
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '40');
+        expect(screen.getByText(/never removes mastery evidence/i)).toBeInTheDocument();
     });
 
-    test('shows a gentle freeze message when the streak is at risk', () => {
+    test('welcomes a learner after a break without loss framing', () => {
         render(
             <DailyFlameCard
                 status={{
@@ -60,7 +61,8 @@ describe('DailyFlameCard', () => {
             />
         );
 
-        expect(screen.getByText('14 day flame')).toBeInTheDocument();
-        expect(screen.getByText('Rest day available')).toBeInTheDocument();
+        expect(screen.getByText('14 active learning days')).toBeInTheDocument();
+        expect(screen.getByText('Welcome back. A break does not erase what you learned.')).toBeInTheDocument();
+        expect(screen.queryByText(/protect|risk|freeze/i)).not.toBeInTheDocument();
     });
 });

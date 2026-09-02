@@ -90,18 +90,20 @@ The project uses browser-local persistence such as IndexedDB and localStorage. T
 
 The settings panel can export a versioned JSON backup of every current IndexedDB table. This is a disaster-recovery tool, not cloud sync and not a privacy-filtered report.
 
-Backups include full local records such as source-derived question text, answers, mistakes, mentor analysis, FSRS state, learning events, mastery, history, tasks, dashboard events, AI reliability metrics, and practice-plan evidence. They exclude localStorage data, including API keys, provider/model settings, theme, and session-recovery snapshots.
+Backups include full local records such as source-derived question text, answers, mistakes, mentor analysis, FSRS state, learning events, objective/skill mastery, content-review decisions and notes, history, tasks, dashboard events, AI reliability metrics, and practice-plan evidence. They exclude localStorage data, including API keys, provider/model settings, theme, and session-recovery snapshots.
 
 Optional self-confidence evidence is stored only inside the local answer event and local session answer. It is used to select feedback for high-confidence errors and low-confidence correct answers. It does not change score, rewards, FSRS ratings, mastery state, ranking, or final judgments. Learner and guardian summaries expose counts only, without linking confidence to exported question text.
 
-Learning-progress rewards add optional local event fields for reward kind, XP, gold, whether the payout counted, and an anti-farming reason. These fields make each payout auditable against supported practice, independent recall, error repair, due review, or transfer evidence. They are non-indexed and require no Dexie schema migration. They are included in full local backups, but learner and guardian summaries expose aggregate counts and totals only. Reward metadata is not added to AI prompts and is not a mastery score, ranking, diagnosis, or final judgment.
+Learning-progress rewards add optional local event fields for reward kind, XP, gold, whether the payout counted, and an anti-farming reason. These fields make each payout auditable against supported practice, independent recall, error repair, qualified delayed recall, or reviewed transfer evidence. Repair remains progress but is excluded from the strong-evidence count; unreviewed measurement content receives no strong-evidence reward. Reward fields are non-indexed and included in full local backups, while learner and guardian summaries expose aggregate counts and totals only. Reward metadata is not added to AI prompts and is not a mastery score, ranking, diagnosis, or final judgment.
+
+Schema v15 adds a local `contentReviews` table. A record can contain question text, a registered objective, stable content-family identifiers, the adult review decision, and optional review notes. This is privacy-sensitive local data: it is included in full backups, excluded from privacy-minimized reports, and never added to provider prompts. An approval only makes content eligible for delayed/transfer measurement; it is not learner evidence and never changes mastery by itself.
 
 Safety boundaries:
 
 - the file is not encrypted; keep it only in trusted storage and do not attach a real learner backup to public issues, pull requests, chat, or email
 - export requires a visible privacy confirmation and uses a generic date-based filename without learner identity
 - restore validates the format marker, format version, schema version, known/required tables, row shape, file size, and row-count limits before opening a write transaction
-- schema v13 backups are accepted with the v14 `objectiveMastery` and `practicePlanRuns` tables initialized empty; backups from a future schema are rejected
+- older supported backups are accepted with later tables initialized empty; the v14→v15 database migration initializes new qualified-evidence counters at zero, conservatively downgrades unsupported legacy `mastered` rows, and adds `contentReviews`; backups from a future schema are rejected
 - restore replaces all IndexedDB tables inside one Dexie transaction, so a write failure rolls back instead of leaving learning evidence partially restored
 - the app must be reloaded after restore before learning continues, preventing stale in-memory state from overwriting restored records
 - any future database table must be added to the backup manifest and compatibility tests in the same change
@@ -130,7 +132,7 @@ The report exporter assumes that study material, generated questions, mission ti
 Allowed in report exports:
 
 - date range, generation time, and local timezone
-- aggregate mastery, accuracy, mission, question, streak, review, and completion counts
+- aggregate qualified-objective evidence, practice accuracy, mission, question, active-day, review, and completion counts
 - controlled learning-objective categories derived from internal objective IDs
 - aggregate AI reliability and session-recovery health
 - generic next-action descriptions and aggregate evidence states

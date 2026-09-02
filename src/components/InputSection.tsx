@@ -807,7 +807,7 @@ function PracticePlanPanel({
                     <button
                         type="button"
                         onClick={onRefresh}
-                        disabled={isLoading}
+                        disabled={isLoading || !plan || plan.steps.length === 0}
                         className="grid h-11 w-11 place-items-center rounded-xl border border-border text-muted-foreground hover:bg-secondary disabled:opacity-50"
                         aria-label={isZh ? '刷新今日计划' : 'Refresh practice plan'}
                     >
@@ -840,15 +840,28 @@ function PracticePlanPanel({
                         <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <p className="text-sm font-bold text-foreground">
-                                    {practicePlanStepTitle(step.type, step.objectiveId, language)}
+                                    {step.assessmentRole === 'delayed-probe'
+                                        ? (isZh ? `延迟回忆：${objectiveTitle(step.objectiveId, language)}` : `Retention check: ${objectiveTitle(step.objectiveId, language)}`)
+                                        : practicePlanStepTitle(step.type, step.objectiveId, language)}
                                 </p>
                                 <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                                    {supportLevelLabel(step.supportLevel, language)}
+                                    {step.assessmentRole === 'delayed-probe'
+                                        ? (step.probeStage === 'day-7' ? (isZh ? '7天保持' : '7-day retention') : (isZh ? '24小时保持' : '24-hour retention'))
+                                        : step.type === 'transfer'
+                                            ? (isZh ? '新语境迁移' : 'new-context transfer')
+                                            : supportLevelLabel(step.supportLevel, language)}
                                 </span>
                             </div>
                             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                                {practicePlanStepRationale(step.type, language)}
+                                {step.assessmentRole === 'delayed-probe'
+                                    ? (isZh ? '先独立作答，提交后才显示反馈；答错会进入支架修复，并在至少一天后重测。' : 'Answer independently before feedback. A miss routes to supported repair and a retry at least one day later.')
+                                    : practicePlanStepRationale(step.type, language)}
                             </p>
+                            {step.evidence[0] && (
+                                <p className="mt-2 text-[11px] font-semibold text-primary/80">
+                                    {step.evidence[0].label}: {step.evidence[0].value}
+                                </p>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -871,7 +884,7 @@ function PracticePlanPanel({
                 <button
                     type="button"
                     onClick={onOpenSrs}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-sm font-bold text-purple-400 hover:bg-purple-500/20"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-sm font-bold text-purple-400 hover:bg-purple-500/20"
                 >
                     <Brain className="h-4 w-4" />
                     {isZh ? '复习卡片' : 'SRS Review'}
@@ -879,7 +892,7 @@ function PracticePlanPanel({
                 <button
                     type="button"
                     onClick={onOpenDaily}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-bold text-accent hover:bg-accent/20"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm font-bold text-accent hover:bg-accent/20"
                 >
                     <Trophy className="h-4 w-4" />
                     {isZh ? '每日挑战' : 'Daily Challenge'}

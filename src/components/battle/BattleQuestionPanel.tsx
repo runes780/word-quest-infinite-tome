@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Shield, Sparkles, Sword, HelpCircle, Lightbulb, Layers } from 'lucide-react';
+import { Brain, CheckCircle2, Shield, Sparkles, Sword, HelpCircle, Lightbulb, Layers, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
@@ -111,6 +111,9 @@ export function BattleQuestionPanel({
         'delayed-recall': t.battle.rewardDelayedRecall,
         'transfer-success': t.battle.rewardTransferSuccess
     };
+    const correctAnswer = currentQuestion.options[currentQuestion.correct_index] || currentQuestion.correctAnswer;
+    const selectedAnswer = selectedOption === null ? undefined : currentQuestion.options[selectedOption];
+    const strategyText = feedbackStrategyForObjective(currentQuestion.learningObjectiveId, uiLanguage);
 
     useEffect(() => {
         if (!showResult || typeof feedbackRef.current?.scrollIntoView !== 'function') return;
@@ -308,11 +311,27 @@ export function BattleQuestionPanel({
                     >
                         <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0 flex-1">
-                                <h4 className={cn("text-xl font-black mb-2 uppercase tracking-wide", isCorrect ? "text-green-500" : "text-destructive")}>
-                                    {isCorrect ? `✨ ${t.battle.victory} ` : `💥 ${t.battle.defeat} `}
+                                <h4 className={cn("mb-2 flex items-center gap-2 text-xl font-black uppercase tracking-wide", isCorrect ? "text-green-600 dark:text-green-400" : "text-destructive")}>
+                                    {isCorrect ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                                    {isCorrect ? (uiLanguage === 'zh' ? '回答正确' : 'Correct') : (uiLanguage === 'zh' ? '需要修复' : 'Needs repair')}
                                 </h4>
+                                <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2">
+                                    {!isCorrect && selectedAnswer && (
+                                        <p className="rounded-xl bg-background/60 px-3 py-2">
+                                            <span className="font-black">{uiLanguage === 'zh' ? '你的答案' : 'Your answer'}:</span> {selectedAnswer}
+                                        </p>
+                                    )}
+                                    <p className="rounded-xl bg-background/60 px-3 py-2">
+                                        <span className="font-black">{uiLanguage === 'zh' ? '正确答案' : 'Correct answer'}:</span> {correctAnswer}
+                                    </p>
+                                </div>
                                 <div className="flex items-start gap-2">
-                                    <p className="text-sm font-medium opacity-90 leading-relaxed text-balance flex-1">{resultMessage}</p>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">{uiLanguage === 'zh' ? '为什么' : 'Why'}</p>
+                                        <p className="mt-1 text-sm font-medium opacity-90 leading-relaxed text-balance">{resultMessage}</p>
+                                        <p className="mt-3 text-xs font-black uppercase tracking-wide text-muted-foreground">{uiLanguage === 'zh' ? '可迁移策略' : 'Reusable strategy'}</p>
+                                        <p className="mt-1 text-sm leading-relaxed text-foreground/90">{strategyText}</p>
+                                    </div>
                                     {ttsEnabled && (
                                         <button
                                             onClick={onSpeakExplanation}
@@ -399,4 +418,15 @@ export function BattleQuestionPanel({
             </AnimatePresence>
         </div>
     );
+}
+
+function feedbackStrategyForObjective(objectiveId: string | undefined, language: 'en' | 'zh') {
+    const isZh = language === 'zh';
+    if (objectiveId === 'present_simple') return isZh ? '先找日常频率词，再检查主语是否需要动词加 -s。' : 'Find the routine cue first, then check whether the subject needs an -s verb form.';
+    if (objectiveId === 'past_tense_basic') return isZh ? '先圈出过去时间线索，再选择与它一致的过去式。' : 'Mark the past-time cue, then choose the past form that matches it.';
+    if (objectiveId === 'preposition_place_time') return isZh ? '先判断是钟点、日期还是一段时间，再选择对应介词。' : 'Classify the clue as a clock time, date, or time period before choosing the preposition.';
+    if (objectiveId === 'pronoun_reference') return isZh ? '向前寻找最近且语义合理的人或事物，再代回句子检查。' : 'Look backward for the nearest sensible person or thing, then substitute it into the sentence.';
+    if (objectiveId === 'reading_detail') return isZh ? '回到原句定位题目关键词，只使用文本直接陈述的信息。' : 'Return to the source sentence, locate the key words, and use only what is directly stated.';
+    if (objectiveId === 'reading_inference') return isZh ? '把两个以上线索连接起来，选择能被全部线索支持的结论。' : 'Connect at least two clues and choose the conclusion supported by all of them.';
+    return isZh ? '找出题干中的关键线索，说明它如何支持答案，再用于下一道题。' : 'Name the key clue, explain how it supports the answer, and reuse that move on the next item.';
 }

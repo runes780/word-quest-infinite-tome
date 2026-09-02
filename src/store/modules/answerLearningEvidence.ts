@@ -10,6 +10,11 @@ import type { LogMistakeArgs } from '@/lib/data/mistakes';
 import type { LearningProgressReward } from '@/lib/data/learningProgressRewards';
 import type { Monster, UserAnswer } from '@/store/gameStore';
 import type { AdaptiveScaffoldDecision } from '@/lib/data/adaptiveScaffolding';
+import {
+    buildLearningEvidenceMetadata,
+    evidenceStrengthForAttempt,
+    resolveAssessmentRole
+} from '@/lib/data/learningEvidenceContract';
 
 type LearningEventInput = Parameters<typeof logLearningEvent>[0];
 type ObjectiveMasteryInput = Parameters<typeof updateObjectiveMastery>[0];
@@ -55,6 +60,20 @@ export function buildUserAnswer({
     hintUsed,
     scaffoldDecision
 }: AnswerIdentityInput): UserAnswer {
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind: question.attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    });
+    const evidenceStrength = evidenceStrengthForAttempt({
+        learningObjectiveId: question.learningObjectiveId,
+        ...evidenceMetadata,
+        supportLevel: question.supportLevel,
+        hintUsed
+    });
     return {
         questionId: question.id,
         questionText: question.question,
@@ -62,6 +81,9 @@ export function buildUserAnswer({
         correctChoice: question.options[question.correct_index],
         isCorrect: result === 'correct',
         learningObjectiveId: question.learningObjectiveId,
+        itemFamilyId: evidenceMetadata.itemFamilyId,
+        assessmentRole: evidenceMetadata.assessmentRole,
+        evidenceStrength,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
         causeTag: question.causeTag,
@@ -94,10 +116,26 @@ export function buildAnswerLearningEvidence({
     hintUsed,
     scaffoldDecision
 }: AnswerLearningEvidenceInput): AnswerLearningEvidence {
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind: question.attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    });
+    const evidenceStrength = evidenceStrengthForAttempt({
+        learningObjectiveId: question.learningObjectiveId,
+        ...evidenceMetadata,
+        supportLevel: question.supportLevel,
+        hintUsed
+    });
     const sharedLearningMetadata = {
         skillTag: question.skillTag,
         learningObjectiveId: question.learningObjectiveId,
         objectiveConfidence: question.objectiveConfidence,
+        ...evidenceMetadata,
+        evidenceStrength,
         sourceContextSpan: question.sourceContextSpan,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
@@ -123,6 +161,7 @@ export function buildAnswerLearningEvidence({
         hint: question.hint,
         skillTag: question.skillTag,
         learningObjectiveId: question.learningObjectiveId,
+        ...evidenceMetadata,
         sourceContextSpan: question.sourceContextSpan,
         questionMode: question.questionMode,
         correctAnswer: question.correctAnswer
@@ -149,7 +188,11 @@ export function buildAnswerLearningEvidence({
             attemptKind: question.attemptKind,
             supportLevel: question.supportLevel,
             hintUsed: Boolean(hintUsed),
-            latencyMs: responseLatencyMs
+            latencyMs: responseLatencyMs,
+            evidenceStrength,
+            assessmentRole: evidenceMetadata.assessmentRole,
+            reviewerStatus: evidenceMetadata.reviewerStatus,
+            objectiveClassificationStatus: evidenceMetadata.objectiveClassificationStatus
         },
         review: {
             questionHash,

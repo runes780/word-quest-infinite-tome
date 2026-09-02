@@ -1,4 +1,5 @@
 import { normalizeWord } from './textNormalize';
+import { isKnownObjectiveId } from './learningObjectives';
 
 export type PlanDomain = 'grammar' | 'vocab' | 'reading';
 export type PlanRole = 'recognition' | 'cloze' | 'recall' | 'transfer';
@@ -108,6 +109,8 @@ export function validateQuestionPlan(
         }
         if (typeof item.learningObjectiveId !== 'string' || !item.learningObjectiveId.trim()) {
             errors.push(`${label} learningObjectiveId must be a non-empty string.`);
+        } else if (!isKnownObjectiveId(item.learningObjectiveId)) {
+            errors.push(`${label} learningObjectiveId "${item.learningObjectiveId}" is not in the reviewed objective catalog.`);
         }
         const span = (item.sourceSpan ?? '').trim().toLowerCase();
         if (!span || !materialLower.includes(span)) {

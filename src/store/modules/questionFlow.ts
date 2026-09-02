@@ -9,6 +9,10 @@ import {
 } from '@/lib/data/learningObjectives';
 import { buildBossGateVariants } from './bossGateVariants';
 import type { AdaptiveScaffoldDecision } from '@/lib/data/adaptiveScaffolding';
+import {
+    buildLearningEvidenceMetadata,
+    resolveAssessmentRole
+} from '@/lib/data/learningEvidenceContract';
 
 export type QuestionInput = Partial<Monster> & {
     id: number;
@@ -55,6 +59,13 @@ export const applyQuestionDefaults = (
     const fallbackCorrect = question.options[safeCorrectIndex] || '';
     const providedAnswer = question.correctAnswer?.trim();
     const correctAnswer = providedAnswer || fallbackCorrect;
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        learningObjectiveId: objectiveId,
+        objectiveClassificationStatus: canonical.status,
+        objectiveCatalogVersion: canonical.catalogVersion,
+        assessmentRole: resolveAssessmentRole(question)
+    });
 
     return {
         ...question,
@@ -65,6 +76,7 @@ export const applyQuestionDefaults = (
         correctAnswer,
         learningObjectiveId: objectiveId,
         objectiveConfidence: question.objectiveConfidence ?? canonical.confidence,
+        ...evidenceMetadata,
         supportLevel,
         attemptKind: question.attemptKind,
         causeTag: question.causeTag,
@@ -105,10 +117,22 @@ export const applyLearningMetadataForSource = (
     });
     const learningObjectiveId = canonical.objectiveId;
     const attemptKind = attemptKindForQuestion(source, question, supportLevel);
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        learningObjectiveId,
+        objectiveClassificationStatus: canonical.status,
+        objectiveCatalogVersion: canonical.catalogVersion,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    });
     return {
         ...question,
         learningObjectiveId,
         objectiveConfidence: question.objectiveConfidence ?? canonical.confidence,
+        ...evidenceMetadata,
         supportLevel,
         attemptKind,
         questionMode: question.questionMode || modeForSupportLevel(supportLevel),

@@ -69,7 +69,7 @@ Each "monster" represents a question and includes:
 - "correctAnswer": canonical text answer (required even for choice mode).
 - "hint": A short helpful hint string (e.g. "Look for the keyword 'Yesterday'").
 - "explanation": A short, encouraging explanation in English (The battle log). E.g., "Great! The past tense of 'go' is 'went'."
-- "learningObjectiveId": optional short objective id string.
+- "learningObjectiveId": required reviewed objective id. Use exactly one of: "present_simple", "past_tense_basic", "vocab_context_meaning", "pronoun_reference", "preposition_place_time", "reading_detail", "reading_inference". Never invent a new id.
 - "sourceContextSpan": required quote/span from source text.
 - "supportLevel": 3 for recognition, 2 for scaffolded practice, 0 for independent transfer.
 - "attemptKind": "practice" for source-sentence practice or "transfer" for a new-context transfer check.

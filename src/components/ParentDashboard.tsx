@@ -10,7 +10,6 @@ import {
     CalendarDays,
     CheckCircle2,
     Download,
-    Flame,
     GraduationCap,
     HelpCircle,
     Home,
@@ -65,7 +64,9 @@ import type {
     SessionRecoverySnapshot,
     LearningTask,
     MasteryAggregateSnapshot,
-    ObjectiveMasteryAggregateSnapshot
+    ObjectiveMasteryAggregateSnapshot,
+    CachedQuestion,
+    ContentReviewRecord
 } from '@/db/db';
 import { computeStudyPlanCompletionSnapshot } from '@/lib/data/studyPlan';
 import { buildTargetedReviewPack } from '@/lib/data/targetedReview';
@@ -76,6 +77,11 @@ import { formatLearningLabel, mapSkillTagToObjectiveId, objectiveTitle } from '@
 import type { CalibrationSummary } from '@/lib/data/metacognitiveCalibration';
 import type { LearningProgressRewardSummary } from '@/lib/data/learningProgressRewards';
 import type { ScaffoldFadingSummary } from '@/lib/data/adaptiveScaffolding';
+import {
+    getContentReviewQueue,
+    reviewCachedQuestion,
+    type EducatorReviewDecision
+} from '@/lib/data/contentReview';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -88,6 +94,7 @@ type DashboardSectionId =
     | 'trend'
     | 'recommendations'
     | 'stability'
+    | 'contentReview'
     | 'plan'
     | 'repeatedCause'
     | 'acceptance';
@@ -164,6 +171,8 @@ export function ParentDashboard() {
     const [calibrationSummary, setCalibrationSummary] = useState<CalibrationSummary | null>(null);
     const [progressRewardSummary, setProgressRewardSummary] = useState<LearningProgressRewardSummary | null>(null);
     const [scaffoldFadingSummary, setScaffoldFadingSummary] = useState<ScaffoldFadingSummary | null>(null);
+    const [contentReviewQueue, setContentReviewQueue] = useState<Array<{ question: CachedQuestion; review?: ContentReviewRecord }>>([]);
+    const [reviewingContentKey, setReviewingContentKey] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -245,6 +254,12 @@ export function ParentDashboard() {
             ariaLabel: isZh ? '打开建议' : 'Open Recommendations'
         },
         {
+            id: 'contentReview',
+            icon: ShieldCheck,
+            label: isZh ? '内容审核' : 'Content Review',
+            ariaLabel: isZh ? '打开 AI 内容审核队列' : 'Open AI content review queue'
+        },
+        {
             id: 'stability',
             icon: Settings,
             label: isZh ? '设置' : 'Settings',
@@ -262,7 +277,10 @@ export function ParentDashboard() {
         setIsLoading(true);
         setError(null);
         try {
-            const dashboard = await getGuardianDashboardViewModel(range);
+            const [dashboard, reviewQueue] = await Promise.all([
+                getGuardianDashboardViewModel(range),
+                getContentReviewQueue()
+            ]);
             setSnapshot(dashboard.history);
             setPlayerProfile(dashboard.playerProfile);
             setDailyFlameStatus(dashboard.dailyFlameStatus);
@@ -290,6 +308,7 @@ export function ParentDashboard() {
             setCalibrationSummary(dashboard.calibrationSummary ?? null);
             setProgressRewardSummary(dashboard.progressRewardSummary ?? null);
             setScaffoldFadingSummary(dashboard.scaffoldFadingSummary ?? null);
+            setContentReviewQueue(reviewQueue);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load dashboard data.');
@@ -297,6 +316,20 @@ export function ParentDashboard() {
             setIsLoading(false);
         }
     }, [range, t.dashboard.loadError]);
+
+    const handleContentReview = useCallback(async (question: CachedQuestion, decision: EducatorReviewDecision) => {
+        const key = question.itemFamilyId || String(question.id || question.question);
+        setReviewingContentKey(key);
+        try {
+            await reviewCachedQuestion({ question, decision });
+            setContentReviewQueue(await getContentReviewQueue());
+        } catch (err) {
+            console.error(err);
+            setError(isZh ? '内容审核保存失败，请重试。' : 'Could not save the content review. Please try again.');
+        } finally {
+            setReviewingContentKey(null);
+        }
+    }, [isZh]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -346,18 +379,19 @@ export function ParentDashboard() {
         (masterySnapshot && masterySnapshot.totalAttempts > 0
             ? Math.round((masterySnapshot.totalCorrect / masterySnapshot.totalAttempts) * 100)
             : averageAccuracy);
+    const objectiveEvidenceRows = objectiveMasterySnapshot?.byObjective ?? [];
+    const retainedObjectiveCount = objectiveEvidenceRows.filter((row) => row.evidenceStatus === 'retained').length;
+    const qualifiedAttemptCount = objectiveEvidenceRows.reduce((sum, row) => sum + row.qualifiedAttempts, 0);
+    const retainedObjectiveRate = objectiveEvidenceRows.length > 0
+        ? Math.round((retainedObjectiveCount / objectiveEvidenceRows.length) * 100)
+        : 0;
     const currentStreak = dailyFlameStatus?.streakDays ?? playerProfile?.dailyStreak ?? computeActivityStreak(dailyRows);
     const completedMissions = playerProfile?.lessonsCompleted ?? snapshot?.totals.missions ?? 0;
-    const profileLevelHelper = playerProfile
-        ? (isZh
-            ? `等级 ${playerProfile.globalLevel} · ${playerProfile.totalXp} XP`
-            : `Level ${playerProfile.globalLevel} · ${playerProfile.totalXp} XP`)
-        : (isZh ? `窗口 ${range} 天` : `From last ${range} days`);
     const dailyFlameHelper = dailyFlameStatus
         ? (isZh
-            ? `今日 ${dailyFlameStatus.dailyXpEarned}/${dailyFlameStatus.dailyXpGoal} XP`
-            : `${dailyFlameStatus.dailyXpEarned}/${dailyFlameStatus.dailyXpGoal} XP today`)
-        : (isZh ? '天连续活跃' : 'days in a row');
+            ? `今日自选目标 ${dailyFlameStatus.dailyXpEarned}/${dailyFlameStatus.dailyXpGoal} XP`
+            : `${dailyFlameStatus.dailyXpEarned}/${dailyFlameStatus.dailyXpGoal} XP optional goal`)
+        : (isZh ? '暂无学习节奏记录' : 'No learning rhythm yet');
     const latestMission = snapshot?.records[0]?.levelTitle || (isZh ? '暂无任务' : 'No mission yet');
     const lastActiveLabel = snapshot?.totals.lastActive
         ? new Date(snapshot.totals.lastActive).toLocaleDateString()
@@ -800,12 +834,12 @@ export function ParentDashboard() {
                                         className="grid gap-4 outline-none sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
                                     >
                                         <KpiCard
-                                            title={isZh ? '平均掌握度' : 'Mastery Score (Avg.)'}
-                                            value={`${masteryAverage}%`}
-                                            helper={profileLevelHelper}
+                                            title={isZh ? '已保持目标' : 'Retained Objectives'}
+                                            value={objectiveEvidenceRows.length > 0 ? `${retainedObjectiveCount}/${objectiveEvidenceRows.length}` : '--'}
+                                            helper={isZh ? `${qualifiedAttemptCount} 次合格独立证据` : `${qualifiedAttemptCount} qualified independent attempts`}
                                             tone="blue"
                                             icon={LineChart}
-                                            ringValue={masteryAverage}
+                                            ringValue={retainedObjectiveRate}
                                             ariaLabel={isZh ? '打开掌握度证据' : 'Open mastery evidence'}
                                             onClick={() => scrollToSection('mastery')}
                                         />
@@ -837,26 +871,26 @@ export function ParentDashboard() {
                                             onClick={() => scrollToSection('trend')}
                                         />
                                         <KpiCard
-                                            title={isZh ? '连续学习' : 'Streak'}
+                                            title={isZh ? '活跃学习日' : 'Active Days'}
                                             value={currentStreak}
                                             helper={dailyFlameHelper}
                                             tone="red"
-                                            icon={Flame}
-                                            ariaLabel={isZh ? '打开连续学习证据' : 'Open streak evidence'}
+                                            icon={CalendarDays}
+                                            ariaLabel={isZh ? '打开学习节奏证据' : 'Open learning rhythm evidence'}
                                             onClick={() => scrollToSection('recommendations')}
                                         />
                                     </section>
 
                                     <section className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)_minmax(0,0.9fr)]">
-                                        <Panel title={isZh ? '掌握进度' : 'Mastery Progress'} subtitle={isZh ? '按技能域查看平均掌握度' : 'Average mastery by domain'} icon={LineChart} sectionRef={registerSection('mastery')}>
-                                            {skillRows.length > 0 ? (
-                                                <div className="space-y-4">
-                                                    {skillRows.map((skill, index) => (
-                                                        <SkillProgressRow key={skill.skill} row={skill} tone={progressTones[index % progressTones.length]} isZh={isZh} />
+                                        <Panel title={isZh ? '学习证据进展' : 'Learning Evidence Progress'} subtitle={isZh ? '独立、延迟与迁移证据分开呈现' : 'Independent, delayed, and transfer evidence shown separately'} icon={LineChart} sectionRef={registerSection('mastery')}>
+                                            {objectiveEvidenceRows.length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {objectiveEvidenceRows.slice(0, 6).map((row) => (
+                                                        <ObjectiveEvidenceRow key={row.objectiveId} row={row} isZh={isZh} />
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <EmptyState message={t.dashboard.noSkillData || 'No skill data yet.'} />
+                                                <EmptyState message={isZh ? '完成独立练习后，这里会显示证据进展。' : 'Evidence progress appears after independent practice.'} />
                                             )}
                                         </Panel>
 
@@ -1057,6 +1091,15 @@ export function ParentDashboard() {
                                     </section>
 
                                     <section className="mt-4 grid gap-4 xl:grid-cols-[repeat(3,minmax(0,1fr))]">
+                                        <Panel title={isZh ? 'AI 内容审核' : 'AI Content Review'} subtitle={isZh ? '批准后才可用于迁移或延迟测量' : 'Approval is required before transfer or delayed measurement'} icon={ShieldCheck} sectionRef={registerSection('contentReview')}>
+                                            <ContentReviewQueue
+                                                rows={contentReviewQueue}
+                                                reviewingKey={reviewingContentKey}
+                                                onReview={handleContentReview}
+                                                isZh={isZh}
+                                            />
+                                        </Panel>
+
                                         <Panel title={isZh ? '计划执行' : 'Plan vs Completion'} subtitle={isZh ? '今晚建议执行回写' : 'Guardian action follow-through'} icon={CheckCircle2} sectionRef={registerSection('plan')}>
                                             <div className="grid grid-cols-3 gap-3">
                                                 <MiniMetric label={isZh ? '计划' : 'Planned'} value={planSnapshot.totalActions} />
@@ -1160,7 +1203,7 @@ export function ParentDashboard() {
                                     range={range}
                                     generatedAt={exportGeneratedAt}
                                     masteryAverage={masteryAverage}
-                                    profileLevelHelper={profileLevelHelper}
+                                    qualifiedAttemptCount={qualifiedAttemptCount}
                                     completedMissions={completedMissions}
                                     totalQuestions={snapshot?.totals.total || 0}
                                     correctQuestions={snapshot?.totals.correct || 0}
@@ -1296,7 +1339,7 @@ function ExportReportSnapshot({
     range,
     generatedAt,
     masteryAverage,
-    profileLevelHelper,
+    qualifiedAttemptCount,
     completedMissions,
     totalQuestions,
     correctQuestions,
@@ -1319,7 +1362,7 @@ function ExportReportSnapshot({
     range: RangeOption;
     generatedAt: number;
     masteryAverage: number;
-    profileLevelHelper: string;
+    qualifiedAttemptCount: number;
     completedMissions: number;
     totalQuestions: number;
     correctQuestions: number;
@@ -1385,9 +1428,9 @@ function ExportReportSnapshot({
                 <main className="space-y-6 p-8">
                     <section className="grid grid-cols-5 gap-4">
                         <ExportStatCard
-                            label={isZh ? '平均掌握度' : 'Avg. Mastery'}
-                            value={`${masteryAverage}%`}
-                            helper={profileLevelHelper}
+                            label={isZh ? '目标证据分数' : 'Objective Evidence'}
+                            value={qualifiedAttemptCount >= 3 ? `${masteryAverage}%` : '--'}
+                            helper={isZh ? `${qualifiedAttemptCount} 次合格证据 · 仅作支持信息` : `${qualifiedAttemptCount} qualified attempts · support evidence only`}
                             icon={LineChart}
                             tone="blue"
                         />
@@ -1413,18 +1456,18 @@ function ExportReportSnapshot({
                             tone="purple"
                         />
                         <ExportStatCard
-                            label={isZh ? '连续学习' : 'Streak'}
+                            label={isZh ? '活跃学习日' : 'Active Days'}
                             value={currentStreak}
                             helper={dailyFlameHelper}
-                            icon={Flame}
+                            icon={CalendarDays}
                             tone="red"
                         />
                     </section>
 
                     <section className="grid grid-cols-[1fr_1fr] gap-6">
                         <ExportSection
-                            title={isZh ? '掌握进度' : 'Mastery Progress'}
-                            subtitle={isZh ? '按技能域查看平均表现' : 'Average performance by skill area'}
+                            title={isZh ? '按技能练习正确率' : 'Practice Accuracy by Skill'}
+                            subtitle={isZh ? '仅描述练习表现，不等同于掌握结论' : 'Describes practice performance; it is not a mastery verdict'}
                             icon={LineChart}
                         >
                             {visibleSkills.length > 0 ? (
@@ -1837,6 +1880,90 @@ function KpiCard({
     );
 }
 
+function ContentReviewQueue({
+    rows,
+    reviewingKey,
+    onReview,
+    isZh
+}: {
+    rows: Array<{ question: CachedQuestion; review?: ContentReviewRecord }>;
+    reviewingKey: string | null;
+    onReview: (question: CachedQuestion, decision: EducatorReviewDecision) => void;
+    isZh: boolean;
+}) {
+    const visibleRows = [...rows]
+        .sort((a, b) => Number(Boolean(a.review)) - Number(Boolean(b.review)))
+        .slice(0, 4);
+    if (visibleRows.length === 0) {
+        return <EmptyState message={isZh ? '暂无待审核的 AI 题目。受控本地题库已通过系统检查。' : 'No AI items are waiting. The controlled local pack has passed system checks.'} />;
+    }
+
+    return (
+        <div className="space-y-3">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+                {isZh
+                    ? '请核对目标、语境、唯一答案和语言适切性。批准不代表学习者已掌握，只允许该题进入迁移/保持测量候选。'
+                    : 'Check the objective, context, single answer, and language fit. Approval does not mean mastery; it only makes the item eligible for transfer or retention measurement.'}
+            </div>
+            {visibleRows.map(({ question, review }) => {
+                const key = question.itemFamilyId || String(question.id || question.question);
+                const busy = reviewingKey === key;
+                const status = review?.status || question.reviewerStatus || 'unreviewed';
+                return (
+                    <article key={key} className="rounded-2xl border border-slate-200 bg-white p-3 text-left">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                            <p className="min-w-0 flex-1 text-sm font-bold leading-relaxed text-slate-900">{question.question}</p>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${contentReviewStatusClass(status)}`}>
+                                {contentReviewStatusLabel(status, isZh)}
+                            </span>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                            <p><span className="font-bold text-slate-800">{isZh ? '目标' : 'Objective'}:</span> {objectiveTitle(question.learningObjectiveId, isZh ? 'zh' : 'en')}</p>
+                            <p><span className="font-bold text-slate-800">{isZh ? '答案' : 'Answer'}:</span> {question.options[question.correct_index] || question.correctAnswer}</p>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            <button
+                                type="button"
+                                onClick={() => onReview(question, 'educator-approved')}
+                                disabled={busy}
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                                {isZh ? '批准用于测量' : 'Approve for measurement'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onReview(question, 'rejected')}
+                                disabled={busy}
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                            >
+                                <X className="h-4 w-4" />
+                                {isZh ? '拒绝' : 'Reject'}
+                            </button>
+                        </div>
+                    </article>
+                );
+            })}
+        </div>
+    );
+}
+
+function contentReviewStatusLabel(status: string, isZh: boolean) {
+    if (status === 'educator-approved') return isZh ? '教师已批准' : 'Educator approved';
+    if (status === 'educator-edited') return isZh ? '修改后批准' : 'Approved after edit';
+    if (status === 'rejected') return isZh ? '已拒绝' : 'Rejected';
+    if (status === 'system-reviewed') return isZh ? '系统已检查' : 'System reviewed';
+    return isZh ? '待审核' : 'Unreviewed';
+}
+
+function contentReviewStatusClass(status: string) {
+    if (status === 'educator-approved' || status === 'educator-edited' || status === 'system-reviewed') {
+        return 'bg-emerald-100 text-emerald-800';
+    }
+    if (status === 'rejected') return 'bg-red-100 text-red-800';
+    return 'bg-amber-100 text-amber-900';
+}
+
 function Panel({
     title,
     subtitle,
@@ -1880,24 +2007,39 @@ function Panel({
 
 const progressTones: Tone[] = ['blue', 'green', 'purple', 'amber', 'slate'];
 
-function SkillProgressRow({ row, tone, isZh }: { row: SkillAccuracyRow; tone: Tone; isZh: boolean; }) {
-    const toneClass = progressToneClass(tone);
-    const percentage = Math.round(row.accuracy * 100);
+function ObjectiveEvidenceRow({
+    row,
+    isZh
+}: {
+    row: ObjectiveMasteryAggregateSnapshot['byObjective'][number];
+    isZh: boolean;
+}) {
+    const statusLabel = row.evidenceStatus === 'retained'
+        ? (isZh ? '已保持' : 'Retained')
+        : row.evidenceStatus === 'developing'
+            ? (isZh ? '证据积累中' : 'Developing')
+            : (isZh ? '样本不足' : 'Insufficient evidence');
+    const statusClass = row.evidenceStatus === 'retained'
+        ? 'bg-emerald-100 text-emerald-800'
+        : row.evidenceStatus === 'developing'
+            ? 'bg-blue-100 text-blue-800'
+            : 'bg-amber-100 text-amber-900';
     return (
-        <div className="grid grid-cols-[minmax(120px,1fr)_minmax(110px,180px)_44px] items-center gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-            <div className="flex min-w-0 items-center gap-3">
-                <span className={`grid h-8 w-8 place-items-center rounded-xl ${toneClass.bg} ${toneClass.text}`}>
-                    <BookOpen className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-800">{formatSkillLabel(row.skill, isZh)}</p>
-                    <p className="text-xs text-slate-500">{row.correct}/{row.total} {isZh ? '正确' : 'correct'}</p>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                    <p className="text-sm font-black text-slate-900">{objectiveTitle(row.objectiveId, isZh ? 'zh' : 'en')}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                        {isZh ? '证据分数' : 'Evidence score'}: {row.qualifiedAttempts >= 3 ? `${row.score}%` : '--'} · {isZh ? '合格样本' : 'qualified'} {row.qualifiedAttempts}
+                    </p>
                 </div>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${statusClass}`}>{statusLabel}</span>
             </div>
-            <div className="h-2.5 rounded-full bg-slate-100">
-                <div className={`h-full rounded-full ${toneClass.bar}`} style={{ width: `${Math.max(4, percentage)}%` }} />
+            <div className="mt-3 grid grid-cols-3 gap-2">
+                <MiniMetric label={isZh ? '独立' : 'Independent'} value={row.independentAttempts} />
+                <MiniMetric label={isZh ? '延迟' : 'Delayed'} value={row.delayedProbeAttempts} />
+                <MiniMetric label={isZh ? '迁移' : 'Transfer'} value={row.transferAttempts} />
             </div>
-            <span className="text-right text-sm font-black text-slate-700">{percentage}%</span>
         </div>
     );
 }

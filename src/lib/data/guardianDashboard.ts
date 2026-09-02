@@ -314,7 +314,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
             .where('timestamp')
             .aboveOrEqual(now - Math.max(range, 30) * DAY_MS)
             .toArray(),
-        db.skillMastery.toArray()
+        db.objectiveMastery.toArray()
     ]);
 
     const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
@@ -341,6 +341,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dueCards,
         recentMistakes: mistakes,
         learningTasks,
+        learningEvents,
         profile: playerProfile,
         now
     });

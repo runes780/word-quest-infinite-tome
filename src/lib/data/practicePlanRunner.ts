@@ -4,6 +4,11 @@ import type { Monster } from '@/store/gameStore';
 import { normalizeMissionMonsters } from './missionSanitizer';
 import { buildTargetedReviewPack } from './targetedReview';
 import type { PracticePlan, PracticePlanEvidence, PracticePlanStep } from './dailyPracticePlan';
+import {
+    getControlledPracticeItems,
+    getControlledProbeItem,
+    getControlledTransferItem
+} from './controlledContentPack';
 
 export interface PracticePlanRun {
     planId: string;
@@ -149,6 +154,11 @@ function cardsToMonsters(cards: FSRSCard[], step: PracticePlanStep): Monster[] {
         questionMode: card.questionMode || 'choice',
         correctAnswer: card.correctAnswer || card.options[card.correct_index] || '',
         learningObjectiveId: card.learningObjectiveId || step.objectiveId,
+        itemFamilyId: card.itemFamilyId || step.itemFamilyId,
+        equivalenceGroup: card.equivalenceGroup || step.equivalenceGroup,
+        assessmentRole: step.assessmentRole || card.assessmentRole,
+        probeStage: step.probeStage,
+        probeScheduledFor: step.probeScheduledFor,
         supportLevel: step.supportLevel,
         attemptKind: step.attemptKind,
         sourceContextSpan: card.sourceContextSpan || 'daily_plan'
@@ -159,6 +169,11 @@ function withStepMetadata(monsters: Monster[], step: PracticePlanStep): Monster[
     return normalizeMissionMonsters(monsters).map((monster) => ({
         ...monster,
         learningObjectiveId: monster.learningObjectiveId || step.objectiveId,
+        itemFamilyId: step.itemFamilyId || monster.itemFamilyId,
+        equivalenceGroup: step.equivalenceGroup || monster.equivalenceGroup,
+        assessmentRole: step.assessmentRole || monster.assessmentRole,
+        probeStage: step.probeStage || monster.probeStage,
+        probeScheduledFor: step.probeScheduledFor || monster.probeScheduledFor,
         supportLevel: step.supportLevel,
         attemptKind: step.attemptKind,
         sourceContextSpan: monster.sourceContextSpan || 'daily_plan'
@@ -176,6 +191,24 @@ async function loadMistakeOrFallbackPack(step: PracticePlanStep): Promise<Monste
 }
 
 export async function loadPracticePlanStepLaunch(step: PracticePlanStep): Promise<PracticePlanStepLaunch> {
+    if (step.assessmentRole === 'delayed-probe' && step.itemFamilyId && step.equivalenceGroup && step.probeStage) {
+        const probe = getControlledProbeItem({
+            objectiveId: step.objectiveId,
+            itemFamilyId: step.itemFamilyId,
+            equivalenceGroup: step.equivalenceGroup,
+            originalContextId: step.originalContextId,
+            stage: step.probeStage
+        });
+        if (probe) {
+            return {
+                monsters: withStepMetadata([probe], step),
+                context: `Retention Check: ${step.title}\n${step.rationale}`,
+                source: 'srs',
+                usedFallback: false
+            };
+        }
+    }
+
     if (step.type === 'review') {
         const cards = await getDueCardsWithPriority(step.questionCount);
         if (cards.length > 0) {
@@ -183,6 +216,30 @@ export async function loadPracticePlanStepLaunch(step: PracticePlanStep): Promis
                 monsters: withStepMetadata(cardsToMonsters(cards, step), step),
                 context: `Daily Learning Path: ${step.title}\n${step.rationale}`,
                 source: 'srs',
+                usedFallback: false
+            };
+        }
+    }
+
+    if (step.type === 'transfer') {
+        const transfer = getControlledTransferItem(step.objectiveId);
+        if (transfer) {
+            return {
+                monsters: withStepMetadata([transfer], step),
+                context: `Transfer Check: ${step.title}\n${step.rationale}`,
+                source: 'battle',
+                usedFallback: false
+            };
+        }
+    }
+
+    if (step.type === 'practice') {
+        const controlled = getControlledPracticeItems(step.objectiveId, step.questionCount);
+        if (controlled.length > 0) {
+            return {
+                monsters: withStepMetadata(controlled, step),
+                context: `Controlled Practice: ${step.title}\n${step.rationale}`,
+                source: 'battle',
                 usedFallback: false
             };
         }
