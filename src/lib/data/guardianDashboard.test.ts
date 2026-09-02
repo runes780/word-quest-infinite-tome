@@ -3,6 +3,7 @@ import type { MistakeRecord } from '@/db/db';
 import { buildGuardianActivityFeed } from './guardianDashboard';
 import { buildCalibrationSummary } from './metacognitiveCalibration';
 import { buildLearningProgressRewardSummary } from './learningProgressRewards';
+import { buildScaffoldFadingSummary } from './adaptiveScaffolding';
 
 const now = Date.UTC(2026, 5, 1, 8, 0, 0);
 
@@ -178,6 +179,43 @@ describe('guardian learning progress reward evidence', () => {
             totalXp: 14,
             totalGold: 8,
             strongEvidenceCount: 1
+        }));
+        expect(JSON.stringify(summary)).not.toContain('Choose the cause.');
+    });
+});
+
+describe('guardian scaffold fading evidence', () => {
+    test('keeps support, hint, and transfer evidence aggregate and privacy-safe', () => {
+        const summary = buildScaffoldFadingSummary([
+            event({
+                result: 'correct',
+                supportLevel: 2,
+                hintUsed: true,
+                scaffoldReason: 'hint-dependence',
+                scaffoldTransition: 'hold'
+            }),
+            event({
+                result: 'correct',
+                supportLevel: 1,
+                scaffoldReason: 'transfer-ready',
+                scaffoldTransition: 'transfer'
+            }),
+            event({
+                result: 'correct',
+                supportLevel: 0,
+                attemptKind: 'transfer',
+                scaffoldReason: 'transfer-confirmed',
+                scaffoldTransition: 'hold'
+            })
+        ]);
+
+        expect(summary).toEqual(expect.objectContaining({
+            supportedAttempts: 1,
+            independentAttempts: 1,
+            hintUsedAnswers: 1,
+            transferReadySignals: 1,
+            transferAttempts: 1,
+            transferCorrect: 1
         }));
         expect(JSON.stringify(summary)).not.toContain('Choose the cause.');
     });

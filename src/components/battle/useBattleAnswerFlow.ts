@@ -48,6 +48,7 @@ export function useBattleAnswerFlow({
     const [showHint, setShowHint] = useState(false);
     const [selfConfidence, setSelfConfidence] = useState<LearningEventSelfConfidence | undefined>();
     const [progressReward, setProgressReward] = useState<AnswerResult['progressReward']>(null);
+    const [scaffoldDecision, setScaffoldDecision] = useState<AnswerResult['scaffoldDecision'] | null>(null);
     const consecutiveWrong = useRef(0);
     const mentorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -92,6 +93,7 @@ export function useBattleAnswerFlow({
         setShowResult(true);
         setResultMessage(formatBattleResultExplanation(result, language));
         setProgressReward(result.progressReward);
+        setScaffoldDecision(result.scaffoldDecision);
         onAnswerRecorded();
 
         if (correct) {
@@ -106,9 +108,14 @@ export function useBattleAnswerFlow({
         if (!currentQuestion || showResult) return;
 
         setSelectedOption(index);
-        const result = answerQuestion(index, selfConfidence ? { selfConfidence } : undefined);
+        const result = answerQuestion(index, selfConfidence || showHint
+            ? {
+                ...(selfConfidence ? { selfConfidence } : {}),
+                ...(showHint ? { hintUsed: true } : {})
+            }
+            : undefined);
         recordResult(result, result.correct, currentQuestion.options[index] || '');
-    }, [answerQuestion, currentQuestion, recordResult, selfConfidence, showResult]);
+    }, [answerQuestion, currentQuestion, recordResult, selfConfidence, showHint, showResult]);
 
     const handleTextQuestionAnswer = useCallback((correct: boolean, input: string) => {
         if (!currentQuestion) return;
@@ -117,10 +124,11 @@ export function useBattleAnswerFlow({
         setSelectedOption(answerIndex);
         const result = answerQuestion(answerIndex, {
             userResponse: input,
-            ...(selfConfidence ? { selfConfidence } : {})
+            ...(selfConfidence ? { selfConfidence } : {}),
+            ...(showHint ? { hintUsed: true } : {})
         });
         recordResult(result, correct, input);
-    }, [answerQuestion, currentQuestion, recordResult, selfConfidence]);
+    }, [answerQuestion, currentQuestion, recordResult, selfConfidence, showHint]);
 
     const handleVoiceAnswer = useCallback((correct: boolean, spokenText: string) => {
         if (!currentQuestion) return;
@@ -134,10 +142,11 @@ export function useBattleAnswerFlow({
         setSelectedOption(answerIndex);
         const result = answerQuestion(answerIndex, {
             userResponse: spokenText,
-            ...(selfConfidence ? { selfConfidence } : {})
+            ...(selfConfidence ? { selfConfidence } : {}),
+            ...(showHint ? { hintUsed: true } : {})
         });
         recordResult(result, correct, spokenText);
-    }, [answerQuestion, currentQuestion, recordResult, selfConfidence]);
+    }, [answerQuestion, currentQuestion, recordResult, selfConfidence, showHint]);
 
     const toggleHint = useCallback(() => {
         if (!showHint) recordHintUsed();
@@ -150,6 +159,7 @@ export function useBattleAnswerFlow({
         setShowHint(false);
         setSelfConfidence(undefined);
         setProgressReward(null);
+        setScaffoldDecision(null);
     }, []);
 
     return {
@@ -164,6 +174,7 @@ export function useBattleAnswerFlow({
         selfConfidence,
         setSelfConfidence,
         progressReward,
+        scaffoldDecision,
         handleOptionClick,
         handleTextQuestionAnswer,
         handleVoiceAnswer,

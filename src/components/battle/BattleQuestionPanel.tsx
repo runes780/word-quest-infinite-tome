@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Shield, Sparkles, Sword, HelpCircle, Lightbulb } from 'lucide-react';
+import { Brain, Shield, Sparkles, Sword, HelpCircle, Lightbulb, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
@@ -13,6 +13,10 @@ import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives
 import type { LearningEventSelfConfidence } from '@/db/db';
 import { calibrationSignalFor, shouldCollectSelfConfidence } from '@/lib/data/metacognitiveCalibration';
 import type { LearningProgressReward, LearningProgressRewardKind } from '@/lib/data/learningProgressRewards';
+import {
+    scaffoldDecisionMessage,
+    type AdaptiveScaffoldDecision
+} from '@/lib/data/adaptiveScaffolding';
 
 interface BattleQuestionPanelProps {
     currentQuestion: Monster;
@@ -30,6 +34,7 @@ interface BattleQuestionPanelProps {
     clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
     selfConfidence?: LearningEventSelfConfidence;
     progressReward: LearningProgressReward | null;
+    scaffoldDecision?: AdaptiveScaffoldDecision | null;
     onToggleHint: () => void;
     onConfidenceChange: (confidence: LearningEventSelfConfidence) => void;
     onChoiceSelect: (index: number) => void;
@@ -58,6 +63,7 @@ export function BattleQuestionPanel({
     clarityEffect,
     selfConfidence,
     progressReward,
+    scaffoldDecision = null,
     onToggleHint,
     onConfidenceChange,
     onChoiceSelect,
@@ -291,7 +297,7 @@ export function BattleQuestionPanel({
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: -20, opacity: 0 }}
                         className={cn(
-                            "p-6 rounded-2xl border-2 shadow-lg backdrop-blur-md",
+                            "mb-24 scroll-mb-28 rounded-2xl border-2 p-6 shadow-lg backdrop-blur-md sm:mb-0 sm:scroll-mb-0",
                             isCorrect
                                 ? "bg-green-500/10 border-green-500/30 shadow-green-500/10"
                                 : "bg-destructive/10 border-destructive/30 shadow-destructive/10"
@@ -300,8 +306,8 @@ export function BattleQuestionPanel({
                         aria-live="polite"
                         aria-atomic="true"
                     >
-                        <div className="flex items-start justify-between gap-4">
-                            <div>
+                        <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
                                 <h4 className={cn("text-xl font-black mb-2 uppercase tracking-wide", isCorrect ? "text-green-500" : "text-destructive")}>
                                     {isCorrect ? `✨ ${t.battle.victory} ` : `💥 ${t.battle.defeat} `}
                                 </h4>
@@ -348,6 +354,19 @@ export function BattleQuestionPanel({
                                         </div>
                                     </div>
                                 )}
+                                {scaffoldDecision && scaffoldDecision.reason !== 'collect-more-evidence' && (
+                                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-violet-500/25 bg-violet-500/10 p-3 text-sm text-foreground">
+                                        <Layers className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" />
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                                                {uiLanguage === 'zh' ? '下一步支架' : 'Next Support Step'}
+                                            </p>
+                                            <p className="mt-1 leading-relaxed">
+                                                {scaffoldDecisionMessage(scaffoldDecision, uiLanguage)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 {currentQuestion.isBoss && currentMonsterHp > 0 && (
                                     <p className="text-xs text-muted-foreground mt-2">
                                         {t.battle.shieldProgress}: {bossShieldProgress}/{bossComboThreshold}
@@ -357,7 +376,7 @@ export function BattleQuestionPanel({
                                     <p className="text-xs text-blue-400 mt-2">{t.battle.clarityActive}</p>
                                 )}
                             </div>
-                            <div className="flex flex-col gap-2 shrink-0">
+                            <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto">
                                 {!isCorrect && (
                                     <button
                                         onClick={onOpenMentor}
@@ -369,7 +388,7 @@ export function BattleQuestionPanel({
                                 )}
                                 <button
                                     onClick={onNext}
-                                    className="min-h-11 rounded-lg bg-primary px-6 py-2 font-black uppercase tracking-wide text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25"
+                                    className="min-h-11 w-full rounded-lg bg-primary px-6 py-2 font-black uppercase tracking-wide text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25 sm:w-auto"
                                 >
                                     {t.battle.nextLevel}
                                 </button>

@@ -75,6 +75,7 @@ import type { DailyFlameStatus } from '@/lib/data/dailyFlame';
 import { formatLearningLabel, mapSkillTagToObjectiveId, objectiveTitle } from '@/lib/data/learningObjectives';
 import type { CalibrationSummary } from '@/lib/data/metacognitiveCalibration';
 import type { LearningProgressRewardSummary } from '@/lib/data/learningProgressRewards';
+import type { ScaffoldFadingSummary } from '@/lib/data/adaptiveScaffolding';
 
 const RANGE_OPTIONS = [7, 14, 30] as const;
 const MIN_AI_MONITOR_REQUESTS = 5;
@@ -162,6 +163,7 @@ export function ParentDashboard() {
     const [activityFeed, setActivityFeed] = useState<GuardianActivityFeedItem[]>([]);
     const [calibrationSummary, setCalibrationSummary] = useState<CalibrationSummary | null>(null);
     const [progressRewardSummary, setProgressRewardSummary] = useState<LearningProgressRewardSummary | null>(null);
+    const [scaffoldFadingSummary, setScaffoldFadingSummary] = useState<ScaffoldFadingSummary | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [exporting, setExporting] = useState<'image' | 'pdf' | null>(null);
@@ -287,6 +289,7 @@ export function ParentDashboard() {
             setActivityFeed(dashboard.activityFeed);
             setCalibrationSummary(dashboard.calibrationSummary ?? null);
             setProgressRewardSummary(dashboard.progressRewardSummary ?? null);
+            setScaffoldFadingSummary(dashboard.scaffoldFadingSummary ?? null);
         } catch (err) {
             console.error(err);
             setError(t.dashboard.loadError || 'Failed to load dashboard data.');
@@ -870,6 +873,43 @@ export function ParentDashboard() {
                                         </Panel>
 
                                         <Panel title={isZh ? '学习事件' : 'Learning Events'} subtitle={isZh ? '近期学习证据流' : 'Recent activity feed'} icon={Activity} sectionRef={registerSection('events')}>
+                                            {scaffoldFadingSummary && scaffoldFadingSummary.answerCount > 0 && (
+                                                <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50 p-3 text-left">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <p className="text-sm font-black text-violet-950">
+                                                            {isZh ? '支架淡出与迁移证据' : 'Support Fading & Transfer Evidence'}
+                                                        </p>
+                                                        <span className="rounded-full bg-white px-2 py-1 text-xs font-bold text-violet-700">
+                                                            {isZh
+                                                                ? `淡出 ${scaffoldFadingSummary.fadedSteps} 次`
+                                                                : `${scaffoldFadingSummary.fadedSteps} fade step(s)`}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                                        <MiniMetric
+                                                            label={isZh ? '带支架练习' : 'Supported'}
+                                                            value={scaffoldFadingSummary.supportedAttempts}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '提示使用' : 'Hints used'}
+                                                            value={scaffoldFadingSummary.hintUsedAnswers}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '补救安排' : 'Repair steps'}
+                                                            value={scaffoldFadingSummary.repairSteps}
+                                                        />
+                                                        <MiniMetric
+                                                            label={isZh ? '迁移证据' : 'Transfer'}
+                                                            value={`${scaffoldFadingSummary.transferCorrect}/${scaffoldFadingSummary.transferAttempts}`}
+                                                        />
+                                                    </div>
+                                                    <p className="mt-3 text-xs leading-relaxed text-violet-800">
+                                                        {isZh
+                                                            ? '正确率、提示依赖和迁移证据需要一起解读；这些数据只用于支持下一步学习，不是能力排名或最终评价。'
+                                                            : 'Accuracy, hint dependence, and transfer evidence must be read together. These signals support the next learning step; they are not rankings or final judgments.'}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {progressRewardSummary && progressRewardSummary.countedRewards > 0 && (
                                                 <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-left">
                                                     <div className="flex flex-wrap items-center justify-between gap-2">

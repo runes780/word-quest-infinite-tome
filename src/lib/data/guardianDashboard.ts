@@ -54,6 +54,10 @@ import {
     buildLearningProgressRewardSummary,
     type LearningProgressRewardSummary
 } from '@/lib/data/learningProgressRewards';
+import {
+    buildScaffoldFadingSummary,
+    type ScaffoldFadingSummary
+} from '@/lib/data/adaptiveScaffolding';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -97,6 +101,7 @@ export interface GuardianDashboardViewModel {
     activityFeed: GuardianActivityFeedItem[];
     calibrationSummary: CalibrationSummary;
     progressRewardSummary: LearningProgressRewardSummary;
+    scaffoldFadingSummary: ScaffoldFadingSummary;
 }
 
 export interface GuardianActivityFeedInput {
@@ -342,6 +347,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
     const dailyFlameStatus = buildDailyFlameStatus({ profile: playerProfile, now });
     const calibrationSummary = buildCalibrationSummary(learningEvents, { now, windowDays: range });
     const progressRewardSummary = buildLearningProgressRewardSummary(learningEvents, { now, windowDays: range });
+    const scaffoldFadingSummary = buildScaffoldFadingSummary(learningEvents);
 
     return {
         history,
@@ -369,6 +375,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dailyPracticePlan,
         activityFeed,
         calibrationSummary,
-        progressRewardSummary
+        progressRewardSummary,
+        scaffoldFadingSummary
     };
 }

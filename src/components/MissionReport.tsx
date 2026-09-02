@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { createAIClient } from '@/lib/ai/providerClient';
 import { buildReportSystemPrompt, generateReportPrompt } from '@/lib/ai/prompts';
 import { motion } from 'framer-motion';
-import { Brain, Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route } from 'lucide-react';
+import { Brain, Trophy, XCircle, RotateCcw, Sparkles, FileText, Target, PlusCircle, PlayCircle, Route, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { logMissionHistory } from '@/lib/data/history';
@@ -26,6 +26,7 @@ import {
 import { buildSessionLearningClosure } from '@/lib/data/sessionLearningClosure';
 import { buildCalibrationSummary } from '@/lib/data/metacognitiveCalibration';
 import { buildLearningProgressRewardSummary } from '@/lib/data/learningProgressRewards';
+import { buildScaffoldFadingSummary } from '@/lib/data/adaptiveScaffolding';
 
 import { translations } from '@/lib/translations';
 
@@ -58,6 +59,7 @@ export function MissionReport() {
     const planComplete = isPracticePlanComplete(activePracticePlanRun);
     const calibrationSummary = useMemo(() => buildCalibrationSummary(userAnswers), [userAnswers]);
     const progressRewardSummary = useMemo(() => buildLearningProgressRewardSummary(userAnswers), [userAnswers]);
+    const scaffoldFadingSummary = useMemo(() => buildScaffoldFadingSummary(userAnswers), [userAnswers]);
 
     useEffect(() => {
         if (historyLogged || questions.length === 0 || userAnswers.length === 0) return;
@@ -247,6 +249,44 @@ export function MissionReport() {
                                         {language === 'zh'
                                             ? `XP 与金币来自可回溯的学习证据；分数和连击只保留战斗反馈。${progressRewardSummary.protectedAttempts > 0 ? `另有 ${progressRewardSummary.protectedAttempts} 次重复或超限练习已记录但未重复发奖。` : ''}`
                                             : `XP and gold come from traceable learning evidence; score and combo remain battle feedback only.${progressRewardSummary.protectedAttempts > 0 ? ` ${progressRewardSummary.protectedAttempts} repeated or capped attempts were recorded without another payout.` : ''}`}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {scaffoldFadingSummary.answerCount > 0 && (
+                        <div className="mb-8 rounded-2xl border border-violet-500/25 bg-violet-500/10 p-5 text-left">
+                            <div className="flex items-start gap-3">
+                                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-300">
+                                    <Layers className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-black text-foreground">
+                                        {language === 'zh' ? '支架淡出与迁移证据' : 'Support Fading & Transfer Evidence'}
+                                    </p>
+                                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '带支架练习' : 'Supported'}
+                                            value={scaffoldFadingSummary.supportedAttempts}
+                                        />
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '独立提取' : 'Independent'}
+                                            value={scaffoldFadingSummary.independentAttempts}
+                                        />
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '提示使用' : 'Hints used'}
+                                            value={scaffoldFadingSummary.hintUsedAnswers}
+                                        />
+                                        <ProgressRewardMetric
+                                            label={language === 'zh' ? '迁移证据' : 'Transfer'}
+                                            value={`${scaffoldFadingSummary.transferCorrect}/${scaffoldFadingSummary.transferAttempts}`}
+                                        />
+                                    </div>
+                                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                                        {language === 'zh'
+                                            ? `本轮淡出 ${scaffoldFadingSummary.fadedSteps} 次、补救 ${scaffoldFadingSummary.repairSteps} 次。迁移失败只用于安排下一步支持，不作为能力定论。`
+                                            : `${scaffoldFadingSummary.fadedSteps} fade step(s) and ${scaffoldFadingSummary.repairSteps} repair step(s) this run. Transfer misses only guide the next support step; they are not ability verdicts.`}
                                     </p>
                                 </div>
                             </div>
@@ -559,7 +599,7 @@ function ClosureTile({ title, value, detail }: { title: string; value: string; d
     );
 }
 
-function ProgressRewardMetric({ label, value }: { label: string; value: number }) {
+function ProgressRewardMetric({ label, value }: { label: string; value: number | string }) {
     return (
         <div className="rounded-xl border border-border/60 bg-background/50 p-3">
             <p className="text-xs font-semibold text-muted-foreground">{label}</p>

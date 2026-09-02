@@ -101,7 +101,7 @@ describe('IndexedDB backup and restore', () => {
         await expect(database.practicePlanRuns.count()).resolves.toBe(0);
     });
 
-    test('round-trips optional confidence and progress reward evidence without a schema index migration', async () => {
+    test('round-trips optional confidence, reward, and scaffold evidence without a schema index migration', async () => {
         await database.learningEvents.add({
             eventType: 'answer',
             source: 'battle',
@@ -112,6 +112,11 @@ describe('IndexedDB backup and restore', () => {
             rewardXp: 18,
             rewardGold: 10,
             rewardCounted: true,
+            hintUsed: false,
+            scaffoldTransition: 'transfer',
+            scaffoldReason: 'transfer-ready',
+            nextSupportLevel: 0,
+            nextAttemptKind: 'transfer',
             timestamp: Date.parse('2026-07-15T08:00:00Z')
         });
 
@@ -126,7 +131,12 @@ describe('IndexedDB backup and restore', () => {
                 progressRewardKind: 'transfer-success',
                 rewardXp: 18,
                 rewardGold: 10,
-                rewardCounted: true
+                rewardCounted: true,
+                hintUsed: false,
+                scaffoldTransition: 'transfer',
+                scaffoldReason: 'transfer-ready',
+                nextSupportLevel: 0,
+                nextAttemptKind: 'transfer'
             })
         ]);
     });

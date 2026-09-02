@@ -273,6 +273,20 @@ const buildMockDashboardViewModel = () => ({
             'delayed-recall': 1,
             'transfer-success': 1
         }
+    },
+    scaffoldFadingSummary: {
+        answerCount: 6,
+        supportedAttempts: 3,
+        independentAttempts: 1,
+        hintUsedAnswers: 1,
+        hintDependencyRate: 1 / 6,
+        fadedSteps: 1,
+        increasedSupportSteps: 0,
+        repairSteps: 1,
+        transferReadySignals: 1,
+        transferAttempts: 1,
+        transferCorrect: 1,
+        transferAccuracy: 1
     }
 });
 
@@ -348,6 +362,8 @@ describe('ParentDashboard visual information architecture', () => {
         expect(screen.getByText('Review Queue')).toBeInTheDocument();
         expect(screen.getByText('Learning Events')).toBeInTheDocument();
         expect(await screen.findByText('Confidence Calibration Signals')).toBeInTheDocument();
+        expect(screen.getByText('Support Fading & Transfer Evidence')).toBeInTheDocument();
+        expect(screen.getByText(/must be read together/i)).toBeInTheDocument();
         expect(screen.getByText('Learning Progress Reward Evidence')).toBeInTheDocument();
         expect(screen.getByText(/trace back only to local review, repair/i)).toBeInTheDocument();
         expect(screen.getByText(/does not affect mastery, ranking, or final judgments/i)).toBeInTheDocument();
