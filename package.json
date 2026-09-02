@@ -30,7 +30,7 @@
     "lint": "node ./node_modules/eslint/bin/eslint.js",
     "test": "node ./node_modules/jest/bin/jest.js",
     "test:eval": "node ./node_modules/jest/bin/jest.js --runInBand src/lib/data/generatedContentEval.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "node ./node_modules/playwright/cli.js test"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.8",
