@@ -56,6 +56,17 @@ describe('fallback bank 1T compliance', () => {
         expect(result.every((q) => q.difficulty === 'easy')).toBe(true);
     });
 
+    test('correct answers do not cluster on one option position', () => {
+        // Options are rendered in bank order; if every correct answer sits on
+        // the same button, learners can game the position and the pack looks
+        // synthetic. At least three distinct positions must be used.
+        const positions = new Set(FALLBACK_QUESTIONS.map((q) => q.correct_index));
+        expect(positions.size).toBeGreaterThanOrEqual(3);
+        for (const question of FALLBACK_QUESTIONS) {
+            expect(question.options[question.correct_index]).toBeTruthy();
+        }
+    });
+
     test('fallbackToMonster preserves grounding and intent', () => {
         const fb = FALLBACK_QUESTIONS[0];
         const monster = fallbackToMonster(fb, 42);
