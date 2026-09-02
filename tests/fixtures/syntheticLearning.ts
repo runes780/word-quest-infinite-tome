@@ -55,5 +55,12 @@ export const SYNTHETIC_FALLBACK_ANSWERS: Array<[questionFragment: string, answer
     ['What does "them" refer to', 'the tomatoes'],
     ['What does this show about Mia', 'she cares for the garden'],
     ['He ___ to school', 'walks'],
-    ['Why does Tom take an umbrella', 'to keep dry']
+    ['Why does Tom take an umbrella', 'to keep dry'],
+    ['They ___ apples, bread, and milk', 'buy'],
+    ['Here "heavy" means', 'not light'],
+    ['The word "her" refers to', 'Anna'],
+    ['Ben ___ fast in the race', 'ran'],
+    ['where did Ben rest', 'under the tree'],
+    ['What does this show', 'Ben was very fast'],
+    ['The word "he" refers to', 'Ben']
 ];
