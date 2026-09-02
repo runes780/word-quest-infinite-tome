@@ -37,7 +37,7 @@ The selectable provider layer currently supports DeepSeek, OpenRouter, and an Op
 
 Depending on the feature a user explicitly invokes, provider input can include:
 
-- pasted study material plus derived material profile and a coarse learner level for mission planning/generation
+- a locally sanitized and compacted study-material copy, derived material profile, and coarse learner level for mission planning/generation; the plan -> generate -> critique path can send the same copy of at most 6,200 characters at each stage and during bounded repair attempts
 - the current synthetic or user-entered question, wrong answer, correct answer, skill/difficulty metadata, and question mode for mentor help
 - aggregate session score plus answer evidence needed for the optional AI debrief
 - the current study context for an optional endless-wave refill
@@ -67,6 +67,28 @@ The main risk is that user-provided study text can contain instructions that try
 - incorrect answer/explanation pairs
 - generic questions that ignore the supplied study text
 - hidden instructions asking the model to reveal private data or bypass review
+
+Mission prompts JSON-encode learner-provided material instead of placing it inside an
+open-ended quoted block. Planning, generation, and critic system prompts explicitly label
+material and generated fields as untrusted data and instruct the provider not to execute
+embedded headings, JSON, quoted blocks, or instructions. This boundary reduces structural
+prompt injection but does not make provider output trusted: plan validation, mission
+sanitization, deterministic quality gates, bounded repair, safe local fallback, and human
+review remain required.
+
+Critic output is also model-authored untrusted data. Before it can inform a repair request,
+the pipeline accepts only known review axes, removes duplicate question IDs and list items,
+caps verdict/list/text sizes, and JSON-encodes the normalized feedback. Repair attempts are
+clamped to at most two per rejected question; an unsuccessful repair is replaced through the
+safe local path instead of repeatedly resubmitting provider-authored instructions.
+
+Before the first mission-provider request, the browser removes known app/schema/meta lines
+and compacts long material to at most 6,200 characters. The compact copy favors the opening,
+representative language-rich middle sentences, and ending rather than silently sending the
+entire input. Material profiling, plan validation, generation, criticism, repair, and final
+quality checks all use that exact same prepared value. The original editable input can remain
+in local UI/session context, but it is not sent through the mission pipeline outside this
+prepared boundary.
 
 Relevant tests should cover prompt contracts, fallback behavior, mission sanitization, and content-source traceability.
 

@@ -9,8 +9,10 @@ import {
     PLAN_BOUND_GENERATOR_SYSTEM_PROMPT,
     generatePlanPrompt,
     generateLevelFromPlanPrompt,
+    generateRepairFeedbackPrompt,
     generateCriticPrompt,
-    generateLevelPrompt
+    generateLevelPrompt,
+    prepareLearningMaterial
 } from './prompts';
 import {
     validateQuestionPlan,
@@ -61,6 +63,12 @@ export interface QuestionPipelineResult {
 }
 
 const FALLBACK_PACK_SIZE = 6;
+const MAX_CRITIC_VERDICTS = 8;
+const MAX_CRITIC_LIST_ITEMS = 12;
+const MAX_CRITIC_WORD_CHARS = 80;
+const MAX_CRITIC_TEXT_CHARS = 400;
+const MAX_REPAIR_ATTEMPTS = 2;
+const CRITIC_AXES = new Set(['lexical', 'context', 'meaning']);
 
 function parseJson(raw: string): unknown | null {
     try {
@@ -70,30 +78,54 @@ function parseJson(raw: string): unknown | null {
     }
 }
 
+function clampCriticText(value: unknown, maxChars: number): string {
+    return typeof value === 'string' ? value.trim().slice(0, maxChars) : '';
+}
+
+function normalizeCriticList(value: unknown, maxItemChars: number): string[] {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const candidate of value) {
+        const item = clampCriticText(candidate, maxItemChars);
+        if (!item || seen.has(item)) continue;
+        seen.add(item);
+        normalized.push(item);
+        if (normalized.length >= MAX_CRITIC_LIST_ITEMS) break;
+    }
+    return normalized;
+}
+
 function normalizeCriticReport(value: unknown): CriticReport {
     if (!value || typeof value !== 'object') return { verdicts: [] };
     const verdicts = (value as { verdicts?: unknown }).verdicts;
     if (!Array.isArray(verdicts)) return { verdicts: [] };
 
-    return {
-        verdicts: verdicts.flatMap((candidate): CriticVerdict[] => {
-            if (!candidate || typeof candidate !== 'object') return [];
-            const raw = candidate as Record<string, unknown>;
-            if (!Number.isFinite(raw.id) || typeof raw.pass !== 'boolean') return [];
-            return [{
-                id: Number(raw.id),
-                pass: raw.pass,
-                axisFailures: Array.isArray(raw.axisFailures)
-                    ? raw.axisFailures.filter((item): item is string => typeof item === 'string')
-                    : [],
-                offendingWords: Array.isArray(raw.offendingWords)
-                    ? raw.offendingWords.filter((item): item is string => typeof item === 'string')
-                    : [],
-                reason: typeof raw.reason === 'string' ? raw.reason : '',
-                suggestedFix: typeof raw.suggestedFix === 'string' ? raw.suggestedFix : ''
-            }];
-        })
-    };
+    const normalized: CriticVerdict[] = [];
+    const seenIds = new Set<number>();
+    for (const candidate of verdicts) {
+        if (!candidate || typeof candidate !== 'object') continue;
+        const raw = candidate as Record<string, unknown>;
+        const id = Number(raw.id);
+        if (!Number.isInteger(id) || id <= 0 || typeof raw.pass !== 'boolean' || seenIds.has(id)) continue;
+        seenIds.add(id);
+        normalized.push({
+            id,
+            pass: raw.pass,
+            axisFailures: normalizeCriticList(raw.axisFailures, MAX_CRITIC_WORD_CHARS)
+                .filter((axis) => CRITIC_AXES.has(axis)),
+            offendingWords: normalizeCriticList(raw.offendingWords, MAX_CRITIC_WORD_CHARS),
+            reason: clampCriticText(raw.reason, MAX_CRITIC_TEXT_CHARS),
+            suggestedFix: clampCriticText(raw.suggestedFix, MAX_CRITIC_TEXT_CHARS)
+        });
+        if (normalized.length >= MAX_CRITIC_VERDICTS) break;
+    }
+    return { verdicts: normalized };
+}
+
+function normalizeRepairAttempts(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) return MAX_REPAIR_ATTEMPTS;
+    return Math.min(MAX_REPAIR_ATTEMPTS, Math.max(0, Math.trunc(value)));
 }
 
 function buildFallbackPack(profile: MaterialProfile, count = FALLBACK_PACK_SIZE): Monster[] {
@@ -174,6 +206,21 @@ function enforceDeterministicQuality(
     return safe;
 }
 
+export function repairGroundedSourceSpans(
+    monsters: Monster[],
+    plan: QuestionPlan,
+    material: string
+): void {
+    monsters.forEach((monster) => {
+        const span = monster.sourceContextSpan?.trim() ?? '';
+        if (span && material.includes(span)) return;
+        const matched = plan.items.find((item) =>
+            item.sourceSpan && monster.question.includes(item.sourceSpan)
+        );
+        if (matched) monster.sourceContextSpan = matched.sourceSpan;
+    });
+}
+
 export async function generateQuestionPack(
     text: string,
     opts: QuestionPipelineOptions
@@ -184,15 +231,18 @@ export async function generateQuestionPack(
     const criticClient: LlmClient = opts.client
         ?? createAIClient({ apiKey: opts.apiKey as string, model: opts.criticModel ?? (opts.model as string), provider });
 
-    const profile = analyzeMaterialProfile(text);
+    // Apply one local data-minimization boundary before any provider call. Every
+    // pipeline stage and every deterministic check then sees the same material.
+    const material = prepareLearningMaterial(text);
+    const profile = analyzeMaterialProfile(material);
 
     // --- Stage 1: plan ---
     let planValidated: QuestionPlan | null = null;
     try {
-        const planRaw = await mainClient.generate(generatePlanPrompt(text, profile), PLAN_SYSTEM_PROMPT);
+        const planRaw = await mainClient.generate(generatePlanPrompt(material, profile), PLAN_SYSTEM_PROMPT);
         const parsed = parseJson(planRaw) as QuestionPlan | null;
         if (parsed) {
-            const validation = validateQuestionPlan(parsed, text, profile.vocabulary.allowed);
+            const validation = validateQuestionPlan(parsed, material, profile.vocabulary.allowed);
             if (validation.valid) {
                 planValidated = parsed;
             } else {
@@ -209,13 +259,13 @@ export async function generateQuestionPack(
         // Degrade: legacy single-stage generation.
         try {
             const legacyRaw = await mainClient.generate(
-                generateLevelPrompt(text, { learnerLevel: opts.learnerLevel }),
+                generateLevelPrompt(material, { learnerLevel: opts.learnerLevel }),
                 LEVEL_GENERATOR_SYSTEM_PROMPT
             );
             const parsed = parseJson(legacyRaw) as { monsters?: unknown[] } | null;
-            const monsters = normalizeMissionMonsters(parsed?.monsters ?? [], { sourceText: text });
+            const monsters = normalizeMissionMonsters(parsed?.monsters ?? [], { sourceText: material });
             return {
-                monsters: enforceDeterministicQuality(monsters, profile, text),
+                monsters: enforceDeterministicQuality(monsters, profile, material),
                 degradedPath: 'legacy_single_stage'
             };
         } catch {
@@ -228,24 +278,32 @@ export async function generateQuestionPack(
     // --- Stage 2: generate (plan-bound — the model must follow the plan verbatim) ---
     let genRaw: string;
     try {
-        genRaw = await mainClient.generate(generateLevelFromPlanPrompt(plan), PLAN_BOUND_GENERATOR_SYSTEM_PROMPT);
+        genRaw = await mainClient.generate(generateLevelFromPlanPrompt(plan, material), PLAN_BOUND_GENERATOR_SYSTEM_PROMPT);
     } catch {
         return { monsters: buildFallbackPack(profile), plan, degradedPath: 'fallback_bank' };
     }
     const genParsed = parseJson(genRaw) as { monsters?: unknown[] } | null;
-    const monsters = enforceDeterministicQuality(normalizeMissionMonsters(genParsed?.monsters ?? [], {
-        sourceText: text,
+    const normalizedMonsters = normalizeMissionMonsters(genParsed?.monsters ?? [], {
+        sourceText: material,
         allowedSet: profile.vocabulary.allowed,
-        material: text,
+        material,
         plan
-    }), profile, text, plan);
+    });
+
+    // Span-grounding post-pass: if a monster's stem already embeds one of the
+    // plan's verbatim spans but its sourceContextSpan field is missing or not a
+    // real material substring, fix the field so a grounded question isn't
+    // rejected just for a bad span field. (Only acts when the span is genuinely
+    // in the question, so it can never create an inconsistent question.)
+    repairGroundedSourceSpans(normalizedMonsters, plan, material);
+    const monsters = enforceDeterministicQuality(normalizedMonsters, profile, material, plan);
 
     // --- Stage 3: critique + repair ---
     let criticReport: CriticReport | undefined;
     if (opts.criticEnabled !== false) {
         try {
             const criticRaw = await criticClient.generate(
-                generateCriticPrompt(text, plan.items, [{ levelTitle: plan.levelTitle, monsters }]),
+                generateCriticPrompt(material, plan.items, [{ levelTitle: plan.levelTitle, monsters }]),
                 CRITIC_SYSTEM_PROMPT
             );
             criticReport = normalizeCriticReport(parseJson(criticRaw));
@@ -254,7 +312,7 @@ export async function generateQuestionPack(
         }
 
         if (criticReport.verdicts.some((v) => !v.pass)) {
-            const maxAttempts = opts.maxRepairAttempts ?? 2;
+            const maxAttempts = normalizeRepairAttempts(opts.maxRepairAttempts);
             const failedIndices: number[] = [];
             for (const verdict of criticReport.verdicts) {
                 if (verdict.pass) continue;
@@ -265,21 +323,26 @@ export async function generateQuestionPack(
                 for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
                     try {
                         const fixPrompt =
-                            generateLevelFromPlanPrompt({ ...plan, items: [fallbackItem] }) +
-                            `\n# Previous attempt rejected. Offending words: ${verdict.offendingWords.join(', ')}. Fix: ${verdict.suggestedFix}`;
+                            generateLevelFromPlanPrompt({ ...plan, items: [fallbackItem] }, material) +
+                            generateRepairFeedbackPrompt({
+                                axisFailures: verdict.axisFailures,
+                                offendingWords: verdict.offendingWords,
+                                reason: verdict.reason,
+                                suggestedFix: verdict.suggestedFix
+                            });
                         const fixRaw = await mainClient.generate(fixPrompt, PLAN_BOUND_GENERATOR_SYSTEM_PROMPT);
                         const fixedParsed = parseJson(fixRaw) as { monsters?: unknown[] } | null;
                         const fixed = normalizeMissionMonsters(fixedParsed?.monsters ?? [], {
-                            sourceText: text,
+                            sourceText: material,
                             allowedSet: profile.vocabulary.allowed,
-                            material: text,
+                            material,
                             plan
                         });
                         const candidate = fixed[0];
                         if (candidate && assessQuestionQuality(candidate, {
                             maxDifficulty: profile.maxQuestionDifficulty,
                             allowedSet: profile.vocabulary.allowed,
-                            material: text,
+                            material,
                             target: fallbackItem.target
                         }).accepted) {
                             monsters[idx] = candidate;
@@ -300,7 +363,7 @@ export async function generateQuestionPack(
             if (failedIndices.length > 0) {
                 const replaced = replaceFailedMonsters(monsters, failedIndices, plan, {
                     allowedSet: profile.vocabulary.allowed,
-                    material: text,
+                    material,
                     maxDifficulty: profile.maxQuestionDifficulty,
                 });
                 replaced.forEach((m, i) => {
@@ -311,7 +374,7 @@ export async function generateQuestionPack(
     }
 
     return {
-        monsters: enforceDeterministicQuality(monsters, profile, text, plan),
+        monsters: enforceDeterministicQuality(monsters, profile, material, plan),
         plan,
         criticReport,
         degradedPath: 'none'

@@ -119,6 +119,16 @@ describe('InputSection material intake', () => {
         expect(screen.queryByText('Or snap a photo of your textbook')).not.toBeInTheDocument();
     });
 
+    test('discloses the AI material boundary beside the generation action', async () => {
+        render(<InputSection />);
+
+        const initialize = await screen.findByRole('button', { name: 'Initialize Mission' });
+        const privacyNote = screen.getByText(/sends a locally compacted copy of the editable study text to your selected AI provider/i);
+
+        expect(initialize).toHaveAttribute('aria-describedby', privacyNote.id);
+        expect(privacyNote).toHaveTextContent(/do not include identifiable learner or classroom data/i);
+    });
+
     test('lets a learner start a synthetic local quest without an API key', async () => {
         mockApiKey = '';
         render(<InputSection />);

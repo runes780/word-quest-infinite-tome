@@ -723,6 +723,7 @@ export function InputSection() {
                             <button
                                 onClick={handleGenerate}
                                 disabled={isLoading || !input.trim()}
+                                aria-describedby="ai-material-privacy-note"
                                 className={`flex-1 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all
                   ${isLoading || !input.trim()
                                         ? 'bg-muted text-muted-foreground cursor-not-allowed'
@@ -742,6 +743,14 @@ export function InputSection() {
                                 )}
                             </button>
                         </div>
+                    )}
+                    {apiKey && (
+                        <p
+                            id="ai-material-privacy-note"
+                            className="mt-3 text-xs leading-relaxed text-muted-foreground"
+                        >
+                            {t.input.aiModePrivacy}
+                        </p>
                     )}
                     {(isLoading || (Boolean(apiKey) && model.endsWith(':free'))) && (
                         <p className="text-xs text-muted-foreground mt-3 text-center">
