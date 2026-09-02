@@ -17,6 +17,9 @@ const question: Monster = {
     objectiveConfidence: 0.91,
     sourceContextSpan: 'Rows of fruit trees covered the hillside.',
     attemptKind: 'transfer',
+    assessmentRole: 'transfer',
+    transferDistance: 'near',
+    reviewerStatus: 'system-reviewed',
     supportLevel: 1,
     causeTag: 'context_clue'
 };
@@ -42,6 +45,9 @@ describe('answer learning evidence contract', () => {
             correctChoice: 'orchard',
             isCorrect: true,
             learningObjectiveId: 'vocab_context_meaning',
+            itemFamilyId: expect.stringMatching(/^family_/),
+            assessmentRole: 'transfer',
+            evidenceStrength: 'transfer-independent',
             attemptKind: 'transfer',
             supportLevel: 1,
             causeTag: 'context_clue',

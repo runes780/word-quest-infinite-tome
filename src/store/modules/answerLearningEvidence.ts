@@ -9,6 +9,12 @@ import type {
 import type { LogMistakeArgs } from '@/lib/data/mistakes';
 import type { LearningProgressReward } from '@/lib/data/learningProgressRewards';
 import type { Monster, UserAnswer } from '@/store/gameStore';
+import type { AdaptiveScaffoldDecision } from '@/lib/data/adaptiveScaffolding';
+import {
+    buildLearningEvidenceMetadata,
+    evidenceStrengthForAttempt,
+    resolveAssessmentRole
+} from '@/lib/data/learningEvidenceContract';
 
 type LearningEventInput = Parameters<typeof logLearningEvent>[0];
 type ObjectiveMasteryInput = Parameters<typeof updateObjectiveMastery>[0];
@@ -22,6 +28,8 @@ interface AnswerIdentityInput {
     selfConfidence?: LearningEventSelfConfidence;
     questionHash: string;
     progressReward?: LearningProgressReward | null;
+    hintUsed?: boolean;
+    scaffoldDecision?: AdaptiveScaffoldDecision;
 }
 
 interface AnswerLearningEvidenceInput extends AnswerIdentityInput {
@@ -48,8 +56,24 @@ export function buildUserAnswer({
     result,
     selfConfidence,
     questionHash,
-    progressReward
+    progressReward,
+    hintUsed,
+    scaffoldDecision
 }: AnswerIdentityInput): UserAnswer {
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind: question.attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    });
+    const evidenceStrength = evidenceStrengthForAttempt({
+        learningObjectiveId: question.learningObjectiveId,
+        ...evidenceMetadata,
+        supportLevel: question.supportLevel,
+        hintUsed
+    });
     return {
         questionId: question.id,
         questionText: question.question,
@@ -57,11 +81,23 @@ export function buildUserAnswer({
         correctChoice: question.options[question.correct_index],
         isCorrect: result === 'correct',
         learningObjectiveId: question.learningObjectiveId,
+        itemFamilyId: evidenceMetadata.itemFamilyId,
+        assessmentRole: evidenceMetadata.assessmentRole,
+        evidenceStrength,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
         causeTag: question.causeTag,
         selfConfidence,
         questionHash,
+        ...(hintUsed ? { hintUsed: true } : {}),
+        ...(scaffoldDecision
+            ? {
+                scaffoldTransition: scaffoldDecision.transition,
+                scaffoldReason: scaffoldDecision.reason,
+                nextSupportLevel: scaffoldDecision.nextSupportLevel,
+                nextAttemptKind: scaffoldDecision.nextAttemptKind
+            }
+            : {}),
         ...(question.isImmediateRepair ? { isImmediateRepair: true } : {}),
         ...(progressReward ? { progressReward } : {})
     };
@@ -76,12 +112,30 @@ export function buildAnswerLearningEvidence({
     source,
     isCritical,
     selfConfidence,
-    progressReward
+    progressReward,
+    hintUsed,
+    scaffoldDecision
 }: AnswerLearningEvidenceInput): AnswerLearningEvidence {
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind: question.attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    });
+    const evidenceStrength = evidenceStrengthForAttempt({
+        learningObjectiveId: question.learningObjectiveId,
+        ...evidenceMetadata,
+        supportLevel: question.supportLevel,
+        hintUsed
+    });
     const sharedLearningMetadata = {
         skillTag: question.skillTag,
         learningObjectiveId: question.learningObjectiveId,
         objectiveConfidence: question.objectiveConfidence,
+        ...evidenceMetadata,
+        evidenceStrength,
         sourceContextSpan: question.sourceContextSpan,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
@@ -92,7 +146,11 @@ export function buildAnswerLearningEvidence({
         rewardXp: progressReward?.xp,
         rewardGold: progressReward?.gold,
         rewardCounted: progressReward?.counted,
-        rewardProtectionReason: progressReward?.protectionReason
+        rewardProtectionReason: progressReward?.protectionReason,
+        scaffoldTransition: scaffoldDecision?.transition,
+        scaffoldReason: scaffoldDecision?.reason,
+        nextSupportLevel: scaffoldDecision?.nextSupportLevel,
+        nextAttemptKind: scaffoldDecision?.nextAttemptKind
     };
     const questionData: ReviewQuestionData = {
         question: question.question,
@@ -103,6 +161,7 @@ export function buildAnswerLearningEvidence({
         hint: question.hint,
         skillTag: question.skillTag,
         learningObjectiveId: question.learningObjectiveId,
+        ...evidenceMetadata,
         sourceContextSpan: question.sourceContextSpan,
         questionMode: question.questionMode,
         correctAnswer: question.correctAnswer
@@ -115,7 +174,7 @@ export function buildAnswerLearningEvidence({
             questionHash,
             ...sharedLearningMetadata,
             result,
-            hintUsed: false,
+            hintUsed: Boolean(hintUsed),
             latencyMs: responseLatencyMs,
             source
         },
@@ -128,8 +187,12 @@ export function buildAnswerLearningEvidence({
             mode: question.questionMode,
             attemptKind: question.attemptKind,
             supportLevel: question.supportLevel,
-            hintUsed: false,
-            latencyMs: responseLatencyMs
+            hintUsed: Boolean(hintUsed),
+            latencyMs: responseLatencyMs,
+            evidenceStrength,
+            assessmentRole: evidenceMetadata.assessmentRole,
+            reviewerStatus: evidenceMetadata.reviewerStatus,
+            objectiveClassificationStatus: evidenceMetadata.objectiveClassificationStatus
         },
         review: {
             questionHash,

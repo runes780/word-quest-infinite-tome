@@ -2,6 +2,10 @@ import type { Monster, QuestionMode } from '@/store/gameStore';
 import { FALLBACK_QUESTIONS } from '@/lib/data/fallbackQuestions';
 import { canonicalizeLearningObjective } from '@/lib/data/learningObjectives';
 import {
+    buildLearningEvidenceMetadata,
+    resolveAssessmentRole
+} from '@/lib/data/learningEvidenceContract';
+import {
     analyzeMaterialProfile,
     difficultyAtOrBelow,
     isTextAtOrBelowDifficulty
@@ -304,8 +308,8 @@ function contentWords(value: string): string[] {
         .filter((word) => word.length > 2 && !CONTENT_STOPWORDS.has(word))));
 }
 
-function sourceSupportsDirectAnswer(objectiveId: string, sourceContextSpan: string | undefined, correctAnswer: string): boolean {
-    if (SUPPORT_EXEMPT_OBJECTIVES.has(objectiveId)) return true;
+function sourceSupportsDirectAnswer(objectiveId: string | undefined, sourceContextSpan: string | undefined, correctAnswer: string): boolean {
+    if (objectiveId && SUPPORT_EXEMPT_OBJECTIVES.has(objectiveId)) return true;
     if (!sourceContextSpan || !correctAnswer) return true;
     if (objectiveId !== 'reading_detail' && objectiveId !== 'pronoun_reference') return true;
 
@@ -395,6 +399,20 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
             question,
             sourceContextSpan
         });
+        const attemptKind = asAttemptKind(source.attemptKind);
+        const evidenceMetadata = buildLearningEvidenceMetadata({
+            ...source,
+            learningObjectiveId: canonicalObjective.objectiveId,
+            objectiveClassificationStatus: canonicalObjective.status,
+            objectiveCatalogVersion: canonicalObjective.catalogVersion,
+            question,
+            sourceContextSpan,
+            assessmentRole: resolveAssessmentRole({
+                assessmentRole: source.assessmentRole,
+                attemptKind,
+                isImmediateRepair: source.isImmediateRepair
+            })
+        });
         if (!sourceSupportsDirectAnswer(canonicalObjective.objectiveId, sourceContextSpan, sanitizedOptions[safeCorrectIndex] || '')) {
             if (source.id !== undefined) {
                 fallback.id = source.id;
@@ -416,8 +434,9 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
             correctAnswer: sanitizedOptions[safeCorrectIndex] || '',
             learningObjectiveId: canonicalObjective.objectiveId,
             objectiveConfidence: source.objectiveConfidence ?? canonicalObjective.confidence,
+            ...evidenceMetadata,
             supportLevel: asSupportLevel(source.supportLevel),
-            attemptKind: asAttemptKind(source.attemptKind),
+            attemptKind,
             causeTag: cleanText(source.causeTag) || undefined,
             sourceContextSpan: sourceContextSpan || undefined
         };

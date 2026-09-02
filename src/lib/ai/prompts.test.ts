@@ -162,7 +162,12 @@ The fox runs under the pine tree.
                 xp: 8,
                 gold: 4,
                 counted: true
-            }
+            },
+            hintUsed: index % 5 === 0,
+            scaffoldTransition: 'hold' as const,
+            scaffoldReason: 'collect-more-evidence' as const,
+            nextSupportLevel: 2 as const,
+            nextAttemptKind: 'practice' as const
         }));
 
         const prompt = generateReportPrompt(400, 60, history);
@@ -172,6 +177,9 @@ The fox runs under the pine tree.
         expect(prompt).toContain('Recent Mistakes');
         expect(prompt).not.toContain('selfConfidence');
         expect(prompt).not.toContain('progressReward');
+        expect(prompt).not.toContain('hintUsed');
+        expect(prompt).not.toContain('scaffoldTransition');
+        expect(prompt).not.toContain('scaffoldReason');
         expect(prompt).not.toContain('synthetic-0');
         expect(prompt).not.toContain('Very long generated question 1 Very long generated question 1 Very long generated question 1');
     });

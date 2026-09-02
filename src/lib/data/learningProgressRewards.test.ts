@@ -10,11 +10,11 @@ describe('learning progress rewards', () => {
     test('prioritizes repair, delayed recall, transfer, and independent evidence', () => {
         expect(classifyLearningProgressReward({ source: 'battle', isImmediateRepair: true, attemptKind: 'transfer' }))
             .toBe('repair-success');
-        expect(classifyLearningProgressReward({ source: 'srs', attemptKind: 'transfer', supportLevel: 0 }))
+        expect(classifyLearningProgressReward({ source: 'srs', attemptKind: 'review', supportLevel: 0, assessmentRole: 'delayed-probe', evidenceStrength: 'delayed-independent' }))
             .toBe('delayed-recall');
-        expect(classifyLearningProgressReward({ source: 'battle', attemptKind: 'transfer', supportLevel: 0 }))
+        expect(classifyLearningProgressReward({ source: 'battle', attemptKind: 'transfer', supportLevel: 0, assessmentRole: 'transfer', evidenceStrength: 'transfer-independent' }))
             .toBe('transfer-success');
-        expect(classifyLearningProgressReward({ source: 'battle', attemptKind: 'practice', supportLevel: 0 }))
+        expect(classifyLearningProgressReward({ source: 'battle', attemptKind: 'practice', supportLevel: 0, assessmentRole: 'practice', evidenceStrength: 'independent' }))
             .toBe('independent-success');
         expect(classifyLearningProgressReward({ source: 'battle', attemptKind: 'practice', supportLevel: 2 }))
             .toBe('supported-practice');
@@ -34,7 +34,8 @@ describe('learning progress rewards', () => {
             source: 'battle', questionHash: 'practice', isCorrect: true, supportLevel: 2, priorEvidence: []
         });
         const transfer = planLearningProgressReward({
-            source: 'battle', questionHash: 'transfer', isCorrect: true, attemptKind: 'transfer', supportLevel: 0, priorEvidence: []
+            source: 'battle', questionHash: 'transfer', isCorrect: true, attemptKind: 'transfer', supportLevel: 0,
+            assessmentRole: 'transfer', evidenceStrength: 'transfer-independent', priorEvidence: []
         });
         expect(transfer?.xp).toBeGreaterThan(practice?.xp || 0);
         expect(transfer?.gold).toBeGreaterThan(practice?.gold || 0);
@@ -79,8 +80,21 @@ describe('learning progress rewards', () => {
             protectedAttempts: 1,
             totalXp: 32,
             totalGold: 18,
-            strongEvidenceCount: 2
+            strongEvidenceCount: 1
         }));
         expect(JSON.stringify(summary)).not.toMatch(/questionHash|questionText|answer/i);
+    });
+
+    test('does not pay strong-evidence rewards for unreviewed measurement labels', () => {
+        expect(planLearningProgressReward({
+            source: 'battle',
+            questionHash: 'unreviewed-transfer',
+            isCorrect: true,
+            attemptKind: 'transfer',
+            supportLevel: 0,
+            assessmentRole: 'transfer',
+            evidenceStrength: 'no-credit',
+            priorEvidence: []
+        })).toBeNull();
     });
 });

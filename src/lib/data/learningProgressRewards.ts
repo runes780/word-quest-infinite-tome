@@ -3,6 +3,7 @@ import type {
     LearningEventSource,
     LearningEventSupportLevel
 } from '@/db/db';
+import type { AssessmentRole, EvidenceStrength } from './learningEvidenceContract';
 
 export type LearningProgressRewardKind =
     | 'supported-practice'
@@ -77,11 +78,13 @@ export function classifyLearningProgressReward(input: {
     attemptKind?: LearningEventAttemptKind;
     supportLevel?: LearningEventSupportLevel;
     isImmediateRepair?: boolean;
+    assessmentRole?: AssessmentRole;
+    evidenceStrength?: EvidenceStrength;
 }): LearningProgressRewardKind {
     if (input.isImmediateRepair) return 'repair-success';
-    if (input.source === 'srs' || input.attemptKind === 'review') return 'delayed-recall';
-    if (input.attemptKind === 'transfer') return 'transfer-success';
-    if (input.supportLevel === 0) return 'independent-success';
+    if (input.assessmentRole === 'delayed-probe' && input.evidenceStrength === 'delayed-independent') return 'delayed-recall';
+    if (input.evidenceStrength === 'transfer-independent') return 'transfer-success';
+    if (input.evidenceStrength === 'independent') return 'independent-success';
     return 'supported-practice';
 }
 
@@ -92,9 +95,11 @@ export function planLearningProgressReward(input: {
     attemptKind?: LearningEventAttemptKind;
     supportLevel?: LearningEventSupportLevel;
     isImmediateRepair?: boolean;
+    assessmentRole?: AssessmentRole;
+    evidenceStrength?: EvidenceStrength;
     priorEvidence: ProgressRewardEvidence[];
 }): LearningProgressReward | null {
-    if (!input.isCorrect) return null;
+    if (!input.isCorrect || input.evidenceStrength === 'no-credit') return null;
 
     const kind = classifyLearningProgressReward(input);
     const rule = LEARNING_PROGRESS_REWARD_RULES[kind];
@@ -165,7 +170,6 @@ export function buildLearningProgressRewardSummary(
         totalGold,
         strongEvidenceCount:
             byKind['independent-success'] +
-            byKind['repair-success'] +
             byKind['delayed-recall'] +
             byKind['transfer-success'],
         byKind

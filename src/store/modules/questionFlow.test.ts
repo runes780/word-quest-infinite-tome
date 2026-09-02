@@ -1,4 +1,9 @@
-import { applyQuestionDefaults, buildImmediateRepairQuestion, expandBossGateQuestions } from './questionFlow';
+import {
+    applyAdaptiveScaffoldDecision,
+    applyQuestionDefaults,
+    buildImmediateRepairQuestion,
+    expandBossGateQuestions
+} from './questionFlow';
 
 describe('question flow learning gates', () => {
     test('expands a boss into recognition, application, and transfer stages', () => {
@@ -97,5 +102,108 @@ describe('question flow learning gates', () => {
         expect(repair.supportLevel).toBeGreaterThanOrEqual(question.supportLevel || 0);
         expect(repair.difficulty).toBe(question.difficulty);
         expect(repair.isImmediateRepair).toBe(true);
+    });
+
+    test('fades only the next practice item for the same objective', () => {
+        const current = applyQuestionDefaults({
+            id: 50,
+            type: 'vocab',
+            question: 'What does bright mean?',
+            options: ['shining', 'dark'],
+            correct_index: 0,
+            explanation: 'Bright means shining.',
+            skillTag: 'vocab:bright',
+            learningObjectiveId: 'vocab_context_meaning',
+            supportLevel: 3,
+            attemptKind: 'practice'
+        });
+        const unrelated = applyQuestionDefaults({
+            ...current,
+            id: 51,
+            type: 'grammar',
+            question: 'Choose the past tense of go.',
+            options: ['went', 'go'],
+            skillTag: 'grammar:past_simple',
+            learningObjectiveId: 'past_tense_basic'
+        });
+        const sameTarget = applyQuestionDefaults({ ...current, id: 52, question: 'Bright is closest to...' });
+
+        const adapted = applyAdaptiveScaffoldDecision(
+            [current, unrelated, sameTarget],
+            0,
+            current,
+            {
+                transition: 'fade',
+                reason: 'stable-success',
+                nextSupportLevel: 2,
+                nextAttemptKind: 'practice',
+                evidence: {
+                    recentAttempts: 2,
+                    recentCorrect: 2,
+                    recentHintUses: 0,
+                    consecutiveWrong: 0,
+                    consecutiveNoHintSuccessesAtLevel: 2,
+                    transferAttempts: 0,
+                    transferCorrect: 0
+                }
+            }
+        );
+
+        expect(adapted[1]).toEqual(unrelated);
+        expect(adapted[2]).toEqual(expect.objectContaining({
+            supportLevel: 2,
+            attemptKind: 'practice',
+            questionMode: 'choice'
+        }));
+    });
+
+    test('promotes an existing transfer item instead of relabelling practice content', () => {
+        const current = applyQuestionDefaults({
+            id: 60,
+            type: 'vocab',
+            question: 'What does bright mean?',
+            options: ['shining', 'dark'],
+            correct_index: 0,
+            explanation: 'Bright means shining.',
+            skillTag: 'vocab:bright',
+            learningObjectiveId: 'vocab_context_meaning',
+            supportLevel: 1,
+            attemptKind: 'practice'
+        });
+        const practice = applyQuestionDefaults({ ...current, id: 61, question: 'Choose bright again.', supportLevel: 2 });
+        const transfer = applyQuestionDefaults({
+            ...current,
+            id: 62,
+            question: 'A bright lamp helps me read. Type a synonym for bright.',
+            supportLevel: 0,
+            attemptKind: 'transfer',
+            questionMode: 'typing'
+        });
+
+        const adapted = applyAdaptiveScaffoldDecision(
+            [current, practice, transfer],
+            0,
+            current,
+            {
+                transition: 'transfer',
+                reason: 'transfer-ready',
+                nextSupportLevel: 0,
+                nextAttemptKind: 'transfer',
+                evidence: {
+                    recentAttempts: 2,
+                    recentCorrect: 2,
+                    recentHintUses: 0,
+                    consecutiveWrong: 0,
+                    consecutiveNoHintSuccessesAtLevel: 2,
+                    transferAttempts: 0,
+                    transferCorrect: 0
+                }
+            }
+        );
+
+        expect(adapted[1].id).toBe(62);
+        expect(adapted[1].attemptKind).toBe('transfer');
+        expect(adapted[2].id).toBe(61);
+        expect(adapted[2].attemptKind).toBe('practice');
     });
 });

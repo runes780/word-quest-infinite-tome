@@ -106,6 +106,7 @@ export function BattleInterface() {
         selfConfidence,
         setSelfConfidence,
         progressReward,
+        scaffoldDecision,
         handleOptionClick,
         handleTextQuestionAnswer,
         handleVoiceAnswer,
@@ -269,6 +270,7 @@ export function BattleInterface() {
                     clarityEffect={clarityEffect}
                     selfConfidence={selfConfidence}
                     progressReward={progressReward}
+                    scaffoldDecision={scaffoldDecision}
                     onToggleHint={toggleHint}
                     onConfidenceChange={setSelfConfidence}
                     onChoiceSelect={handleOptionClick}

@@ -7,21 +7,26 @@ import {
 import type {
     FSRSCard,
     GlobalPlayerProfile,
+    LearningEvent,
     LearningTask,
     MistakeRecord,
-    SkillMasteryRecord
+    ObjectiveMasteryRecord
 } from '@/db/db';
 import {
     AttemptKind,
     LearningObjectiveId,
     SupportLevel,
+    getLearningObjective,
+    isKnownObjectiveId,
     mapSkillTagToObjectiveId,
     objectiveTitle,
     selectSupportLevelForMastery
 } from './learningObjectives';
+import type { AssessmentRole, RetentionProbeStage } from './learningEvidenceContract';
+import { buildDueRetentionProbes } from './retentionProbes';
 
 export type PracticePlanStepType = 'review' | 'practice' | 'transfer';
-export type PracticePlanEvidenceSource = 'srs' | 'mistake' | 'mastery' | 'task' | 'starter';
+export type PracticePlanEvidenceSource = 'srs' | 'retention' | 'mistake' | 'mastery' | 'task' | 'starter';
 
 export interface PracticePlanEvidence {
     label: string;
@@ -39,6 +44,12 @@ export interface PracticePlanStep {
     questionCount: number;
     supportLevel: SupportLevel;
     attemptKind: AttemptKind;
+    assessmentRole?: AssessmentRole;
+    probeStage?: RetentionProbeStage;
+    probeScheduledFor?: number;
+    itemFamilyId?: string;
+    equivalenceGroup?: string;
+    originalContextId?: string;
     rationale: string;
     evidence: PracticePlanEvidence[];
 }
@@ -54,31 +65,28 @@ export interface PracticePlan {
 }
 
 export interface BuildDailyPracticePlanInput {
-    masteryRecords: SkillMasteryRecord[];
+    masteryRecords: ObjectiveMasteryRecord[];
     dueCards: FSRSCard[];
     recentMistakes: MistakeRecord[];
     learningTasks: LearningTask[];
+    learningEvents?: LearningEvent[];
     profile?: GlobalPlayerProfile | null;
     now?: number;
 }
 
 const MAX_MINUTES = 15;
 
-function compactSkill(skillTag?: string) {
-    return (skillTag || 'core_skill').replace(/[:\s]+/g, '_');
-}
-
-function stepId(type: PracticePlanStepType, objectiveId: LearningObjectiveId, skillTag?: string) {
-    return `${type}_${objectiveId}_${compactSkill(skillTag)}`;
+function stepId(type: PracticePlanStepType, objectiveId: LearningObjectiveId) {
+    return `${type}_${objectiveId}`;
 }
 
 function countByObjectiveFromDueCards(cards: FSRSCard[], now: number) {
     const buckets = new Map<LearningObjectiveId, { count: number; skillTag?: string; overdueMs: number }>();
     cards.forEach((card) => {
-        const objectiveId = mapSkillTagToObjectiveId({
-            skillTag: card.skillTag,
-            type: card.type
-        });
+        const objectiveId = isKnownObjectiveId(card.learningObjectiveId)
+            ? card.learningObjectiveId
+            : mapSkillTagToObjectiveId({ skillTag: card.skillTag, type: card.type });
+        if (!objectiveId) return;
         const current = buckets.get(objectiveId) || { count: 0, skillTag: card.skillTag, overdueMs: 0 };
         current.count += 1;
         current.skillTag ||= card.skillTag;
@@ -96,6 +104,7 @@ function countByObjectiveFromMistakes(records: MistakeRecord[]) {
             skillTag: record.skillTag || record.mentorCauseTag,
             type: record.type
         });
+        if (!objectiveId) return;
         const current = buckets.get(objectiveId) || {
             count: 0,
             skillTag: record.skillTag,
@@ -123,8 +132,29 @@ function activeTaskEvidence(tasks: LearningTask[]): PracticePlanEvidence[] {
         }));
 }
 
-function masteryAccuracy(row: SkillMasteryRecord) {
-    return row.attempts > 0 ? row.correct / row.attempts : 0;
+function masteryAccuracy(row: ObjectiveMasteryRecord) {
+    const attempts = row.qualifiedAttempts || 0;
+    return attempts > 0 ? (row.qualifiedCorrect || 0) / attempts : 0;
+}
+
+export function getPrerequisiteReadiness(
+    objectiveId: LearningObjectiveId,
+    masteryRecords: ObjectiveMasteryRecord[]
+): { ready: boolean; missing: LearningObjectiveId[] } {
+    const objective = getLearningObjective(objectiveId);
+    if (!objective || objective.prerequisites.length === 0) return { ready: true, missing: [] };
+    const byObjective = new Map(masteryRecords.map((row) => [row.objectiveId, row]));
+    const missing = objective.prerequisites.filter((prerequisiteId) => {
+        const row = byObjective.get(prerequisiteId);
+        const prerequisite = getLearningObjective(prerequisiteId);
+        if (!row || !prerequisite) return true;
+        return !(
+            (row.state === 'consolidated' || row.state === 'mastered') &&
+            row.score >= prerequisite.masteryThreshold.score &&
+            (row.independentAttempts || 0) >= prerequisite.evidenceRequirements.minimumIndependentAttempts
+        );
+    });
+    return { ready: missing.length === 0, missing };
 }
 
 function buildStarterPlan(now: number): PracticePlan {
@@ -156,16 +186,16 @@ function buildStarterPlan(now: number): PracticePlan {
             evidence: [{ label: 'Starter path', value: 'Adaptive baseline before local evidence', source: 'starter' }]
         },
         {
-            id: 'starter_transfer',
-            type: 'transfer',
+            id: 'starter_independent_check',
+            type: 'practice',
             title: 'Try one independent recall',
             objectiveId: 'vocab_context_meaning',
             skillTag: 'vocab_core',
             estimatedMinutes: 3,
             questionCount: 1,
             supportLevel: 1,
-            attemptKind: 'transfer',
-            rationale: 'A small recall step checks whether the learner can move beyond recognition.',
+            attemptKind: 'practice',
+            rationale: 'A small same-context recall step collects independent evidence before transfer is unlocked.',
             evidence: [{ label: 'Starter path', value: 'Keeps first session under 15 minutes', source: 'starter' }]
         }
     ];
@@ -218,7 +248,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
         };
         evidence.push(stepEvidence);
         pushUniqueStep(steps, {
-            id: stepId('review', objectiveId, data.skillTag),
+            id: stepId('review', objectiveId),
             type: 'review',
             title: `Review ${objectiveTitle(objectiveId)}`,
             objectiveId,
@@ -228,6 +258,34 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
             supportLevel: 3,
             attemptKind: 'review',
             rationale: 'Due FSRS cards have the highest risk of forgetting, so they come first.',
+            evidence: [stepEvidence]
+        });
+    }
+
+    const dueProbe = buildDueRetentionProbes(input.learningEvents || [], now)[0];
+    if (dueProbe) {
+        const stepEvidence = {
+            label: 'Retention check',
+            value: `${dueProbe.stage === 'day-1' ? '24-hour' : '7-day'} no-hint check for ${objectiveTitle(dueProbe.objectiveId)}`,
+            source: 'retention' as const
+        };
+        evidence.push(stepEvidence);
+        pushUniqueStep(steps, {
+            id: dueProbe.probeId,
+            type: 'review',
+            title: `Recall ${objectiveTitle(dueProbe.objectiveId)}`,
+            objectiveId: dueProbe.objectiveId,
+            estimatedMinutes: 2,
+            questionCount: 1,
+            supportLevel: 0,
+            attemptKind: 'review',
+            assessmentRole: 'delayed-probe',
+            probeStage: dueProbe.stage,
+            probeScheduledFor: dueProbe.scheduledFor,
+            itemFamilyId: dueProbe.itemFamilyId,
+            equivalenceGroup: dueProbe.equivalenceGroup,
+            originalContextId: dueProbe.originalContextId,
+            rationale: 'A short equivalent-item check measures retention without showing a hint before the response.',
             evidence: [stepEvidence]
         });
     }
@@ -242,7 +300,7 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
         };
         evidence.push(stepEvidence);
         pushUniqueStep(steps, {
-            id: stepId('practice', objectiveId, data.skillTag || data.causeTag),
+            id: stepId('practice', objectiveId),
             type: 'practice',
             title: `Fix ${objectiveTitle(objectiveId)}`,
             objectiveId,
@@ -260,50 +318,58 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
         .filter((row) => row.state === 'learning' || (row.state === 'new' && row.attempts >= 2))
         .sort((a, b) => a.score - b.score || masteryAccuracy(a) - masteryAccuracy(b))[0];
     if (learningMastery && steps.length < 3) {
-        const objectiveId = mapSkillTagToObjectiveId({ skillTag: learningMastery.skillTag });
+        const readiness = getPrerequisiteReadiness(learningMastery.objectiveId, input.masteryRecords);
+        const objectiveId = readiness.missing[0] || learningMastery.objectiveId;
         const stepEvidence = {
-            label: 'Mastery',
-            value: `${learningMastery.skillTag} is ${learningMastery.state} at ${learningMastery.score}%`,
+            label: readiness.ready ? 'Objective evidence' : 'Prerequisite gate',
+            value: readiness.ready
+                ? `${objectiveTitle(learningMastery.objectiveId)} is ${learningMastery.state} at ${learningMastery.score}% with ${learningMastery.independentAttempts || 0} independent attempts`
+                : `${objectiveTitle(objectiveId)} comes before ${objectiveTitle(learningMastery.objectiveId)}`,
             source: 'mastery' as const
         };
         evidence.push(stepEvidence);
         pushUniqueStep(steps, {
-            id: stepId('practice', objectiveId, learningMastery.skillTag),
+            id: stepId('practice', objectiveId),
             type: 'practice',
             title: `Consolidate ${objectiveTitle(objectiveId)}`,
             objectiveId,
-            skillTag: learningMastery.skillTag,
             estimatedMinutes: 4,
             questionCount: 3,
-            supportLevel: selectSupportLevelForMastery(learningMastery),
+            supportLevel: readiness.ready ? selectSupportLevelForMastery(learningMastery) : 3,
             attemptKind: 'practice',
-            rationale: 'Learning-state objectives need short, focused repetition.',
+            rationale: readiness.ready
+                ? 'Learning-state objectives need short, focused repetition.'
+                : 'The next knowledge component stays locked until its prerequisite has enough independent evidence.',
             evidence: [stepEvidence]
         });
     }
 
     const transferMastery = [...input.masteryRecords]
-        .filter((row) => row.state === 'consolidated' || row.state === 'mastered' || row.score >= 68)
+        .filter((row) => {
+            const objective = getLearningObjective(row.objectiveId);
+            if (!objective || (row.state !== 'consolidated' && row.state !== 'mastered')) return false;
+            return (row.independentAttempts || 0) >= objective.evidenceRequirements.minimumIndependentAttempts &&
+                getPrerequisiteReadiness(row.objectiveId, input.masteryRecords).ready;
+        })
         .sort((a, b) => b.score - a.score || b.attempts - a.attempts)[0];
     if (transferMastery) {
-        const objectiveId = mapSkillTagToObjectiveId({ skillTag: transferMastery.skillTag });
+        const objectiveId = transferMastery.objectiveId;
         const stepEvidence = {
             label: 'Transfer ready',
-            value: `${transferMastery.skillTag} is ${transferMastery.state} at ${transferMastery.score}%`,
+            value: `${objectiveTitle(objectiveId)} has ${transferMastery.independentAttempts || 0} independent attempts and its prerequisites are ready`,
             source: 'mastery' as const
         };
         evidence.push(stepEvidence);
         pushUniqueStep(steps, {
-            id: stepId('transfer', objectiveId, transferMastery.skillTag),
+            id: stepId('transfer', objectiveId),
             type: 'transfer',
             title: `Transfer ${objectiveTitle(objectiveId)}`,
             objectiveId,
-            skillTag: transferMastery.skillTag,
             estimatedMinutes: 3,
             questionCount: 2,
             supportLevel: Math.min(1, selectSupportLevelForMastery(transferMastery)) as SupportLevel,
             attemptKind: 'transfer',
-            rationale: 'Near-mastered skills should be checked through productive recall or a new context.',
+            rationale: 'A new-context check is unlocked only after enough independent evidence and prerequisite readiness.',
             evidence: [stepEvidence]
         });
     }
@@ -335,8 +401,8 @@ export function buildDailyPracticePlan(input: BuildDailyPracticePlanInput): Prac
 
 export async function getDailyPracticePlan(now = Date.now()): Promise<PracticePlan> {
     const cutoff = now - 14 * 24 * 60 * 60 * 1000;
-    const [masteryRecords, dueCards, recentMistakes, learningTasks, profile] = await Promise.all([
-        db.skillMastery.toArray(),
+    const [masteryRecords, dueCards, recentMistakes, learningTasks, profile, learningEvents] = await Promise.all([
+        db.objectiveMastery.toArray(),
         getDueCardsWithPriority(12),
         db.mistakes
             .where('timestamp')
@@ -345,7 +411,11 @@ export async function getDailyPracticePlan(now = Date.now()): Promise<PracticePl
             .limit(20)
             .toArray(),
         getWeeklyLearningTasks(now),
-        getPlayerProfile().catch(() => null)
+        getPlayerProfile().catch(() => null),
+        db.learningEvents
+            .where('timestamp')
+            .aboveOrEqual(now - 30 * 24 * 60 * 60 * 1000)
+            .toArray()
     ]);
 
     return buildDailyPracticePlan({
@@ -353,6 +423,7 @@ export async function getDailyPracticePlan(now = Date.now()): Promise<PracticePl
         dueCards,
         recentMistakes,
         learningTasks,
+        learningEvents,
         profile,
         now
     });

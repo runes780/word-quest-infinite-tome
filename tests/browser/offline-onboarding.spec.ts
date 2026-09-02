@@ -22,7 +22,7 @@ test('cold start offers a local quest without opening AI settings', async ({ pag
     await page.getByRole('button', { name: 'waters', exact: true }).click();
 
     const result = page.getByRole('status');
-    await expect(result).toContainText(/victory/i);
+    await expect(result).toContainText(/Correct answer/i);
     await expect(result).toBeInViewport();
     await expect(page.getByRole('button', { name: 'Next Level' })).toBeInViewport();
 });

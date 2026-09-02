@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, Shield, Sparkles, Sword, HelpCircle, Lightbulb } from 'lucide-react';
+import { Brain, CheckCircle2, Shield, Sparkles, Sword, HelpCircle, Lightbulb, Layers, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypingQuestion } from '@/components/TypingQuestion';
 import { FillBlankQuestion } from '@/components/FillBlankQuestion';
@@ -16,6 +16,10 @@ import { objectiveTitle, supportLevelLabel } from '@/lib/data/learningObjectives
 import type { LearningEventSelfConfidence } from '@/db/db';
 import { calibrationSignalFor, shouldCollectSelfConfidence } from '@/lib/data/metacognitiveCalibration';
 import type { LearningProgressReward, LearningProgressRewardKind } from '@/lib/data/learningProgressRewards';
+import {
+    scaffoldDecisionMessage,
+    type AdaptiveScaffoldDecision
+} from '@/lib/data/adaptiveScaffolding';
 
 interface BattleQuestionPanelProps {
     currentQuestion: Monster;
@@ -33,6 +37,7 @@ interface BattleQuestionPanelProps {
     clarityEffect: { questionId: number; hiddenOptions: number[] } | null;
     selfConfidence?: LearningEventSelfConfidence;
     progressReward: LearningProgressReward | null;
+    scaffoldDecision?: AdaptiveScaffoldDecision | null;
     onToggleHint: () => void;
     onConfidenceChange: (confidence: LearningEventSelfConfidence) => void;
     onChoiceSelect: (index: number) => void;
@@ -61,6 +66,7 @@ export function BattleQuestionPanel({
     clarityEffect,
     selfConfidence,
     progressReward,
+    scaffoldDecision = null,
     onToggleHint,
     onConfidenceChange,
     onChoiceSelect,
@@ -109,6 +115,9 @@ export function BattleQuestionPanel({
         'delayed-recall': t.battle.rewardDelayedRecall,
         'transfer-success': t.battle.rewardTransferSuccess
     };
+    const correctAnswer = currentQuestion.options[currentQuestion.correct_index] || currentQuestion.correctAnswer;
+    const selectedAnswer = selectedOption === null ? undefined : currentQuestion.options[selectedOption];
+    const strategyText = feedbackStrategyForObjective(currentQuestion.learningObjectiveId, uiLanguage);
 
     useEffect(() => {
         if (!showResult || typeof feedbackRef.current?.scrollIntoView !== 'function') return;
@@ -315,7 +324,7 @@ export function BattleQuestionPanel({
                         animate={{ y: 0, opacity: 1 }}
                         exit={{ y: -20, opacity: 0 }}
                         className={cn(
-                            "p-6 rounded-2xl border-2 shadow-lg backdrop-blur-md",
+                            "mb-24 scroll-mb-28 rounded-2xl border-2 p-6 shadow-lg backdrop-blur-md sm:mb-0 sm:scroll-mb-0",
                             isCorrect
                                 ? "bg-green-500/10 border-green-500/30 shadow-green-500/10"
                                 : "bg-destructive/10 border-destructive/30 shadow-destructive/10"
@@ -324,13 +333,29 @@ export function BattleQuestionPanel({
                         aria-live="polite"
                         aria-atomic="true"
                     >
-                        <div className="flex items-start justify-between gap-4">
-                            <div>
-                                <h4 className={cn("text-xl font-black mb-2 uppercase tracking-wide", isCorrect ? "text-green-500" : "text-destructive")}>
-                                    {isCorrect ? `✨ ${t.battle.victory} ` : `💥 ${t.battle.defeat} `}
+                        <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                                <h4 className={cn("mb-2 flex items-center gap-2 text-xl font-black uppercase tracking-wide", isCorrect ? "text-green-600 dark:text-green-400" : "text-destructive")}>
+                                    {isCorrect ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                                    {isCorrect ? (uiLanguage === 'zh' ? '回答正确' : 'Correct') : (uiLanguage === 'zh' ? '需要修复' : 'Needs repair')}
                                 </h4>
+                                <div className="mb-3 grid gap-2 text-sm sm:grid-cols-2">
+                                    {!isCorrect && selectedAnswer && (
+                                        <p className="rounded-xl bg-background/60 px-3 py-2">
+                                            <span className="font-black">{uiLanguage === 'zh' ? '你的答案' : 'Your answer'}:</span> {selectedAnswer}
+                                        </p>
+                                    )}
+                                    <p className="rounded-xl bg-background/60 px-3 py-2">
+                                        <span className="font-black">{uiLanguage === 'zh' ? '正确答案' : 'Correct answer'}:</span> {correctAnswer}
+                                    </p>
+                                </div>
                                 <div className="flex items-start gap-2">
-                                    <p className="text-sm font-medium opacity-90 leading-relaxed text-balance flex-1">{resultMessage}</p>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">{uiLanguage === 'zh' ? '为什么' : 'Why'}</p>
+                                        <p className="mt-1 text-sm font-medium opacity-90 leading-relaxed text-balance">{resultMessage}</p>
+                                        <p className="mt-3 text-xs font-black uppercase tracking-wide text-muted-foreground">{uiLanguage === 'zh' ? '可迁移策略' : 'Reusable strategy'}</p>
+                                        <p className="mt-1 text-sm leading-relaxed text-foreground/90">{strategyText}</p>
+                                    </div>
                                     {ttsEnabled && (
                                         <button
                                             onClick={onSpeakExplanation}
@@ -372,6 +397,19 @@ export function BattleQuestionPanel({
                                         </div>
                                     </div>
                                 )}
+                                {scaffoldDecision && scaffoldDecision.reason !== 'collect-more-evidence' && (
+                                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-violet-500/25 bg-violet-500/10 p-3 text-sm text-foreground">
+                                        <Layers className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" />
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                                                {uiLanguage === 'zh' ? '下一步支架' : 'Next Support Step'}
+                                            </p>
+                                            <p className="mt-1 leading-relaxed">
+                                                {scaffoldDecisionMessage(scaffoldDecision, uiLanguage)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 {currentQuestion.isBoss && currentMonsterHp > 0 && (
                                     <p className="text-xs text-muted-foreground mt-2">
                                         {t.battle.shieldProgress}: {bossShieldProgress}/{bossComboThreshold}
@@ -381,7 +419,7 @@ export function BattleQuestionPanel({
                                     <p className="text-xs text-blue-400 mt-2">{t.battle.clarityActive}</p>
                                 )}
                             </div>
-                            <div className="flex flex-col gap-2 shrink-0">
+                            <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto">
                                 {!isCorrect && (
                                     <button
                                         onClick={onOpenMentor}
@@ -393,7 +431,7 @@ export function BattleQuestionPanel({
                                 )}
                                 <button
                                     onClick={onNext}
-                                    className="min-h-11 rounded-lg bg-primary px-6 py-2 font-black uppercase tracking-wide text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25"
+                                    className="min-h-11 w-full rounded-lg bg-primary px-6 py-2 font-black uppercase tracking-wide text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-primary/25 sm:w-auto"
                                 >
                                     {t.battle.nextLevel}
                                 </button>
@@ -404,4 +442,15 @@ export function BattleQuestionPanel({
             </AnimatePresence>
         </div>
     );
+}
+
+function feedbackStrategyForObjective(objectiveId: string | undefined, language: 'en' | 'zh') {
+    const isZh = language === 'zh';
+    if (objectiveId === 'present_simple') return isZh ? '先找日常频率词，再检查主语是否需要动词加 -s。' : 'Find the routine cue first, then check whether the subject needs an -s verb form.';
+    if (objectiveId === 'past_tense_basic') return isZh ? '先圈出过去时间线索，再选择与它一致的过去式。' : 'Mark the past-time cue, then choose the past form that matches it.';
+    if (objectiveId === 'preposition_place_time') return isZh ? '先判断是钟点、日期还是一段时间，再选择对应介词。' : 'Classify the clue as a clock time, date, or time period before choosing the preposition.';
+    if (objectiveId === 'pronoun_reference') return isZh ? '向前寻找最近且语义合理的人或事物，再代回句子检查。' : 'Look backward for the nearest sensible person or thing, then substitute it into the sentence.';
+    if (objectiveId === 'reading_detail') return isZh ? '回到原句定位题目关键词，只使用文本直接陈述的信息。' : 'Return to the source sentence, locate the key words, and use only what is directly stated.';
+    if (objectiveId === 'reading_inference') return isZh ? '把两个以上线索连接起来，选择能被全部线索支持的结论。' : 'Connect at least two clues and choose the conclusion supported by all of them.';
+    return isZh ? '找出题干中的关键线索，说明它如何支持答案，再用于下一道题。' : 'Name the key clue, explain how it supports the answer, and reuse that move on the next item.';
 }

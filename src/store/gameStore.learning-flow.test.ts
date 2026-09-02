@@ -273,6 +273,62 @@ describe('learning pipeline regression (battle/srs)', () => {
         }));
     });
 
+    test('keeps answer-level hint use consistent across session, event, and objective mastery', async () => {
+        useGameStore.getState().startGame([baseQuestion], 'battle context', 'battle');
+
+        useGameStore.getState().answerQuestion(0, {
+            responseLatencyMs: 900,
+            hintUsed: true
+        });
+        await flush();
+
+        expect(useGameStore.getState().userAnswers[0]).toEqual(expect.objectContaining({
+            hintUsed: true,
+            scaffoldReason: 'hint-dependence',
+            nextSupportLevel: 3
+        }));
+        expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
+            eventType: 'answer',
+            hintUsed: true,
+            scaffoldReason: 'hint-dependence',
+            scaffoldTransition: 'hold',
+            nextSupportLevel: 3
+        }));
+        expect(updateObjectiveMastery).toHaveBeenCalledWith(expect.objectContaining({
+            hintUsed: true
+        }));
+    });
+
+    test('fades the next same-objective question only after two no-hint successes', () => {
+        useGameStore.getState().startGame([
+            baseQuestion,
+            { ...baseQuestion, id: 2, question: 'apple means...', sourceContextSpan: 'An apple grows on a tree.' },
+            { ...baseQuestion, id: 3, question: 'choose apple', sourceContextSpan: 'She packed an apple.' }
+        ], 'battle context', 'battle');
+
+        const first = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 700 });
+        expect(first.scaffoldDecision.reason).toBe('collect-more-evidence');
+        expect(useGameStore.getState().questions[1].supportLevel).toBe(3);
+
+        useGameStore.getState().nextQuestion();
+        const second = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 700 });
+
+        expect(second.scaffoldDecision).toEqual(expect.objectContaining({
+            transition: 'fade',
+            reason: 'stable-success',
+            nextSupportLevel: 2
+        }));
+        expect(useGameStore.getState().questions[2]).toEqual(expect.objectContaining({
+            supportLevel: 2,
+            attemptKind: 'practice'
+        }));
+        expect(useGameStore.getState().userAnswers[1]).toEqual(expect.objectContaining({
+            scaffoldTransition: 'fade',
+            scaffoldReason: 'stable-success',
+            nextSupportLevel: 2
+        }));
+    });
+
     test('srs source writes wrong answer with srs tag', async () => {
         (updateSkillMastery as jest.Mock).mockResolvedValueOnce({
             skillTag: 'vocab_core',
@@ -328,15 +384,15 @@ describe('learning pipeline regression (battle/srs)', () => {
         }));
     });
 
-    test('srs success earns a delayed-recall reward without changing FSRS rating rules', async () => {
+    test('ordinary SRS success stays supported practice unless it is a qualified delayed probe', async () => {
         useGameStore.getState().startGame([baseQuestion], 'srs context', 'srs');
         const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 1400 });
         await flush();
 
         expect(result.progressReward).toEqual({
-            kind: 'delayed-recall',
-            xp: 14,
-            gold: 8,
+            kind: 'supported-practice',
+            xp: 8,
+            gold: 4,
             counted: true
         });
         expect(reviewCard).toHaveBeenCalledWith(
@@ -347,7 +403,7 @@ describe('learning pipeline regression (battle/srs)', () => {
         expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
             source: 'srs',
             attemptKind: 'review',
-            progressRewardKind: 'delayed-recall'
+            progressRewardKind: 'supported-practice'
         }));
     });
 

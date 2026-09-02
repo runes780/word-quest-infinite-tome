@@ -55,6 +55,26 @@ async function readProgressRewardEvidenceCount(page: Page) {
     });
 }
 
+async function readScaffoldEvidence(page: Page) {
+    return page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open('WordQuestDB');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        const rows = await new Promise<Array<{ eventType?: string; scaffoldReason?: string; hintUsed?: boolean }>>((resolve, reject) => {
+            const request = db.transaction('learningEvents', 'readonly').objectStore('learningEvents').getAll();
+            request.onsuccess = () => resolve(request.result as Array<{ eventType?: string; scaffoldReason?: string; hintUsed?: boolean }>);
+            request.onerror = () => reject(request.error);
+        });
+        db.close();
+        return {
+            decisions: rows.filter((row) => Boolean(row.scaffoldReason)).length,
+            hintedAnswers: rows.filter((row) => row.eventType === 'answer' && row.hintUsed === true).length
+        };
+    });
+}
+
 test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
         localStorage.setItem('word-quest-settings', JSON.stringify({
@@ -95,6 +115,7 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
     let confidenceSelections = 0;
     let verifiedDesktopChoiceLayout = false;
+    let hintSelections = 0;
 
     for (let questionNumber = 0; questionNumber < SYNTHETIC_FALLBACK_ANSWERS.length; questionNumber += 1) {
         const questionHeading = page.locator('h3.text-2xl').first();
@@ -103,6 +124,11 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
         const matchingAnswer = SYNTHETIC_FALLBACK_ANSWERS.find(([fragment]) => question.includes(fragment));
         expect(matchingAnswer, `No synthetic answer mapping for: ${question}`).toBeTruthy();
         const answer = matchingAnswer![1];
+        const hintButton = page.getByRole('button', { name: 'Hint', exact: true });
+        if (questionNumber === 0 && await hintButton.count() === 1) {
+            await hintButton.click();
+            hintSelections += 1;
+        }
         const confidenceButton = page.getByRole('button', { name: 'Not sure', exact: true });
         const confidenceVisible = await confidenceButton.count() === 1;
         if (confidenceVisible) {
@@ -131,9 +157,12 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
 
         const next = page.getByRole('button', { name: 'Next Level' });
         await expect(next).toBeVisible({ timeout: 6_000 });
-        await expect(page.getByRole('status')).toContainText(/Learning progress reward|Practice recorded/i);
+        await expect(page.getByRole('status')).toContainText(/Correct answer/i);
         if (confidenceVisible) {
             await expect(page.getByRole('status')).toContainText(/correct but unsure/i);
+        }
+        if (questionNumber === 0 && hintSelections > 0) {
+            await expect(page.getByRole('status')).toContainText(/Next Support Step/i);
         }
         await next.click();
     }
@@ -141,6 +170,8 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     await expect(page.getByRole('heading', { name: 'Mission Accomplished' })).toBeVisible();
     await expect(page.getByText('Learning Evidence Snapshot')).toBeVisible();
     await expect(page.getByText('Learning Progress Rewards')).toBeVisible();
+    await expect(page.getByText('Support Fading & Transfer Evidence')).toBeVisible();
+    await expect(page.getByText(/Transfer misses only guide the next support step/i)).toBeVisible();
     await expect(page.getByText(/XP and gold come from traceable learning evidence/i)).toBeVisible();
 
     await expect.poll(() => readLearningCounts(page), { timeout: 10_000 }).toMatchObject({
@@ -154,8 +185,14 @@ test('offline mission fallback completes battle, persists evidence, and exposes 
     expect(counts.history).toBeGreaterThanOrEqual(1);
     expect(confidenceSelections).toBeGreaterThanOrEqual(1);
     expect(verifiedDesktopChoiceLayout).toBe(true);
+    expect(hintSelections).toBe(1);
     await expect.poll(() => readConfidenceEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
     await expect.poll(() => readProgressRewardEvidenceCount(page), { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => readScaffoldEvidence(page), { timeout: 10_000 }).toMatchObject({
+        decisions: expect.any(Number),
+        hintedAnswers: 1
+    });
+    expect((await readScaffoldEvidence(page)).decisions).toBeGreaterThanOrEqual(SYNTHETIC_FALLBACK_ANSWERS.length);
 
     await page.getByRole('button', { name: 'Initialize New Mission' }).click();
     await page.getByRole('button', { name: 'SRS Review' }).first().click();

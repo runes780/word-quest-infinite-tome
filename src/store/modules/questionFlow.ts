@@ -8,6 +8,11 @@ import {
     type SupportLevel
 } from '@/lib/data/learningObjectives';
 import { buildBossGateVariants } from './bossGateVariants';
+import type { AdaptiveScaffoldDecision } from '@/lib/data/adaptiveScaffolding';
+import {
+    buildLearningEvidenceMetadata,
+    resolveAssessmentRole
+} from '@/lib/data/learningEvidenceContract';
 
 export type QuestionInput = Partial<Monster> & {
     id: number;
@@ -54,6 +59,13 @@ export const applyQuestionDefaults = (
     const fallbackCorrect = question.options[safeCorrectIndex] || '';
     const providedAnswer = question.correctAnswer?.trim();
     const correctAnswer = providedAnswer || fallbackCorrect;
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        learningObjectiveId: objectiveId,
+        objectiveClassificationStatus: canonical.status,
+        objectiveCatalogVersion: canonical.catalogVersion,
+        assessmentRole: resolveAssessmentRole(question)
+    });
 
     return {
         ...question,
@@ -64,6 +76,7 @@ export const applyQuestionDefaults = (
         correctAnswer,
         learningObjectiveId: objectiveId,
         objectiveConfidence: question.objectiveConfidence ?? canonical.confidence,
+        ...evidenceMetadata,
         supportLevel,
         attemptKind: question.attemptKind,
         causeTag: question.causeTag,
@@ -104,10 +117,22 @@ export const applyLearningMetadataForSource = (
     });
     const learningObjectiveId = canonical.objectiveId;
     const attemptKind = attemptKindForQuestion(source, question, supportLevel);
+    const evidenceMetadata = buildLearningEvidenceMetadata({
+        ...question,
+        learningObjectiveId,
+        objectiveClassificationStatus: canonical.status,
+        objectiveCatalogVersion: canonical.catalogVersion,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    });
     return {
         ...question,
         learningObjectiveId,
         objectiveConfidence: question.objectiveConfidence ?? canonical.confidence,
+        ...evidenceMetadata,
         supportLevel,
         attemptKind,
         questionMode: question.questionMode || modeForSupportLevel(supportLevel),
@@ -257,6 +282,80 @@ export const reorderQuestionsBySkill = (
         computeSkillPriority(a, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill));
     return [...head, ...tail];
 };
+
+const hasSameLearningTarget = (candidate: Monster, source: Monster) => {
+    if (candidate.learningObjectiveId && source.learningObjectiveId) {
+        return candidate.learningObjectiveId === source.learningObjectiveId;
+    }
+    return getSkillKey(candidate) === getSkillKey(source);
+};
+
+const modeForAdaptiveSupport = (question: Monster, supportLevel: SupportLevel): QuestionMode => {
+    if (supportLevel === 3) return 'choice';
+    if (supportLevel === 2) {
+        return /_{2,}|\bblank\b/i.test(question.question) ? 'fill-blank' : 'choice';
+    }
+    return 'typing';
+};
+
+/**
+ * Applies a decision only to a future item for the same learning target.
+ * Transfer is never manufactured by relabelling a source-context practice item;
+ * an existing reviewed transfer item is promoted instead.
+ */
+export function applyAdaptiveScaffoldDecision(
+    questions: Monster[],
+    currentIndex: number,
+    currentQuestion: Monster,
+    decision: AdaptiveScaffoldDecision
+): Monster[] {
+    if (
+        currentIndex >= questions.length - 1 ||
+        decision.reason === 'collect-more-evidence' ||
+        decision.reason === 'transfer-confirmed' ||
+        decision.transition === 'repair'
+    ) {
+        return questions;
+    }
+
+    const futureStart = currentIndex + 1;
+    if (decision.transition === 'transfer') {
+        const transferIndex = questions.findIndex((question, index) =>
+            index >= futureStart &&
+            !question.isBoss &&
+            !question.isImmediateRepair &&
+            hasSameLearningTarget(question, currentQuestion) &&
+            (question.attemptKind === 'transfer' || question.supportLevel === 0)
+        );
+        if (transferIndex < 0) return questions;
+        if (transferIndex === futureStart) return questions;
+
+        const next = [...questions];
+        const [transferQuestion] = next.splice(transferIndex, 1);
+        next.splice(futureStart, 0, transferQuestion);
+        return next;
+    }
+
+    const targetIndex = questions.findIndex((question, index) =>
+        index >= futureStart &&
+        !question.isBoss &&
+        !question.isImmediateRepair &&
+        question.attemptKind !== 'transfer' &&
+        question.supportLevel !== 0 &&
+        hasSameLearningTarget(question, currentQuestion)
+    );
+    if (targetIndex < 0) return questions;
+
+    const target = questions[targetIndex];
+    const next = [...questions];
+    next[targetIndex] = {
+        ...target,
+        supportLevel: decision.nextSupportLevel,
+        attemptKind: decision.nextAttemptKind,
+        questionMode: modeForAdaptiveSupport(target, decision.nextSupportLevel)
+    };
+    return next;
+}
 
 export const formatSkillLabel = (skill: string) => skill.replace(/_/g, ' ');
 

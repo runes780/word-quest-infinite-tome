@@ -54,6 +54,10 @@ import {
     buildLearningProgressRewardSummary,
     type LearningProgressRewardSummary
 } from '@/lib/data/learningProgressRewards';
+import {
+    buildScaffoldFadingSummary,
+    type ScaffoldFadingSummary
+} from '@/lib/data/adaptiveScaffolding';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -97,6 +101,7 @@ export interface GuardianDashboardViewModel {
     activityFeed: GuardianActivityFeedItem[];
     calibrationSummary: CalibrationSummary;
     progressRewardSummary: LearningProgressRewardSummary;
+    scaffoldFadingSummary: ScaffoldFadingSummary;
 }
 
 export interface GuardianActivityFeedInput {
@@ -309,7 +314,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
             .where('timestamp')
             .aboveOrEqual(now - Math.max(range, 30) * DAY_MS)
             .toArray(),
-        db.skillMastery.toArray()
+        db.objectiveMastery.toArray()
     ]);
 
     const repeatedGoal = repeatedCauseBaselineGoal ?? evaluateRepeatedCauseGoalAgainstBaseline(mistakes, [7, 14, 30], 0.2, 5, 8);
@@ -336,12 +341,14 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dueCards,
         recentMistakes: mistakes,
         learningTasks,
+        learningEvents,
         profile: playerProfile,
         now
     });
     const dailyFlameStatus = buildDailyFlameStatus({ profile: playerProfile, now });
     const calibrationSummary = buildCalibrationSummary(learningEvents, { now, windowDays: range });
     const progressRewardSummary = buildLearningProgressRewardSummary(learningEvents, { now, windowDays: range });
+    const scaffoldFadingSummary = buildScaffoldFadingSummary(learningEvents);
 
     return {
         history,
@@ -369,6 +376,7 @@ export async function getGuardianDashboardViewModel(range: number, now = Date.no
         dailyPracticePlan,
         activityFeed,
         calibrationSummary,
-        progressRewardSummary
+        progressRewardSummary,
+        scaffoldFadingSummary
     };
 }
