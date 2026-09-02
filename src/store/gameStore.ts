@@ -145,6 +145,9 @@ export type MonsterDifficulty = 'easy' | 'medium' | 'hard';
 
 // Question mode for productive recall
 export type QuestionMode = 'choice' | 'typing' | 'fill-blank';
+// 认知动词（正交于渲染格式 questionMode）。P1 仅 recognize/recall 由模板产出；
+// listen/match/build/correct/apply 在 P2/P3 解锁后引入。
+export type Verb = 'recognize' | 'recall' | 'listen' | 'match' | 'build' | 'correct' | 'apply';
 export type SupportLevel = 0 | 1 | 2 | 3;
 export type AttemptKind = 'diagnostic' | 'practice' | 'review' | 'transfer';
 
@@ -188,6 +191,7 @@ export interface Monster {
     sourceActionId?: string;
     sourceActionPriority?: 'urgent' | 'important' | 'optional';
     sourceActionEstimatedMinutes?: number;
+    verb?: Verb; // 认知动词；P1 模板会显式设置，老题/缓存题缺失时由 P2 渲染层用 inferVerbFromMode 推导
 }
 
 export interface PlayerStats {
