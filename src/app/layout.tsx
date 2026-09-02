@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SettingsHydration } from "./SettingsHydration";
 
 export const metadata: Metadata = {
   title: "Word Quest: Infinite Tome",
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased" suppressHydrationWarning>
+        <SettingsHydration />
         {children}
       </body>
     </html>

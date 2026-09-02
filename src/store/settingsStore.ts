@@ -60,7 +60,10 @@ export const useSettingsStore = create<SettingsState>()(
             apiKey: '',
             apiProvider: 'deepseek',
             model: 'deepseek-v4-flash',
-            language: detectPreferredLanguage(),
+            // Deterministic initial value: the server and the client's first
+            // render must agree or hydration fails. The saved preference and
+            // browser language are applied after mount by SettingsHydration.
+            language: 'en',
             theme: 'light',
             soundEnabled: true,
             ttsEnabled: false,
@@ -86,6 +89,10 @@ export const useSettingsStore = create<SettingsState>()(
         {
             name: 'word-quest-settings',
             version: 1,
+            // Rehydration is deferred to after mount (see SettingsHydration):
+            // reading localStorage during the first client render makes the
+            // rendered text diverge from the server HTML and fails hydration.
+            skipHydration: true,
             migrate: (persistedState): PersistedSettingsState => {
                 const state = persistedState as Partial<PersistedSettingsState>;
                 const apiProvider = state.apiProvider || 'deepseek';
