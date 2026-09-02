@@ -160,6 +160,11 @@ npm run build
 npm run test:e2e
 ```
 
+The E2E command uses the repository-local Playwright CLI and starts this app's production
+server on dedicated port `3100`; it never reuses another service already running there. If
+the locked Playwright browser is missing after install or upgrade, run
+`node ./node_modules/playwright/cli.js install chromium` once before the E2E gate.
+
 AI-generated missions require a local API key entered through the app settings. OpenAI support is intended for maintainer experiments and uses the Responses API with `store: false`; the browser still sends the key directly, so use a restricted development key rather than a production or classroom credential. Do not commit API keys, real student data, or identifiable child information.
 
 The settings panel can create and restore local IndexedDB backups. These JSON files contain full learning history, question text, mistakes, mastery, review state, and dashboard evidence and are not encrypted. Keep them in trusted storage and never attach a real learner backup to a public issue or pull request. API keys and other localStorage settings are deliberately excluded.
@@ -198,7 +203,7 @@ This project keeps `"private": true` in `package.json` because it is a Next.js a
 2. Use `npm test` for unit and integration regression checks.
 3. Use `npm run lint` before submitting changes.
 4. Use `npm run build` to verify the Next.js production build.
-5. Use `npm run test:e2e` after a production build for the browser learning-flow gate.
+5. Use `npm run test:e2e` after a production build for the isolated browser learning-flow gate on port `3100`.
 6. Add focused tests when changing learning data logic, mastery state transitions, FSRS behavior, AI prompt contracts, or dashboard calculations.
 
 When adding a feature:
