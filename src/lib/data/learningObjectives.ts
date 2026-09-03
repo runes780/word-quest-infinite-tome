@@ -347,16 +347,19 @@ export function modeForSupportLevel(level: SupportLevel): ObjectiveQuestionMode 
 }
 
 export function supportLevelLabel(level: SupportLevel, language: UiLanguage = 'en'): string {
+    // Level 0 only means the learner answered without hints. Transfer evidence
+    // is decided by the evidence contract (assessment role + transfer distance
+    // + reviewer status), never by the support level.
     if (language === 'zh') {
         if (level === 3) return '有提示';
         if (level === 2) return '支架练习';
         if (level === 1) return '独立练习';
-        return '迁移应用';
+        return '无提示独立作答';
     }
     if (level === 3) return 'guided';
     if (level === 2) return 'scaffolded';
     if (level === 1) return 'independent';
-    return 'transfer';
+    return 'independent, no hints';
 }
 
 export function normalizeCauseTag(value?: string | null): string | undefined {

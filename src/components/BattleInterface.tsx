@@ -132,7 +132,6 @@ export function BattleInterface() {
         context,
         currentIndex,
         questionsLength: questions.length,
-        playerLevel: playerStats.level,
         addQuestions
     });
 

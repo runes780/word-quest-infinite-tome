@@ -5,6 +5,7 @@ import type {
     LearningEventScaffoldTransition,
     LearningEventSupportLevel
 } from '@/db/db';
+import type { EvidenceStrength } from './learningEvidenceContract';
 
 export type ScaffoldTransition = LearningEventScaffoldTransition;
 export type ScaffoldDecisionReason = LearningEventScaffoldReason;
@@ -19,6 +20,7 @@ export interface ScaffoldEvidenceRecord {
     attemptKind?: LearningEventAttemptKind;
     hintUsed?: boolean;
     isImmediateRepair?: boolean;
+    evidenceStrength?: EvidenceStrength;
     scaffoldTransition?: ScaffoldTransition;
     scaffoldReason?: ScaffoldDecisionReason;
     nextSupportLevel?: LearningEventSupportLevel;
@@ -223,7 +225,11 @@ export function buildScaffoldFadingSummary(rows: ScaffoldEvidenceRecord[]): Scaf
         row.attemptKind !== 'transfer'
     ).length;
     const hintUsedAnswers = answers.filter((row) => row.hintUsed).length;
-    const transferRows = answers.filter((row) => row.attemptKind === 'transfer' || row.supportLevel === 0);
+    // Displayed transfer evidence follows the evidence contract: only a reviewed,
+    // new-context, no-hint transfer attempt (transfer-independent) counts. A
+    // supportLevel-0 answer without that strength is independent practice, not
+    // transfer evidence.
+    const transferRows = answers.filter((row) => row.evidenceStrength === 'transfer-independent');
     const transferCorrect = transferRows.filter(isCorrect).length;
 
     return {
