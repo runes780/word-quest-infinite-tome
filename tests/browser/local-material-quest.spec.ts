@@ -43,16 +43,44 @@ async function readEvidenceCounts(page: Page) {
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
-        const tableNames = ['learningEvents', 'fsrsCards', 'history'] as const;
+        const tableNames = ['learningEvents', 'fsrsCards', 'history', 'objectiveMastery', 'skillMastery', 'playerProfile'] as const;
         const transaction = db.transaction([...tableNames], 'readonly');
-        const count = (tableName: typeof tableNames[number]) => new Promise<number>((resolve, reject) => {
-            const request = transaction.objectStore(tableName).count();
-            request.onsuccess = () => resolve(request.result);
+        const readAll = (tableName: typeof tableNames[number]) => new Promise<Record<string, unknown>[]>((resolve, reject) => {
+            const request = transaction.objectStore(tableName).getAll();
+            request.onsuccess = () => resolve(request.result as Record<string, unknown>[]);
             request.onerror = () => reject(request.error);
         });
-        const [learningEvents, fsrsCards, history] = await Promise.all(tableNames.map(count));
+        const [learningEvents, fsrsCards, history, objectiveMastery, skillMastery, playerProfile] = await Promise.all(tableNames.map(readAll));
+        const answerEvents = learningEvents.filter((event) => event.eventType === 'answer');
+        const practiceOnlyEvents = answerEvents.filter((event) => {
+            const task = event.learningTask as Record<string, unknown> | undefined;
+            return task?.measurementEligibility === 'practice-only';
+        });
         db.close();
-        return { learningEvents, fsrsCards, history };
+        return {
+            learningEvents: learningEvents.length,
+            fsrsCards: fsrsCards.length,
+            history: history.length,
+            objectiveMasteryIds: objectiveMastery.map((record) => record.objectiveId),
+            skillMasteryTags: skillMastery.map((record) => record.skillTag),
+            wordsLearned: Number(playerProfile[0]?.wordsLearned || 0),
+            profileCountedCorrectAnswers: answerEvents.filter((event) => {
+                const task = event.learningTask as Record<string, unknown> | undefined;
+                return event.result === 'correct' && task?.measurementEligibility !== 'practice-only';
+            }).length,
+            practiceOnlyEvents: practiceOnlyEvents.map((event) => ({
+                evidenceStrength: String(event.evidenceStrength),
+                targetFacet: String((event.learningTask as Record<string, unknown>).targetFacet)
+            })),
+            formOnlyEventStrengths: learningEvents
+                .filter((event) =>
+                    event.eventType === 'answer' &&
+                    ['vocab_context_meaning', 'pronoun_reference', 'preposition_place_time'].includes(String(event.learningObjectiveId)))
+                .map((event) => ({
+                    objectiveId: String(event.learningObjectiveId),
+                    evidenceStrength: String(event.evidenceStrength)
+                }))
+        };
     });
 }
 
@@ -79,12 +107,12 @@ test('local material quest completes without an AI key and stays grounded in the
     await expect(cta).toBeVisible();
     await cta.click();
 
-    // Learning brief: grounded targets with source sentences; remove one target
-    // and assert its word is never tested.
+    // Learning brief: suggested practice items with source sentences; remove
+    // one item and assert its word is never tested.
     const brief = page.getByRole('group', { name: 'Learning brief' });
     await expect(brief).toBeVisible();
     await expect(brief.getByText(/Material language: English/i)).toBeVisible();
-    const removeButton = brief.getByRole('button', { name: 'Remove target' }).first();
+    const removeButton = brief.getByRole('button', { name: 'Remove item' }).first();
     const removedWord = ((await removeButton.locator('..').locator('span.font-black').first().textContent()) ?? '').trim().toLowerCase();
     await removeButton.click();
     await brief.getByRole('button', { name: 'Start quest' }).click();
@@ -148,6 +176,27 @@ test('local material quest completes without an AI key and stays grounded in the
     expect(counts.learningEvents).toBeGreaterThanOrEqual(seenQuestions.length);
     expect(counts.fsrsCards).toBeGreaterThanOrEqual(1);
     expect(counts.history).toBeGreaterThanOrEqual(1);
+
+    // Construct integrity: every question in this material that restores a
+    // word form (vocabulary, pronoun, or cue-less preposition) is practice
+    // only. Such answers are recorded but never counted as independent
+    // evidence, and the meaning/reference objectives collect no mastery from
+    // them. Past-tense form items may legitimately build past_tense_basic.
+    expect(counts.objectiveMasteryIds).not.toContain('vocab_context_meaning');
+    expect(counts.objectiveMasteryIds).not.toContain('pronoun_reference');
+    expect(counts.objectiveMasteryIds).not.toContain('preposition_place_time');
+    expect(counts.skillMasteryTags).not.toContain('vocab:vocab_context_meaning');
+    expect(counts.skillMasteryTags).not.toContain('reading:pronoun_reference');
+    expect(counts.wordsLearned).toBe(counts.profileCountedCorrectAnswers);
+    expect(counts.practiceOnlyEvents.length).toBeGreaterThan(0);
+    for (const event of counts.practiceOnlyEvents) {
+        expect(event.evidenceStrength).toBe('supported');
+        expect(event.targetFacet).toMatch(/^(?:vocab-form|pronoun-form|grammar-form)$/);
+    }
+    expect(counts.formOnlyEventStrengths.length).toBeGreaterThan(0);
+    for (const event of counts.formOnlyEventStrengths) {
+        expect(event.evidenceStrength, `${event.objectiveId} form practice must stay supported`).toBe('supported');
+    }
 
     expect(providerRequests).toBe(0);
 });

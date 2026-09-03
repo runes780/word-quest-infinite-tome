@@ -53,4 +53,56 @@ describe('evidence model schema migration', () => {
             throw new Error(`evidence migration failed: ${details}`);
         }
     });
+
+    test('opens v15 FSRS cards without a task contract and persists new v16 contracts', async () => {
+        const name = `WordQuestTaskContractMigration-${Date.now()}-${Math.random()}`;
+        const learningTask = {
+            schemaVersion: 1 as const,
+            targetFacet: 'vocab-form' as const,
+            cognitiveAction: 'retrieve-form' as const,
+            contextRelation: 'same-source' as const,
+            measurementEligibility: 'practice-only' as const,
+            encounterRole: 'skirmish' as const
+        };
+        try {
+            const legacy = new Dexie(name);
+            legacy.version(15).stores({ fsrsCards: '++id, questionHash, due, state' });
+            await legacy.open();
+            await legacy.table('fsrsCards').add({
+                questionHash: 'legacy_card',
+                question: 'Legacy question',
+                options: ['one', 'two', 'three', 'four'],
+                correct_index: 0,
+                type: 'vocab',
+                due: 1,
+                stability: 0,
+                difficulty: 0,
+                elapsed_days: 0,
+                scheduled_days: 0,
+                reps: 0,
+                lapses: 0,
+                state: 0
+            });
+            legacy.close();
+
+            let upgraded = new WordQuestDB(name);
+            await upgraded.open();
+            await expect(upgraded.fsrsCards.get(1)).resolves.toEqual(
+                expect.not.objectContaining({ learningTask: expect.anything() })
+            );
+            await upgraded.fsrsCards.update(1, { learningTask });
+            upgraded.close();
+
+            upgraded = new WordQuestDB(name);
+            await upgraded.open();
+            await expect(upgraded.fsrsCards.get(1)).resolves.toEqual(
+                expect.objectContaining({ learningTask })
+            );
+            upgraded.close();
+            await upgraded.delete();
+        } catch (error) {
+            const details = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+            throw new Error(`task-contract migration failed: ${details}`);
+        }
+    });
 });

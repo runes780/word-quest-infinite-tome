@@ -161,7 +161,8 @@ function cardsToMonsters(cards: FSRSCard[], step: PracticePlanStep): Monster[] {
         probeScheduledFor: step.probeScheduledFor,
         supportLevel: step.supportLevel,
         attemptKind: step.attemptKind,
-        sourceContextSpan: card.sourceContextSpan || 'daily_plan'
+        sourceContextSpan: card.sourceContextSpan || 'daily_plan',
+        learningTask: card.learningTask
     }));
 }
 

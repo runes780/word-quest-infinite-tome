@@ -15,6 +15,7 @@ import {
     evidenceStrengthForAttempt,
     resolveAssessmentRole
 } from '@/lib/data/learningEvidenceContract';
+import { applyTaskContractToEvidenceStrength, canUpdateObjectiveMastery } from '@/lib/data/learningTaskContract';
 
 type LearningEventInput = Parameters<typeof logLearningEvent>[0];
 type ObjectiveMasteryInput = Parameters<typeof updateObjectiveMastery>[0];
@@ -30,6 +31,8 @@ interface AnswerIdentityInput {
     progressReward?: LearningProgressReward | null;
     hintUsed?: boolean;
     scaffoldDecision?: AdaptiveScaffoldDecision;
+    /** Answers already recorded in this session, used to detect answer exposure. */
+    priorAnswers?: UserAnswer[];
 }
 
 interface AnswerLearningEvidenceInput extends AnswerIdentityInput {
@@ -40,7 +43,13 @@ interface AnswerLearningEvidenceInput extends AnswerIdentityInput {
 
 export interface AnswerLearningEvidence {
     learningEvent: LearningEventInput;
-    objectiveMastery: ObjectiveMasteryInput;
+    /**
+     * Undefined when the question's task contract marks it practice-only (or
+     * misaligned with its objective): such answers are still recorded as
+     * events, review cards, and mistakes, but never reach the objective
+     * mastery updater.
+     */
+    objectiveMastery?: ObjectiveMasteryInput;
     review: {
         questionHash: string;
         rating: ReviewRating;
@@ -48,6 +57,27 @@ export interface AnswerLearningEvidence {
     };
     masteryResult: LearningEventResult;
     mistake?: LogMistakeArgs;
+}
+
+/**
+ * True when the learner already answered another item of the same target
+ * family earlier in this session, which exposes the answer for later
+ * same-source items. Only meaningful for contract-carrying questions.
+ */
+export function priorAnswerForSameTarget(
+    question: Monster,
+    priorAnswers: UserAnswer[] = []
+): boolean {
+    if (!question.learningTask) return false;
+    const familyId = buildLearningEvidenceMetadata({
+        ...question,
+        assessmentRole: resolveAssessmentRole({
+            assessmentRole: question.assessmentRole,
+            attemptKind: question.attemptKind,
+            isImmediateRepair: question.isImmediateRepair
+        })
+    }).itemFamilyId;
+    return priorAnswers.some((answer) => answer.itemFamilyId === familyId);
 }
 
 export function buildUserAnswer({
@@ -58,7 +88,8 @@ export function buildUserAnswer({
     questionHash,
     progressReward,
     hintUsed,
-    scaffoldDecision
+    scaffoldDecision,
+    priorAnswers
 }: AnswerIdentityInput): UserAnswer {
     const evidenceMetadata = buildLearningEvidenceMetadata({
         ...question,
@@ -68,12 +99,16 @@ export function buildUserAnswer({
             isImmediateRepair: question.isImmediateRepair
         })
     });
-    const evidenceStrength = evidenceStrengthForAttempt({
-        learningObjectiveId: question.learningObjectiveId,
-        ...evidenceMetadata,
-        supportLevel: question.supportLevel,
-        hintUsed
-    });
+    const evidenceStrength = applyTaskContractToEvidenceStrength(
+        evidenceStrengthForAttempt({
+            learningObjectiveId: question.learningObjectiveId,
+            ...evidenceMetadata,
+            supportLevel: question.supportLevel,
+            hintUsed
+        }),
+        question,
+        { priorAnswerForSameTarget: priorAnswerForSameTarget(question, priorAnswers) }
+    );
     return {
         questionId: question.id,
         questionText: question.question,
@@ -114,7 +149,8 @@ export function buildAnswerLearningEvidence({
     selfConfidence,
     progressReward,
     hintUsed,
-    scaffoldDecision
+    scaffoldDecision,
+    priorAnswers
 }: AnswerLearningEvidenceInput): AnswerLearningEvidence {
     const evidenceMetadata = buildLearningEvidenceMetadata({
         ...question,
@@ -124,18 +160,23 @@ export function buildAnswerLearningEvidence({
             isImmediateRepair: question.isImmediateRepair
         })
     });
-    const evidenceStrength = evidenceStrengthForAttempt({
-        learningObjectiveId: question.learningObjectiveId,
-        ...evidenceMetadata,
-        supportLevel: question.supportLevel,
-        hintUsed
-    });
+    const evidenceStrength = applyTaskContractToEvidenceStrength(
+        evidenceStrengthForAttempt({
+            learningObjectiveId: question.learningObjectiveId,
+            ...evidenceMetadata,
+            supportLevel: question.supportLevel,
+            hintUsed
+        }),
+        question,
+        { priorAnswerForSameTarget: priorAnswerForSameTarget(question, priorAnswers) }
+    );
     const sharedLearningMetadata = {
         skillTag: question.skillTag,
         learningObjectiveId: question.learningObjectiveId,
         objectiveConfidence: question.objectiveConfidence,
         ...evidenceMetadata,
         evidenceStrength,
+        ...(question.learningTask ? { learningTask: question.learningTask } : {}),
         sourceContextSpan: question.sourceContextSpan,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,
@@ -164,7 +205,10 @@ export function buildAnswerLearningEvidence({
         ...evidenceMetadata,
         sourceContextSpan: question.sourceContextSpan,
         questionMode: question.questionMode,
-        correctAnswer: question.correctAnswer
+        correctAnswer: question.correctAnswer,
+        // Kept on the FSRS card so an SRS re-serve of a practice-only form
+        // item cannot later leak into objective mastery.
+        ...(question.learningTask ? { learningTask: question.learningTask } : {})
     };
 
     return {
@@ -178,22 +222,26 @@ export function buildAnswerLearningEvidence({
             latencyMs: responseLatencyMs,
             source
         },
-        objectiveMastery: {
-            objectiveId: question.learningObjectiveId,
-            skillTag: question.skillTag,
-            type: question.type,
-            question: question.question,
-            result,
-            mode: question.questionMode,
-            attemptKind: question.attemptKind,
-            supportLevel: question.supportLevel,
-            hintUsed: Boolean(hintUsed),
-            latencyMs: responseLatencyMs,
-            evidenceStrength,
-            assessmentRole: evidenceMetadata.assessmentRole,
-            reviewerStatus: evidenceMetadata.reviewerStatus,
-            objectiveClassificationStatus: evidenceMetadata.objectiveClassificationStatus
-        },
+        ...(canUpdateObjectiveMastery(question)
+            ? {
+                objectiveMastery: {
+                    objectiveId: question.learningObjectiveId,
+                    skillTag: question.skillTag,
+                    type: question.type,
+                    question: question.question,
+                    result,
+                    mode: question.questionMode,
+                    attemptKind: question.attemptKind,
+                    supportLevel: question.supportLevel,
+                    hintUsed: Boolean(hintUsed),
+                    latencyMs: responseLatencyMs,
+                    evidenceStrength,
+                    assessmentRole: evidenceMetadata.assessmentRole,
+                    reviewerStatus: evidenceMetadata.reviewerStatus,
+                    objectiveClassificationStatus: evidenceMetadata.objectiveClassificationStatus
+                }
+            }
+            : {}),
         review: {
             questionHash,
             rating: result === 'wrong' ? 'again' : isCritical ? 'easy' : 'good',

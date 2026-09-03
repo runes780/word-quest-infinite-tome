@@ -261,7 +261,11 @@ export function buildMonsterFromLocalPlanItem(
         explanation,
         options,
         correctAnswer: blanked.correctAnswer,
-        correct_index: 0
+        correct_index: 0,
+        // Per-target evidence family: all templates for one target share it so
+        // answer exposure within the quest is detectable at answer time.
+        itemFamilyId: `ltf_${item.targetId}`,
+        learningTask: item.learningTask
     };
 
     if (item.template === 'context-recognition') {
@@ -355,7 +359,21 @@ export function buildLocalQuest(material: string, items: LocalPlanItem[]): Local
 
         if (!matched) continue;
         usedPlanItemIds.add(matched.planItemId);
-        questions.push({ planItemId: matched.planItemId, monster });
+        // Re-stamp the construct identity from the matched plan item: the
+        // sanitizer whitelists fields and its question-text heuristics can
+        // relabel a grounded past-tense or pronoun item (e.g. a stray "was").
+        // The plan item is the deterministic source of truth for the target,
+        // objective, evidence family, and task contract.
+        questions.push({
+            planItemId: matched.planItemId,
+            monster: {
+                ...monster,
+                skillTag: `${monster.type}:${matched.learningObjectiveId}`,
+                learningObjectiveId: matched.learningObjectiveId,
+                itemFamilyId: `ltf_${matched.targetId}`,
+                learningTask: matched.learningTask
+            }
+        });
     }
 
     const droppedPlanItemIds = items

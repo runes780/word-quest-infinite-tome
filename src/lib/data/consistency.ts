@@ -164,7 +164,11 @@ export function computeDataConsistencyAudit(input: {
         ? history.filter((row) => row.timestamp >= comparedSince)
         : [];
 
-    const correctAnswers = events.filter((event) => event.eventType === 'answer' && event.result === 'correct').length;
+    const profileCountedCorrectAnswers = events.filter((event) =>
+        event.eventType === 'answer' &&
+        event.result === 'correct' &&
+        event.learningTask?.measurementEligibility !== 'practice-only'
+    ).length;
     const sessionCompleted = events.filter((event) => event.eventType === 'session_complete').length;
     const allAnswers = overlapEvents.filter((event) => event.eventType === 'answer').length;
     const allSessions = overlapEvents.filter((event) => event.eventType === 'session_complete').length;
@@ -180,12 +184,12 @@ export function computeDataConsistencyAudit(input: {
     const checks: ConsistencyAuditCheck[] = [
         buildProfileLowerBoundCheck({
             id: 'profile_words_vs_correct_answers',
-            label: 'Profile wordsLearned >= correct answers',
-            expected: correctAnswers,
+            label: 'Profile wordsLearned >= profile-counted correct answers',
+            expected: profileCountedCorrectAnswers,
             actual: profile.wordsLearned,
             minSample: 5,
-            deficitNote: 'Profile wordsLearned is lower than logged correct answers.',
-            surplusNote: 'Profile wordsLearned covers logged correct answers.'
+            deficitNote: 'Profile wordsLearned is lower than logged profile-counted answers.',
+            surplusNote: 'Profile wordsLearned covers logged profile-counted answers.'
         }),
         buildProfileLowerBoundCheck({
             id: 'profile_lessons_vs_sessions',

@@ -33,19 +33,27 @@ targets:
 
 - Profile: language, difficulty band (`analyzeMaterialProfile`).
 - Sentence split with per-band span limits (length, word size, English-only).
-- Candidate targets, each grounded in a source sentence:
-  - vocabulary words → `vocab_context_meaning`
-  - past-tense verb forms and prepositions → `past_tense_basic` / `preposition_place_time`
-  - pronouns in context → `pronoun_reference`
+- Candidate suggested practice items, each grounded in a source sentence.
+  Every item carries a task facet naming what restoring the blank actually
+  measures (`learningTaskContract.ts`):
+  - vocabulary words → `vocab-form` practice (objective label
+    `vocab_context_meaning`, never mastery-updating)
+  - past-tense verb forms → `grammar-form` aligned with `past_tense_basic`
+  - prepositions → `grammar-form`, objective evidence only when the span has a
+    disambiguating cue (clock time, day of week, ...); otherwise practice-only
+  - pronouns → `pronoun-form` practice (objective label `pronoun_reference`,
+    never mastery-updating)
 - Structured insufficiency reasons (`material-empty`, `material-not-english`,
   `material-too-short`, `too-few-targets`) instead of silently proceeding.
 
 ## 3. Learner target selection (learning brief)
 
 Before a local quest starts, the learner sees the analyzed language, difficulty
-band, and 3-8 candidate targets with their source sentences, and can remove any
-target (or toggle whole domains). A quest needs at least three kept targets.
-Removed targets are excluded from planning; no question tests them.
+band, and 3-8 suggested practice items with honest form labels (word form,
+past-tense form, preposition form, pronoun form) and their source sentences,
+and can remove any item (or toggle whole domains). A quest needs at least three
+kept items. Removed items are excluded from planning; no question tests them.
+The plan never places two items for the same target next to each other.
 
 ## 4. Local planner + templates (`localMaterialPlanner` + `localQuestionTemplates.ts`)
 
@@ -85,8 +93,31 @@ local quest.
 ## 7. Evidence contract
 
 Every delivered question carries learning-objective and evidence metadata via
-the shared contract (`learningEvidenceContract`): local v1 items are
-`attemptKind: practice` at support levels 1-2, so independent typing answers
-earn `independent` practice evidence and nothing is labeled transfer. Transfer
-and delayed measurement keep requiring reviewed content, per
-`docs/LEARNING_GAMEPLAY_DOMAIN_MODEL.md`.
+the shared contract (`learningEvidenceContract`) plus a task contract
+(`learningTaskContract.ts`). The task contract separates the measured facet,
+the cognitive action, the context relation, and the measurement eligibility:
+
+- Form restoration of a word or pronoun blank is `practice-only`: answers are
+  still recorded as learning events, FSRS reviews, and mistakes, and can earn
+  supported-practice rewards, but they never update qualified objective
+  or legacy skill mastery, never trigger a mastery celebration, and never form
+  independent, retention, or transfer evidence. Their task contract is stored
+  with both the answer event and FSRS card so the reason remains reviewable.
+- Aligned past-tense and cue-disambiguated preposition items are
+  `objective-evidence`.
+- Repeating a target later in the same quest after its answer was exposed is
+  supported practice, never independent, regardless of the renderer.
+- Local v1 items are `attemptKind: practice` at support levels 1-2, and
+  nothing is labeled transfer. Transfer and delayed measurement keep
+  requiring reviewed content, per
+  `docs/LEARNING_GAMEPLAY_DOMAIN_MODEL.md`.
+- Generic boss ladders are only built when every stage has a provable
+  stage-specific answer, evidence role, and actual stimulus context and passes
+  the task-contract validator; otherwise the boss stays playable as its
+  original question.
+
+The task contract is runtime metadata on the question plus optional,
+non-indexed snapshots on the answer event and FSRS card. The event keeps the
+evidence decision auditable; the card keeps the same eligibility when SRS
+re-serves it. It is never sent to an AI provider. Persisting these snapshots is
+recorded as Dexie schema v16 while preserving all v15 indexes and records.

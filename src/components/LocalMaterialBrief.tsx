@@ -7,11 +7,11 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { translations } from '@/lib/translations';
 import {
     analyzeLocalMaterial,
+    localTargetFacetLabel,
     MIN_LOCAL_TARGETS,
     type LocalDomain,
     type LocalMaterialAnalysis
 } from '@/lib/data/localMaterialPlanner';
-import { objectiveTitle } from '@/lib/data/learningObjectives';
 
 interface LocalMaterialBriefProps {
     analysis: LocalMaterialAnalysis;
@@ -26,13 +26,6 @@ function domainLabel(domain: LocalDomain, isZh: boolean): string {
         return { vocab: '词汇', grammar: '语法', reading: '阅读' }[domain];
     }
     return { vocab: 'Vocabulary', grammar: 'Grammar', reading: 'Reading' }[domain];
-}
-
-function kindLabel(kind: string, isZh: boolean): string {
-    if (isZh) {
-        return { word: '词', grammar_form: '语法形式', reference: '指代' }[kind] || kind;
-    }
-    return { word: 'word', grammar_form: 'grammar form', reference: 'reference' }[kind] || kind;
 }
 
 /**
@@ -141,10 +134,7 @@ export function LocalMaterialBrief({ analysis, onDismiss, onStart }: LocalMateri
                                 <p className="text-sm font-bold text-foreground">
                                     <span className="font-black">{target.target}</span>
                                     <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                                        {kindLabel(target.targetKind, isZh)}
-                                    </span>
-                                    <span className="ml-2 text-[11px] text-muted-foreground">
-                                        {objectiveTitle(target.learningObjectiveId, language)}
+                                        {localTargetFacetLabel(target, language)}
                                     </span>
                                 </p>
                                 <p className="mt-1 truncate text-xs text-muted-foreground" title={target.sourceSpan}>
@@ -174,8 +164,8 @@ export function LocalMaterialBrief({ analysis, onDismiss, onStart }: LocalMateri
                 <p className={`text-xs font-semibold ${canStart ? 'text-muted-foreground' : 'text-destructive'}`}>
                     {canStart
                         ? (isZh
-                            ? `已选 ${selected.length} 个学习目标;题目全部来自你的原文。`
-                            : `${selected.length} target${selected.length === 1 ? '' : 's'} selected; every question comes from your text.`)
+                            ? `已选 ${selected.length} 个建议练习项;题目全部来自你的原文。`
+                            : `${selected.length} suggested practice item${selected.length === 1 ? '' : 's'}; every question comes from your text.`)
                         : t.briefMinTargets}
                 </p>
                 <div className="flex gap-2">
@@ -214,8 +204,8 @@ export function localMaterialStatusHint(analysis: ReturnType<typeof analyzeLocal
     }
     if (analysis.reason === 'too-few-targets') {
         return isZh
-            ? '这段文字里可练习的目标还不够;请再补充几个不同的句子。'
-            : 'Not enough learning targets were found. Add a few more varied sentences.';
+            ? '这段文字里可练习的项目还不够;请再补充几个不同的句子。'
+            : 'Not enough suggested practice items were found. Add a few more varied sentences.';
     }
     return isZh
         ? '再多粘贴几句完整的英文(约三四句以上),就能从这份材料直接开始本地任务。'

@@ -4,7 +4,7 @@ if (!globalThis.structuredClone) {
     globalThis.structuredClone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 }
 
-import { WordQuestDB } from './db';
+import { CURRENT_DB_SCHEMA_VERSION, WordQuestDB } from './db';
 import {
     BACKUP_FORMAT,
     BACKUP_FORMAT_VERSION,
@@ -28,7 +28,7 @@ function currentBackup(tables: Partial<BackupTables> = {}): WordQuestBackup {
     return {
         format: BACKUP_FORMAT,
         formatVersion: BACKUP_FORMAT_VERSION,
-        schemaVersion: 15,
+        schemaVersion: CURRENT_DB_SCHEMA_VERSION,
         createdAt: Date.parse('2026-07-15T08:00:00Z'),
         tables: { ...emptyTables(), ...tables }
     };
@@ -61,7 +61,7 @@ describe('IndexedDB backup and restore', () => {
 
         expect(json).not.toContain('synthetic-secret-not-for-backup');
         expect(summarizeBackup(backup)).toEqual({
-            schemaVersion: 15,
+            schemaVersion: CURRENT_DB_SCHEMA_VERSION,
             createdAt,
             tableCount: BACKUP_TABLE_COUNT,
             rowCount: BACKUP_TABLE_COUNT
@@ -141,6 +141,53 @@ describe('IndexedDB backup and restore', () => {
                 nextSupportLevel: 0,
                 nextAttemptKind: 'transfer'
             })
+        ]);
+    });
+
+    test('round-trips the optional learning-task contract on events and FSRS cards', async () => {
+        const learningTask = {
+            schemaVersion: 1 as const,
+            targetFacet: 'vocab-form' as const,
+            cognitiveAction: 'retrieve-form' as const,
+            contextRelation: 'same-source' as const,
+            measurementEligibility: 'practice-only' as const,
+            encounterRole: 'skirmish' as const
+        };
+        await database.learningEvents.add({
+            eventType: 'answer',
+            source: 'battle',
+            result: 'correct',
+            evidenceStrength: 'supported',
+            learningTask,
+            timestamp: Date.parse('2026-09-03T08:00:00Z')
+        });
+        await database.fsrsCards.add({
+            questionHash: 'q_contract',
+            question: 'Read: "Mia was ___."',
+            options: ['excited', 'quiet', 'late', 'small'],
+            correct_index: 0,
+            type: 'vocab',
+            learningTask,
+            due: 1,
+            stability: 0,
+            difficulty: 0,
+            elapsed_days: 0,
+            scheduled_days: 0,
+            reps: 0,
+            lapses: 0,
+            state: 0
+        });
+
+        const backup = await createIndexedDBBackup(database, Date.parse('2026-09-03T09:00:00Z'));
+        await database.learningEvents.clear();
+        await database.fsrsCards.clear();
+        await restoreIndexedDBBackup(backup, database);
+
+        await expect(database.learningEvents.toArray()).resolves.toEqual([
+            expect.objectContaining({ learningTask })
+        ]);
+        await expect(database.fsrsCards.toArray()).resolves.toEqual([
+            expect.objectContaining({ learningTask })
         ]);
     });
 
