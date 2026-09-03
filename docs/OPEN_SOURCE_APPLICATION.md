@@ -2,7 +2,7 @@
 
 Source context checked: 2026-06-07. The Codex for Open Source form asks maintainers to explain project qualification, maintainer role, API-credit use, and any extra context in short fields. It highlights active maintenance, ecosystem importance, pull request review, issue triage, release management, security, and code quality.
 
-Public release baseline: [v0.1.0-alpha - OSS Readiness Baseline](https://github.com/runes780/word-quest-infinite-tome/releases/tag/v0.1.0-alpha).
+Public release baseline: v0.1.0-alpha - OSS Readiness Baseline (see the repository tag).
 
 ## Project Summary
 
@@ -14,7 +14,7 @@ The repository is intentionally transparent about its stage: it does not claim p
 
 ## Maintainer Role
 
-The project is maintained by `runes780`, a primary-school English teacher and independent developer. Maintenance work includes product design, classroom-informed learning-loop design, frontend architecture, data-model design, testing, documentation, issue triage, and release preparation.
+The project is maintained by `runes2026`, a primary-school English teacher and independent developer. Maintenance work includes product design, classroom-informed learning-loop design, frontend architecture, data-model design, testing, documentation, issue triage, and release preparation.
 
 ## Why This Repository Qualifies
 

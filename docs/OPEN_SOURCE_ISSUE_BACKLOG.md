@@ -4,14 +4,14 @@ These issue drafts are ready to create on GitHub before or shortly after applyin
 
 Created public issues:
 
-- [#3 Add OpenAI Provider Option for Maintainer Experiments](https://github.com/runes780/word-quest-infinite-tome/issues/3)
-- [#4 Add Privacy Threat Model for Local Learning Data](https://github.com/runes780/word-quest-infinite-tome/issues/4)
-- [#5 Add Browser Smoke Test for Mission to Report Flow](https://github.com/runes780/word-quest-infinite-tome/issues/5)
-- [#6 Add Generated Content Evaluation Rubric](https://github.com/runes780/word-quest-infinite-tome/issues/6)
-- [#7 Add Synthetic Fixture Set for Prompt and Dashboard Tests](https://github.com/runes780/word-quest-infinite-tome/issues/7)
-- [#8 Split Game Store Into Domain Slices](https://github.com/runes780/word-quest-infinite-tome/issues/8)
-- [#9 Add Release Checklist and Versioning Notes](https://github.com/runes780/word-quest-infinite-tome/issues/9)
-- [#10 Audit Report Export Privacy](https://github.com/runes780/word-quest-infinite-tome/issues/10)
+- #3 Add OpenAI Provider Option for Maintainer Experiments
+- #4 Add Privacy Threat Model for Local Learning Data
+- #5 Add Browser Smoke Test for Mission to Report Flow
+- #6 Add Generated Content Evaluation Rubric
+- #7 Add Synthetic Fixture Set for Prompt and Dashboard Tests
+- #8 Split Game Store Into Domain Slices
+- #9 Add Release Checklist and Versioning Notes
+- #10 Audit Report Export Privacy
 
 ## 1. Add OpenAI Provider Option for Maintainer Experiments
 
