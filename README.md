@@ -2,7 +2,6 @@
 
 An AI-assisted, game-based vocabulary learning system with SRS, mastery analytics, and teacher/guardian-facing learning evidence.
 
-[![CI](https://github.com/runes780/word-quest-infinite-tome/actions/workflows/ci.yml/badge.svg)](https://github.com/runes780/word-quest-infinite-tome/actions/workflows/ci.yml)
 [![Gitee mirror](https://img.shields.io/badge/Gitee-同步镜像-C71D23?logo=gitee&logoColor=fff)](https://gitee.com/runes2026/word-quest-infinite-tome)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)](https://react.dev/)
@@ -170,7 +169,7 @@ AI-generated missions require a local API key entered through the app settings. 
 
 The settings panel can create and restore local IndexedDB backups. These JSON files contain full learning history, question text, mistakes, mastery, review state, and dashboard evidence and are not encrypted. Keep them in trusted storage and never attach a real learner backup to a public issue or pull request. API keys and other localStorage settings are deliberately excluded.
 
-This project keeps `"private": true` in `package.json` because it is a Next.js application, not an npm package intended for publication. The GitHub repository itself is open source under the MIT License.
+This project keeps `"private": true` in `package.json` because it is a Next.js application, not an npm package intended for publication. The repository itself is open source under the MIT License.
 
 ## Project Structure
 
