@@ -219,9 +219,6 @@ export function validateLearningTaskContract(question: TaskContractQuestion): Ta
         if (!FORM_FACETS.has(contract.targetFacet)) {
             reasons.push('source-token-restoration-must-be-form-task');
         }
-        if (contract.contextRelation !== 'same-source') {
-            reasons.push('source-token-restoration-must-be-same-source');
-        }
     }
 
     if (contract.measurementEligibility === 'objective-evidence') {

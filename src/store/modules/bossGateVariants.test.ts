@@ -1,4 +1,5 @@
 import { buildBossGateVariants } from './bossGateVariants';
+import { applyLearningMetadataForSource } from './questionFlow';
 import { validateLearningTaskContract } from '@/lib/data/learningTaskContract';
 import type { Monster } from '@/store/gameStore';
 
@@ -26,7 +27,12 @@ describe('buildBossGateVariants', () => {
 
         expect(stages).toHaveLength(3);
         expect(stages.map((stage) => stage.bossStage)).toEqual([1, 2, 3]);
-        expect(stages.every((stage) => stage.sourceContextSpan === 'Yesterday, I went to school.')).toBe(true);
+        expect(stages.map((stage) => stage.sourceContextSpan)).toEqual([
+            'Yesterday, I went to school.',
+            'Last weekend, I went to the park with my friend.',
+            'Last weekend, I went to the library.'
+        ]);
+        expect(stages.map((stage) => stage.assessmentRole)).toEqual(['practice', 'practice', 'transfer']);
         expect(new Set(stages.map((stage) => stage.question)).size).toBe(3);
         expect(stages[1]).toEqual(expect.objectContaining({
             questionMode: 'fill-blank',
@@ -53,12 +59,22 @@ describe('buildBossGateVariants', () => {
             explanation: 'Clouds suggest possible rain.',
             skillTag: 'reading:inference',
             learningObjectiveId: 'reading_inference',
-            correctAnswer: 'It might rain'
+            correctAnswer: 'It might rain',
+            sourceContextSpan: 'Mia saw dark clouds and brought an umbrella.'
         });
 
         expect(stages[0].question).toContain('clue');
+        expect(stages[0].correctAnswer).toBe('dark clouds');
+        expect(stages[0].options).toContain('dark clouds');
+        expect(stages[0].correctAnswer).not.toBe('It might rain');
         expect(stages[1].question).toContain('best inference');
+        expect(stages[1].correctAnswer).toBe('It might rain');
         expect(stages[2].question).toContain('Type the inference');
+        expect(stages.map((stage) => stage.sourceContextSpan)).toEqual([
+            'Mia saw dark clouds and brought an umbrella.',
+            'A student sees dark clouds and takes an umbrella.',
+            'Someone takes an umbrella after seeing dark clouds.'
+        ]);
     });
 
     test('keeps sentence context in pronoun reference recognition prompts', () => {
@@ -97,12 +113,12 @@ describe('buildBossGateVariants', () => {
         expect(stages).toHaveLength(3);
         // Stage 1 must be grounded in the source context; a bare "which
         // preposition is correct" with no sentence is unanswerable.
-        expect(stages[0].question).toContain('We meet at seven o\'clock.');
+        expect(stages[0].question).toContain('We meet ___ seven o\'clock.');
         expect(stages[1]).toEqual(expect.objectContaining({
             questionMode: 'fill-blank',
             correctAnswer: 'at'
         }));
-        expect(stages[1].question).toContain('___ seven');
+        expect(stages[1].question).toContain('___ six');
         expect(stages[1].question).not.toContain('book is ___ the table');
         expect(stages[2]).toEqual(expect.objectContaining({
             questionMode: 'typing',
@@ -111,6 +127,11 @@ describe('buildBossGateVariants', () => {
             correctAnswer: 'at'
         }));
         expect(stages[2].question).toContain('___ nine');
+        expect(stages.map((stage) => stage.sourceContextSpan)).toEqual([
+            'We meet at seven o\'clock.',
+            'The train leaves at six o\'clock.',
+            'The class starts at nine.'
+        ]);
     });
 
     test('does not expand bosses when a valid three-step ladder cannot be built', () => {
@@ -290,5 +311,17 @@ describe('boss ladder construct quarantine', () => {
             cognitiveAction: 'recognize-form',
             encounterRole: 'boss'
         }));
+    });
+
+    test('replaces parent evidence roles and derives context ids from each stage stimulus', () => {
+        const preparedBoss = applyLearningMetadataForSource(baseBoss, 'battle');
+        expect(preparedBoss.assessmentRole).toBe('transfer');
+
+        const stages = buildBossGateVariants(preparedBoss)
+            .map((stage) => applyLearningMetadataForSource(stage, 'battle'));
+
+        expect(stages).toHaveLength(3);
+        expect(stages.map((stage) => stage.assessmentRole)).toEqual(['practice', 'practice', 'transfer']);
+        expect(new Set(stages.map((stage) => stage.contextId)).size).toBe(3);
     });
 });

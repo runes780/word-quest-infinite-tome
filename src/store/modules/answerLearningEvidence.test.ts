@@ -204,7 +204,8 @@ describe('practice-only task contracts in answer evidence', () => {
             expect(evidence.learningEvent).toEqual(expect.objectContaining({
                 eventType: 'answer',
                 result: evidence === correct ? 'correct' : 'wrong',
-                learningObjectiveId: 'vocab_context_meaning'
+                learningObjectiveId: 'vocab_context_meaning',
+                learningTask: localVocabFormQuestion.learningTask
             }));
             expect(evidence.review.questionHash).toBe('hash_vocab_form');
             expect(evidence.review.questionData.learningTask).toEqual(localVocabFormQuestion.learningTask);

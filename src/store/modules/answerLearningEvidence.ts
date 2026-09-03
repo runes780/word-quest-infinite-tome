@@ -176,6 +176,7 @@ export function buildAnswerLearningEvidence({
         objectiveConfidence: question.objectiveConfidence,
         ...evidenceMetadata,
         evidenceStrength,
+        ...(question.learningTask ? { learningTask: question.learningTask } : {}),
         sourceContextSpan: question.sourceContextSpan,
         attemptKind: question.attemptKind,
         supportLevel: question.supportLevel,

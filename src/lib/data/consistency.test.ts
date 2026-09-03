@@ -152,4 +152,30 @@ describe('computeDataConsistencyAudit', () => {
         expect(questionsCheck?.status).not.toBe('warning');
         expect(missionsCheck?.status).not.toBe('warning');
     });
+
+    test('does not expect practice-only form answers to increment wordsLearned', () => {
+        const now = Date.UTC(2026, 8, 4, 8, 0, 0);
+        const practiceOnlyTask = {
+            schemaVersion: 1 as const,
+            targetFacet: 'vocab-form' as const,
+            cognitiveAction: 'retrieve-form' as const,
+            contextRelation: 'same-source' as const,
+            measurementEligibility: 'practice-only' as const,
+            encounterRole: 'skirmish' as const
+        };
+        const events = Array.from({ length: 6 }, (_, index) => event({
+            timestamp: now + index,
+            learningTask: practiceOnlyTask
+        }));
+
+        const snapshot = computeDataConsistencyAudit({
+            profile: profile({ wordsLearned: 0 }),
+            events,
+            history: [],
+            generatedAt: now + 10
+        });
+
+        expect(snapshot.checks.find((check) => check.id === 'profile_words_vs_correct_answers'))
+            .toEqual(expect.objectContaining({ status: 'insufficient', expected: 0, actual: 0 }));
+    });
 });

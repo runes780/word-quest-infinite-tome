@@ -217,6 +217,8 @@ export interface LearningEvent {
     transferDistance?: TransferDistance;
     reviewerStatus?: ContentReviewerStatus;
     evidenceStrength?: EvidenceStrength;
+    /** What the learner was actually asked to do for this answer. */
+    learningTask?: LearningTaskContract;
     probeStage?: RetentionProbeStage;
     probeScheduledFor?: number;
     sourceContextSpan?: string;
@@ -551,7 +553,7 @@ export interface ContentReviewRecord {
     updatedAt: number;
 }
 
-export const CURRENT_DB_SCHEMA_VERSION = 15;
+export const CURRENT_DB_SCHEMA_VERSION = 16;
 
 export class WordQuestDB extends Dexie {
     history!: Table<HistoryRecord>;
@@ -705,7 +707,7 @@ export class WordQuestDB extends Dexie {
             objectiveMastery: '++id, objectiveId, state, score, updatedAt, nextReviewAt',
             practicePlanRuns: '++id, planId, dateKey, status, updatedAt, [planId+dateKey]'
         });
-        this.version(CURRENT_DB_SCHEMA_VERSION).stores({
+        this.version(15).stores({
             history: '++id, timestamp, score',
             mistakes: '++id, timestamp, questionId, skillTag',
             questionCache: '++id, contextHash, timestamp, used',
@@ -731,6 +733,26 @@ export class WordQuestDB extends Dexie {
                 record.evidenceModelVersion = 1;
                 if (record.state === 'mastered') record.state = 'consolidated';
             });
+        });
+        // v16 persists the optional, non-indexed learning-task contract on
+        // answer events and FSRS cards. No data rewrite or index change is
+        // required; legacy records remain valid without the field.
+        this.version(CURRENT_DB_SCHEMA_VERSION).stores({
+            history: '++id, timestamp, score',
+            mistakes: '++id, timestamp, questionId, skillTag',
+            questionCache: '++id, contextHash, timestamp, used',
+            fsrsCards: '++id, questionHash, due, state',
+            playerProfile: '++id',
+            learningEvents: '++id, timestamp, source, eventType, questionHash, skillTag, learningObjectiveId, causeTag',
+            learningTasks: '++id, taskId, metric, status, periodStart, periodEnd, updatedAt, [taskId+periodStart]',
+            studyActionExecutions: '++id, actionId, dateKey, status, updatedAt, [actionId+dateKey]',
+            guardianDashboardEvents: '++id, timestamp, eventType, dateKey',
+            aiRequestMetrics: '++id, timestamp, provider, model, outcome, isFreeModel',
+            sessionRecoveryEvents: '++id, timestamp, eventType, hasSave',
+            skillMastery: '++id, skillTag, state, score, updatedAt',
+            objectiveMastery: '++id, objectiveId, state, score, updatedAt, nextReviewAt',
+            practicePlanRuns: '++id, planId, dateKey, status, updatedAt, [planId+dateKey]',
+            contentReviews: '++id, &contentKey, status, sourceType, updatedAt'
         });
     }
 }

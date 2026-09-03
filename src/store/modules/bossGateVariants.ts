@@ -7,7 +7,6 @@ import {
 } from '@/lib/data/learningObjectives';
 import { assessQuestionQuality, hasVisibleQuestionBlank } from '@/lib/data/questionQuality';
 import {
-    restoresSourceToken,
     validateLearningTaskContract,
     type CognitiveAction,
     type ContextRelation,
@@ -17,8 +16,10 @@ import { LEARNING_TASK_CONTRACT_SCHEMA_VERSION } from '@/lib/data/learningTaskCo
 
 interface BossStageTemplate {
     question: string;
+    sourceContextSpan: string;
     options?: string[];
     correctAnswer?: string;
+    itemFamilyId?: string;
     hint?: string;
     explanation?: string;
     learningTask: LearningTaskContract;
@@ -74,6 +75,17 @@ const contextFor = (question: Monster, correctAnswer: string) =>
 
 const readPrefix = (context: string) => `Read: "${context}"`;
 
+const blankAnswerInContext = (context: string, answer: string): string | null => {
+    const escaped = answer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = context.match(new RegExp(`(^|[^A-Za-z'])(${escaped})(?![A-Za-z'])`, 'i'));
+    if (!match || match.index === undefined) return null;
+    const start = match.index + match[1].length;
+    return `${context.slice(0, start)}___${context.slice(start + match[2].length)}`;
+};
+
+const bossFamily = (question: Monster, suffix: string) =>
+    `${question.itemFamilyId || `boss_${question.id}`}_${suffix}`;
+
 const PRONOUN_ANSWER_SET = new Set([
     'he', 'she', 'it', 'they', 'them', 'we', 'us', 'him', 'her', 'his', 'its',
     'their', 'i', 'you', 'me', 'my', 'your', 'our', 'mine', 'yours', 'hers', 'ours'
@@ -118,10 +130,16 @@ const stageContract = (
  * contain exactly one past-tense form (stage 1 is a real discrimination) and
  * the answer actually completes the motion frames of stages 2-3.
  */
-const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distractors) => [
-    {
+const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distractors) => {
+    const recognitionContext = contextFor(question, correctAnswer);
+    const applicationContext = `Last weekend, I ${correctAnswer} to the park with my friend.`;
+    const transferContext = `Last weekend, I ${correctAnswer} to the library.`;
+    const familyId = bossFamily(question, `past_${correctAnswer.toLowerCase()}`);
+    return [{
         question: `Recognition: Which option is the past-tense form?`,
+        sourceContextSpan: recognitionContext,
         options: ensureFourOptions(correctAnswer, distractors),
+        itemFamilyId: familyId,
         hint: question.hint || 'Past tense tells what already happened.',
         explanation: baseExplanation(question, correctAnswer),
         learningTask: {
@@ -132,8 +150,10 @@ const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distra
     },
     {
         question: `Application: Last weekend, I ___ to the park with my friend.`,
+        sourceContextSpan: applicationContext,
         options: ensureFourOptions(correctAnswer, distractors),
         correctAnswer,
+        itemFamilyId: familyId,
         hint: 'Use the past-tense verb after "Last weekend".',
         explanation: `After "Last weekend", use the past tense: ${correctAnswer}.`,
         learningTask: {
@@ -144,7 +164,9 @@ const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distra
     },
     {
         question: `Transfer: Type the past-tense verb that completes this sentence: Last weekend, I ___ to the library.`,
+        sourceContextSpan: transferContext,
         correctAnswer,
+        itemFamilyId: familyId,
         hint: `It starts with "${correctAnswer[0] || ''}".`,
         explanation: `${correctAnswer} works in a new past-time sentence.`,
         learningTask: {
@@ -152,8 +174,8 @@ const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distra
             targetFacet: 'grammar-form',
             measurementEligibility: 'objective-evidence'
         }
-    }
-];
+    }];
+};
 
 /**
  * Pronoun-reference bosses can only ladder when the original answer is an
@@ -162,10 +184,14 @@ const pastTenseTemplates: BossTemplateFactory = (question, correctAnswer, distra
  */
 const pronounTemplates: BossTemplateFactory = (question, correctAnswer, distractors) => {
     const context = contextFor(question, correctAnswer);
+    const applicationContext = 'Lily found her notebook and put it away.';
+    const transferContext = 'Tom dropped his pencil, so he picked it up.';
     return [
         {
             question: `Recognition: ${readPrefix(context)} Which person or thing does the pronoun refer to?`,
+            sourceContextSpan: context,
             options: ensureFourOptions(correctAnswer, distractors),
+            itemFamilyId: bossFamily(question, `referent_${correctAnswer.toLowerCase()}`),
             hint: question.hint || 'Look backward to the nearest sensible noun.',
             explanation: baseExplanation(question, correctAnswer),
             learningTask: {
@@ -175,9 +201,11 @@ const pronounTemplates: BossTemplateFactory = (question, correctAnswer, distract
             }
         },
         {
-            question: `Application: In "Lily found her notebook and put it away", what does "it" refer to?`,
+            question: `Application: In "${applicationContext}", what does "it" refer to?`,
+            sourceContextSpan: applicationContext,
             options: ensureFourOptions('notebook', [correctAnswer, ...distractors]),
             correctAnswer: 'notebook',
+            itemFamilyId: bossFamily(question, 'referent_notebook'),
             hint: 'Find the noun that can be put away.',
             explanation: '"It" refers to the notebook.',
             learningTask: {
@@ -188,7 +216,9 @@ const pronounTemplates: BossTemplateFactory = (question, correctAnswer, distract
         },
         {
             question: `Transfer: Type the noun that the pronoun refers to in this sentence: Tom dropped his pencil, so he picked it up.`,
+            sourceContextSpan: transferContext,
             correctAnswer: 'pencil',
+            itemFamilyId: bossFamily(question, 'referent_pencil'),
             hint: 'What can Tom pick up?',
             explanation: '"It" refers to pencil.',
             learningTask: {
@@ -200,61 +230,61 @@ const pronounTemplates: BossTemplateFactory = (question, correctAnswer, distract
     ];
 };
 
-const prepositionScenarioFor = (answer: string) => {
+const prepositionScenarioFor = (answer: string): { application: string; transfer: string; hint: string; explanation: string } | null => {
     switch (answer.trim().toLowerCase()) {
         case 'at':
             return {
-                application: 'Application: We meet ___ seven o\'clock.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: The class starts ___ nine.',
+                application: 'The train leaves at six o\'clock.',
+                transfer: 'The class starts at nine.',
                 hint: 'Clock times use this preposition.',
                 explanation: 'Use "at" with clock times.'
             };
         case 'in':
             return {
-                application: 'Application: The pencil is ___ the box.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: The bird is ___ the tree.',
+                application: 'The pencil is in the box.',
+                transfer: 'The bird is in the tree.',
                 hint: 'Use this preposition when something is inside a place.',
                 explanation: 'Use "in" when something is inside.'
             };
         case 'under':
             return {
-                application: 'Application: The ball is ___ the table.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: The cat sleeps ___ the chair.',
+                application: 'The ball is under the table.',
+                transfer: 'The cat sleeps under the chair.',
                 hint: 'Use this preposition for a lower position.',
                 explanation: 'Use "under" when something is below another thing.'
             };
         case 'behind':
             return {
-                application: 'Application: The bag is ___ the chair.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: The tree is ___ the house.',
+                application: 'The bag is behind the chair.',
+                transfer: 'The tree is behind the house.',
                 hint: 'Use this preposition for the back position.',
                 explanation: 'Use "behind" when something is at the back.'
             };
         case 'between':
             return {
-                application: 'Application: The desk is ___ two chairs.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: The shop is ___ the bank and the school.',
+                application: 'The desk is between two chairs.',
+                transfer: 'The shop is between the bank and the school.',
                 hint: 'Use this preposition for the middle of two things.',
                 explanation: 'Use "between" for the middle of two things.'
             };
         case 'before':
             return {
-                application: 'Application: We wash hands ___ lunch.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: I brush my teeth ___ bed.',
+                application: 'We wash hands before lunch.',
+                transfer: 'I brush my teeth before bed.',
                 hint: 'Use this preposition for earlier time.',
                 explanation: 'Use "before" for something earlier.'
             };
         case 'after':
             return {
-                application: 'Application: We play outside ___ class.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: I do homework ___ dinner.',
+                application: 'We play outside after class.',
+                transfer: 'I do homework after dinner.',
                 hint: 'Use this preposition for later time.',
                 explanation: 'Use "after" for something later.'
             };
         case 'on':
             return {
-                application: 'Application: The book is ___ the table.',
-                transfer: 'Transfer: Type the preposition that completes this sentence: We have English class ___ Monday.',
+                application: 'The book is on the table.',
+                transfer: 'We have English class on Monday.',
                 hint: 'Use this preposition for a surface or a day.',
                 explanation: 'Use "on" for a surface or a day.'
             };
@@ -272,10 +302,19 @@ const prepositionTemplates: BossTemplateFactory = (question, correctAnswer, dist
     const context = contextFor(question, correctAnswer);
     const scenario = prepositionScenarioFor(correctAnswer);
     if (!scenario) return [];
+    const recognition = blankAnswerInContext(context, correctAnswer);
+    const application = blankAnswerInContext(scenario.application, correctAnswer);
+    const transfer = blankAnswerInContext(scenario.transfer, correctAnswer);
+    if (!recognition || !application || !transfer) return [];
+    if (scenario.application.toLowerCase() === context.toLowerCase() ||
+        scenario.transfer.toLowerCase() === context.toLowerCase()) return [];
+    const familyId = bossFamily(question, `preposition_${correctAnswer.toLowerCase()}`);
     return [
         {
-            question: `Recognition: ${readPrefix(context)} Which preposition does this sentence use?`,
+            question: `Recognition: ${readPrefix(recognition)} Which preposition completes the sentence?`,
+            sourceContextSpan: context,
             options: ensureFourOptions(correctAnswer, distractors),
+            itemFamilyId: familyId,
             hint: question.hint || 'Check whether the sentence needs place or time.',
             explanation: baseExplanation(question, correctAnswer),
             learningTask: {
@@ -285,9 +324,11 @@ const prepositionTemplates: BossTemplateFactory = (question, correctAnswer, dist
             }
         },
         {
-            question: scenario.application,
+            question: `Application: ${application}`,
+            sourceContextSpan: scenario.application,
             options: ensureFourOptions(correctAnswer, ['on', 'in', 'at', ...distractors]),
             correctAnswer,
+            itemFamilyId: familyId,
             hint: scenario.hint,
             explanation: scenario.explanation,
             learningTask: {
@@ -297,8 +338,10 @@ const prepositionTemplates: BossTemplateFactory = (question, correctAnswer, dist
             }
         },
         {
-            question: scenario.transfer,
+            question: `Transfer: Type the preposition that completes this sentence: ${transfer}`,
+            sourceContextSpan: scenario.transfer,
             correctAnswer,
+            itemFamilyId: familyId,
             hint: scenario.hint,
             explanation: scenario.explanation,
             learningTask: {
@@ -317,10 +360,17 @@ const prepositionTemplates: BossTemplateFactory = (question, correctAnswer, dist
  */
 const readingInferenceTemplates: BossTemplateFactory = (question, correctAnswer, distractors) => {
     const context = contextFor(question, correctAnswer);
+    const clue = context.match(/\b(?:dark|black|storm) clouds?\b/i)?.[0];
+    if (!clue) return [];
+    const applicationContext = 'A student sees dark clouds and takes an umbrella.';
+    const transferContext = 'Someone takes an umbrella after seeing dark clouds.';
     return [
         {
             question: `Recognition: ${readPrefix(context)} Which clue helps you make the inference?`,
-            options: ensureFourOptions(correctAnswer, distractors),
+            sourceContextSpan: context,
+            options: ensureFourOptions(clue, ['a school bell', 'a lunch box', 'a sunny window']),
+            correctAnswer: clue,
+            itemFamilyId: bossFamily(question, `clue_${clue.toLowerCase()}`),
             hint: question.hint || 'An inference combines clues with what you know.',
             explanation: baseExplanation(question, correctAnswer),
             learningTask: {
@@ -330,9 +380,11 @@ const readingInferenceTemplates: BossTemplateFactory = (question, correctAnswer,
             }
         },
         {
-            question: `Application: A student sees dark clouds and takes an umbrella. What is the best inference?`,
+            question: `Application: ${applicationContext} What is the best inference?`,
+            sourceContextSpan: applicationContext,
             options: ensureFourOptions(correctAnswer, ['It might rain', 'It is lunchtime', 'The bag is heavy', ...distractors]),
             correctAnswer,
+            itemFamilyId: bossFamily(question, `inference_${correctAnswer.toLowerCase()}`),
             hint: 'Connect the umbrella with the weather clue.',
             explanation: `${correctAnswer} is the best inference from the clues.`,
             learningTask: {
@@ -343,7 +395,9 @@ const readingInferenceTemplates: BossTemplateFactory = (question, correctAnswer,
         },
         {
             question: `Transfer: Type the inference you can make when someone takes an umbrella after seeing dark clouds.`,
+            sourceContextSpan: transferContext,
             correctAnswer,
+            itemFamilyId: bossFamily(question, `inference_${correctAnswer.toLowerCase()}`),
             hint: 'Use the clues, not only one word.',
             explanation: `${correctAnswer} is an inference supported by the new context.`,
             learningTask: {
@@ -403,7 +457,14 @@ const BOSS_OBJECTIVE_RULES: Record<LearningObjectiveId, BossObjectiveKind> = {
         factory: pronounTemplates,
         // Stage 1 asks for the referent; a pronoun answer would ask the
         // learner to "resolve" a pronoun to a pronoun.
-        proof: (_question, correctAnswer) => !isPronoun(correctAnswer)
+        proof: (question, correctAnswer) => {
+            const context = cleanContextSpan(question.sourceContextSpan) || contextFromQuestionText(question.question);
+            const referencedPronoun = question.question.match(/what does\s+["“']?([A-Za-z]+)["”']?\s+refer to/i)?.[1];
+            return !isPronoun(correctAnswer) &&
+                Boolean(referencedPronoun && isPronoun(referencedPronoun)) &&
+                new RegExp(`\\b${correctAnswer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(context) &&
+                new RegExp(`\\b${referencedPronoun}\\b`, 'i').test(context);
+        }
     },
     preposition_place_time: {
         kind: 'guarded',
@@ -417,7 +478,10 @@ const BOSS_OBJECTIVE_RULES: Record<LearningObjectiveId, BossObjectiveKind> = {
         factory: readingInferenceTemplates,
         // The canned application/transfer scenario is about rain; any other
         // answer would be reused across an unrelated inference prompt.
-        proof: (_question, correctAnswer) => /\brain\b/i.test(correctAnswer)
+        proof: (question, correctAnswer) => {
+            const context = cleanContextSpan(question.sourceContextSpan) || contextFromQuestionText(question.question);
+            return /\brain\b/i.test(correctAnswer) && /\b(?:dark|black|storm) clouds?\b/i.test(context);
+        }
     }
 };
 
@@ -431,8 +495,7 @@ function buildStage(
     template: BossStageTemplate,
     supportLevel: SupportLevel,
     attemptKind: AttemptKind,
-    questionMode: QuestionMode,
-    sourceContextSpan: string
+    questionMode: QuestionMode
 ): Monster {
     const correctAnswer = template.correctAnswer || answerFor(question);
     const options = template.options || ensureFourOptions(correctAnswer, distractorsFor(question, correctAnswer));
@@ -447,23 +510,23 @@ function buildStage(
         explanation: template.explanation || baseExplanation(question, correctAnswer),
         hint: template.hint || question.hint,
         correctAnswer,
+        itemFamilyId: template.itemFamilyId || question.itemFamilyId,
         bossStage: stage,
         bossTotalStages: 3,
         supportLevel,
         attemptKind,
         questionMode,
         difficulty: stage === 3 ? 'hard' : question.difficulty,
+        assessmentRole: attemptKind === 'transfer' ? 'transfer' : 'practice',
+        transferDistance: attemptKind === 'transfer' ? 'near' : 'same-context',
+        // The parent Boss metadata describes a different stimulus. Let the
+        // evidence builder derive a context id from this stage's real text.
+        contextId: undefined,
         hp: 1,
         maxHp: 1,
-        sourceContextSpan
+        sourceContextSpan: template.sourceContextSpan
     };
-    // If the stage's blank turns out to sit inside the source span itself,
-    // the stage is same-source restoration regardless of the template's
-    // intent, and the contract must say so.
-    const contextRelation = restoresSourceToken(assembled)
-        ? 'same-source'
-        : template.learningTask.contextRelation;
-    return { ...assembled, learningTask: { ...template.learningTask, contextRelation } };
+    return { ...assembled, learningTask: template.learningTask };
 }
 
 export function buildBossGateVariants(question: Monster): Monster[] {
@@ -487,12 +550,13 @@ export function buildBossGateVariants(question: Monster): Monster[] {
     const templates = rule.factory(question, correctAnswer, distractors);
     const originalSourceContext = cleanContextSpan(question.sourceContextSpan) || contextFromQuestionText(question.question);
     if (!originalSourceContext) return [question];
+    if (templates.length !== 3) return [question];
 
     const applicationMode: QuestionMode = hasVisibleQuestionBlank(templates[1].question) ? 'fill-blank' : 'choice';
     const stages = [
-        buildStage(question, 1, templates[0], 3, 'practice', 'choice', originalSourceContext),
-        buildStage(question, 2, templates[1], 2, 'practice', applicationMode, originalSourceContext),
-        buildStage(question, 3, templates[2], 0, 'transfer', 'typing', originalSourceContext)
+        buildStage(question, 1, templates[0], 3, 'practice', 'choice'),
+        buildStage(question, 2, templates[1], 2, 'practice', applicationMode),
+        buildStage(question, 3, templates[2], 0, 'transfer', 'typing')
     ];
     // A ladder ships only when every stage is playable AND its task construct
     // is provably aligned; otherwise the original boss question is preserved.

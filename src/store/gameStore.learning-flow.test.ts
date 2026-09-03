@@ -110,6 +110,25 @@ const baseQuestion = {
     attemptKind: 'practice' as const
 };
 
+const practiceOnlyFormQuestion = {
+    ...baseQuestion,
+    id: 77,
+    question: 'Read: "Mia was ___ about her gift." What is the word?',
+    options: ['excited', 'quiet', 'small', 'late'],
+    correctAnswer: 'excited',
+    sourceContextSpan: 'Mia was excited about her gift.',
+    supportLevel: 1 as const,
+    itemFamilyId: 'ltf_excited',
+    learningTask: {
+        schemaVersion: 1 as const,
+        targetFacet: 'vocab-form' as const,
+        cognitiveAction: 'retrieve-form' as const,
+        contextRelation: 'same-source' as const,
+        measurementEligibility: 'practice-only' as const,
+        encounterRole: 'skirmish' as const
+    }
+};
+
 const practicePlan: PracticePlan = {
     planId: 'daily_test',
     title: 'Today\'s Learning Path',
@@ -235,6 +254,38 @@ describe('learning pipeline regression (battle/srs)', () => {
             })
         }));
         expect(logMistake).not.toHaveBeenCalled();
+    });
+
+    test('practice-only form work keeps game rewards without creating mastery claims', async () => {
+        useGameStore.getState().startGame([practiceOnlyFormQuestion], 'local material', 'battle');
+        const result = useGameStore.getState().answerQuestion(0, { responseLatencyMs: 900 });
+        await flush();
+
+        expect(result.progressReward).toEqual({
+            kind: 'supported-practice',
+            xp: 8,
+            gold: 4,
+            counted: true
+        });
+        expect(logLearningEvent).toHaveBeenCalledWith(expect.objectContaining({
+            evidenceStrength: 'supported',
+            learningTask: practiceOnlyFormQuestion.learningTask,
+            rewardXp: 8,
+            rewardGold: 4
+        }));
+        expect(reviewCard).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.stringMatching(/good|easy/),
+            expect.objectContaining({ learningTask: practiceOnlyFormQuestion.learningTask })
+        );
+        expect(updateObjectiveMastery).not.toHaveBeenCalled();
+        expect(updateSkillMastery).not.toHaveBeenCalled();
+        expect(updatePlayerProfile).toHaveBeenCalledWith(expect.objectContaining({
+            totalXp: 8,
+            totalGold: 4,
+            wordsLearned: 0
+        }));
+        expect(useGameStore.getState().masteryCelebrations).toEqual([]);
     });
 
     test('keeps answer-level hint use consistent across session, event, and objective mastery', async () => {

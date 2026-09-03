@@ -1,6 +1,7 @@
 import {
     applyAdaptiveScaffoldDecision,
     applyQuestionDefaults,
+    applyLearningMetadataForSource,
     buildImmediateRepairQuestion,
     expandBossGateQuestions,
     reorderQuestionsBySkill
@@ -23,7 +24,10 @@ describe('question flow learning gates', () => {
             sourceContextSpan: 'Yesterday, I went to school.'
         });
 
-        const stages = expandBossGateQuestions([boss]);
+        // Exercise the same preparation order used by startGame: a Boss is
+        // first classified as transfer, then expanded into stage-specific roles.
+        const preparedBoss = applyLearningMetadataForSource(boss, 'battle');
+        const stages = expandBossGateQuestions([preparedBoss]);
 
         expect(stages).toHaveLength(3);
         expect(stages.map((stage) => stage.bossStage)).toEqual([1, 2, 3]);

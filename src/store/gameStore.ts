@@ -88,7 +88,7 @@ import type {
     TransferDistance
 } from '@/lib/data/learningEvidenceContract';
 import type { LearningTaskContract } from '@/lib/data/learningTaskContract';
-import { applyTaskContractToEvidenceStrength } from '@/lib/data/learningTaskContract';
+import { applyTaskContractToEvidenceStrength, canUpdateObjectiveMastery } from '@/lib/data/learningTaskContract';
 import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
 import { evidenceStrengthForAttempt } from '@/lib/data/learningEvidenceContract';
 import { createCombatSlice } from '@/store/slices/combatSlice';
@@ -459,6 +459,7 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             currentQuestion,
             { priorAnswerForSameTarget: priorAnswerForSameTarget(currentQuestion, userAnswers) }
         );
+        const countsTowardMastery = canUpdateObjectiveMastery(currentQuestion);
         const plannedProgressReward = planLearningProgressReward({
             source: sessionSource,
             questionHash,
@@ -604,7 +605,9 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                 totalXp: xpGain,
                 totalGold: goldGain,
                 dailyXpEarned: xpGain,
-                wordsLearned: 1
+                // Practice-only form recovery is useful practice, but it is
+                // not evidence that a new word or objective was mastered.
+                wordsLearned: countsTowardMastery ? 1 : 0
             }).then((profile) => {
                 updateAchievementStats({
                     consecutiveDays: profile.dailyStreak
@@ -698,8 +701,10 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
         // Practice-only form tasks stay out of the objective mastery updater.
         if (evidence.objectiveMastery) {
             updateObjectiveMastery(evidence.objectiveMastery).catch(console.error);
-        }
-        updateSkillMastery(skillKey, evidence.masteryResult)
+            // The legacy skill record drives mastery celebrations and adaptive
+            // priority. Keep it aligned with the qualified objective gate so
+            // practice-only form work cannot produce a mastery claim.
+            updateSkillMastery(skillKey, evidence.masteryResult)
             .then((record) => {
                 const previousState = masteryBySkill[skillKey]?.state || 'new';
                 const upgraded = isCorrect && isMasteryUpgrade(previousState, record.state);
@@ -741,6 +746,7 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
                 }
             })
             .catch(console.error);
+        }
 
         return {
             correct: isCorrect,

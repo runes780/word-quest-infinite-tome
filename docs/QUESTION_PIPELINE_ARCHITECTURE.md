@@ -100,7 +100,9 @@ the cognitive action, the context relation, and the measurement eligibility:
 - Form restoration of a word or pronoun blank is `practice-only`: answers are
   still recorded as learning events, FSRS reviews, and mistakes, and can earn
   supported-practice rewards, but they never update qualified objective
-  mastery and never form independent, retention, or transfer evidence.
+  or legacy skill mastery, never trigger a mastery celebration, and never form
+  independent, retention, or transfer evidence. Their task contract is stored
+  with both the answer event and FSRS card so the reason remains reviewable.
 - Aligned past-tense and cue-disambiguated preposition items are
   `objective-evidence`.
 - Repeating a target later in the same quest after its answer was exposed is
@@ -110,10 +112,12 @@ the cognitive action, the context relation, and the measurement eligibility:
   requiring reviewed content, per
   `docs/LEARNING_GAMEPLAY_DOMAIN_MODEL.md`.
 - Generic boss ladders are only built when every stage has a provable
-  stage-specific answer and passes the task-contract validator; otherwise the
-  boss stays playable as its original question.
+  stage-specific answer, evidence role, and actual stimulus context and passes
+  the task-contract validator; otherwise the boss stays playable as its
+  original question.
 
-The task contract is runtime metadata on the question plus an optional,
-non-indexed snapshot on the FSRS card (so an SRS re-serve keeps its
-eligibility); it is never sent to an AI provider and does not change the
-Dexie schema version.
+The task contract is runtime metadata on the question plus optional,
+non-indexed snapshots on the answer event and FSRS card. The event keeps the
+evidence decision auditable; the card keeps the same eligibility when SRS
+re-serves it. It is never sent to an AI provider. Persisting these snapshots is
+recorded as Dexie schema v16 while preserving all v15 indexes and records.

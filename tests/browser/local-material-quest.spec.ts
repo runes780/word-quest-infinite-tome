@@ -43,20 +43,35 @@ async function readEvidenceCounts(page: Page) {
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
-        const tableNames = ['learningEvents', 'fsrsCards', 'history', 'objectiveMastery'] as const;
+        const tableNames = ['learningEvents', 'fsrsCards', 'history', 'objectiveMastery', 'skillMastery', 'playerProfile'] as const;
         const transaction = db.transaction([...tableNames], 'readonly');
         const readAll = (tableName: typeof tableNames[number]) => new Promise<Record<string, unknown>[]>((resolve, reject) => {
             const request = transaction.objectStore(tableName).getAll();
             request.onsuccess = () => resolve(request.result as Record<string, unknown>[]);
             request.onerror = () => reject(request.error);
         });
-        const [learningEvents, fsrsCards, history, objectiveMastery] = await Promise.all(tableNames.map(readAll));
+        const [learningEvents, fsrsCards, history, objectiveMastery, skillMastery, playerProfile] = await Promise.all(tableNames.map(readAll));
+        const answerEvents = learningEvents.filter((event) => event.eventType === 'answer');
+        const practiceOnlyEvents = answerEvents.filter((event) => {
+            const task = event.learningTask as Record<string, unknown> | undefined;
+            return task?.measurementEligibility === 'practice-only';
+        });
         db.close();
         return {
             learningEvents: learningEvents.length,
             fsrsCards: fsrsCards.length,
             history: history.length,
             objectiveMasteryIds: objectiveMastery.map((record) => record.objectiveId),
+            skillMasteryTags: skillMastery.map((record) => record.skillTag),
+            wordsLearned: Number(playerProfile[0]?.wordsLearned || 0),
+            profileCountedCorrectAnswers: answerEvents.filter((event) => {
+                const task = event.learningTask as Record<string, unknown> | undefined;
+                return event.result === 'correct' && task?.measurementEligibility !== 'practice-only';
+            }).length,
+            practiceOnlyEvents: practiceOnlyEvents.map((event) => ({
+                evidenceStrength: String(event.evidenceStrength),
+                targetFacet: String((event.learningTask as Record<string, unknown>).targetFacet)
+            })),
             formOnlyEventStrengths: learningEvents
                 .filter((event) =>
                     event.eventType === 'answer' &&
@@ -170,6 +185,14 @@ test('local material quest completes without an AI key and stays grounded in the
     expect(counts.objectiveMasteryIds).not.toContain('vocab_context_meaning');
     expect(counts.objectiveMasteryIds).not.toContain('pronoun_reference');
     expect(counts.objectiveMasteryIds).not.toContain('preposition_place_time');
+    expect(counts.skillMasteryTags).not.toContain('vocab:vocab_context_meaning');
+    expect(counts.skillMasteryTags).not.toContain('reading:pronoun_reference');
+    expect(counts.wordsLearned).toBe(counts.profileCountedCorrectAnswers);
+    expect(counts.practiceOnlyEvents.length).toBeGreaterThan(0);
+    for (const event of counts.practiceOnlyEvents) {
+        expect(event.evidenceStrength).toBe('supported');
+        expect(event.targetFacet).toMatch(/^(?:vocab-form|pronoun-form|grammar-form)$/);
+    }
     expect(counts.formOnlyEventStrengths.length).toBeGreaterThan(0);
     for (const event of counts.formOnlyEventStrengths) {
         expect(event.evidenceStrength, `${event.objectiveId} form practice must stay supported`).toBe('supported');
