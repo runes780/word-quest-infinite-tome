@@ -2,7 +2,8 @@ import {
     applyAdaptiveScaffoldDecision,
     applyQuestionDefaults,
     buildImmediateRepairQuestion,
-    expandBossGateQuestions
+    expandBossGateQuestions,
+    reorderQuestionsBySkill
 } from './questionFlow';
 
 describe('question flow learning gates', () => {
@@ -205,5 +206,112 @@ describe('question flow learning gates', () => {
         expect(adapted[1].attemptKind).toBe('transfer');
         expect(adapted[2].id).toBe(61);
         expect(adapted[2].attemptKind).toBe('practice');
+    });
+});
+
+describe('task contract threading in the question flow', () => {
+    const practiceOnlyContract = {
+        schemaVersion: 1 as const,
+        targetFacet: 'vocab-form' as const,
+        cognitiveAction: 'retrieve-form' as const,
+        contextRelation: 'same-source' as const,
+        measurementEligibility: 'practice-only' as const,
+        encounterRole: 'skirmish' as const
+    };
+
+    test('immediate repair inherits the construct contract with the repair role', () => {
+        const question = applyQuestionDefaults({
+            id: 70,
+            type: 'vocab',
+            question: 'Read: "The ___ star shines at night." What is the word?',
+            options: ['bright', 'quiet', 'small', 'late'],
+            correct_index: 0,
+            explanation: 'The word is bright.',
+            skillTag: 'vocab:vocab_context_meaning',
+            learningObjectiveId: 'vocab_context_meaning',
+            correctAnswer: 'bright',
+            sourceContextSpan: 'The bright star shines at night.',
+            learningTask: practiceOnlyContract
+        });
+
+        const repair = buildImmediateRepairQuestion(question, 'quiet', 1);
+
+        expect(repair.learningTask).toEqual({
+            ...practiceOnlyContract,
+            encounterRole: 'repair'
+        });
+        expect(repair.isImmediateRepair).toBe(true);
+    });
+
+    test('reordering never leaves two same-target contract items adjacent', () => {
+        const contractItem = (id: number, family: string, skillTag: string, supportLevel: 0 | 1 | 2 | 3) => ({
+            id,
+            type: 'grammar' as const,
+            question: `Read: "Yesterday Mia ___ to the park (${id})."`,
+            options: ['went', 'saw', 'took', 'made'],
+            correct_index: 0,
+            explanation: 'The word is went.',
+            skillTag,
+            difficulty: 'medium' as const,
+            questionMode: 'typing' as const,
+            correctAnswer: 'went',
+            learningObjectiveId: 'past_tense_basic',
+            itemFamilyId: family,
+            supportLevel,
+            attemptKind: 'practice' as const,
+            learningTask: {
+                schemaVersion: 1 as const,
+                targetFacet: 'grammar-form' as const,
+                cognitiveAction: 'retrieve-form' as const,
+                contextRelation: 'same-source' as const,
+                measurementEligibility: 'objective-evidence' as const,
+                encounterRole: 'skirmish' as const
+            }
+        });
+        const filler = (id: number) => ({
+            ...contractItem(id, `family-other-${id}`, 'vocab:other', 3),
+            type: 'vocab' as const,
+            learningObjectiveId: 'vocab_context_meaning',
+            learningTask: undefined
+        });
+
+        // After answering item 0, the tail sorts by priority. Both target-A
+        // items share a skill tag and would sort together; the spread guard
+        // must keep another item between them.
+        const questions = [
+            contractItem(1, 'family-a', 'grammar:past_tense_basic', 3),
+            contractItem(2, 'family-a', 'grammar:past_tense_basic', 1),
+            filler(3),
+            filler(4)
+        ];
+
+        const reordered = reorderQuestionsBySkill(questions, 0, {}, {}, {}, {});
+
+        const familyA = reordered.filter((question) => question.itemFamilyId === 'family-a');
+        expect(familyA).toHaveLength(2);
+        const positions = reordered.map((question, index) => (question.itemFamilyId === 'family-a' ? index : -1)).filter((index) => index >= 0);
+        expect(Math.abs(positions[0] - positions[1])).toBeGreaterThan(1);
+    });
+
+    test('applyQuestionDefaults keeps the declared objective of contract-carrying questions', () => {
+        const question = applyQuestionDefaults({
+            id: 80,
+            type: 'reading',
+            question: 'Read: "She shared her sandwiches because everyone was hungry." Choose the right word.',
+            options: ['her', 'his', 'their', 'its'],
+            correct_index: 0,
+            explanation: 'The word is her.',
+            skillTag: 'reading:pronoun_reference',
+            learningObjectiveId: 'pronoun_reference',
+            correctAnswer: 'her',
+            sourceContextSpan: 'She shared her sandwiches because everyone was hungry.',
+            learningTask: {
+                ...practiceOnlyContract,
+                targetFacet: 'pronoun-form'
+            }
+        });
+
+        // "was" in the span would otherwise infer past_tense_basic.
+        expect(question.learningObjectiveId).toBe('pronoun_reference');
     });
 });

@@ -5,6 +5,7 @@ import {
     buildLearningEvidenceMetadata,
     resolveAssessmentRole
 } from '@/lib/data/learningEvidenceContract';
+import { isLearningTaskContract } from '@/lib/data/learningTaskContract';
 import {
     analyzeMaterialProfile,
     difficultyAtOrBelow,
@@ -438,7 +439,10 @@ export function normalizeMissionMonsters(input: unknown[], options: MissionSanit
             supportLevel: asSupportLevel(source.supportLevel),
             attemptKind,
             causeTag: cleanText(source.causeTag) || undefined,
-            sourceContextSpan: sourceContextSpan || undefined
+            sourceContextSpan: sourceContextSpan || undefined,
+            // Small, reviewable task-construct metadata (shape-checked) so a
+            // sanitized or SRS re-served item keeps its measurement eligibility.
+            learningTask: isLearningTaskContract(source.learningTask) ? source.learningTask : undefined
         };
     });
 

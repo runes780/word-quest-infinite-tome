@@ -1,12 +1,12 @@
 import type { Monster, QuestionMode } from '@/store/gameStore';
 import type { LearningEventSource, SkillMasteryRecord } from '@/db/db';
 import {
-    canonicalizeLearningObjective,
     modeForSupportLevel,
     selectSupportLevelForMastery,
     type AttemptKind,
     type SupportLevel
 } from '@/lib/data/learningObjectives';
+import { canonicalizeObjectiveForQuestion } from '@/lib/data/learningTaskContract';
 import { buildBossGateVariants } from './bossGateVariants';
 import type { AdaptiveScaffoldDecision } from '@/lib/data/adaptiveScaffolding';
 import {
@@ -46,12 +46,13 @@ export const applyQuestionDefaults = (
     const safeCorrectIndex = question.correct_index >= 0 && question.correct_index < question.options.length
         ? question.correct_index
         : 0;
-    const canonical = canonicalizeLearningObjective({
+    const canonical = canonicalizeObjectiveForQuestion({
         suggestedObjectiveId: question.learningObjectiveId,
         skillTag: question.skillTag,
         type: question.type,
         question: question.question,
-        sourceContextSpan: question.sourceContextSpan
+        sourceContextSpan: question.sourceContextSpan,
+        learningTask: question.learningTask
     });
     const objectiveId = canonical.objectiveId;
     const supportLevel = question.supportLevel ?? 3;
@@ -108,12 +109,13 @@ export const applyLearningMetadataForSource = (
     const supportLevel = question.sourceContextSpan === 'revenge'
         ? Math.min(3, baseSupport + 1) as SupportLevel
         : baseSupport;
-    const canonical = canonicalizeLearningObjective({
+    const canonical = canonicalizeObjectiveForQuestion({
         suggestedObjectiveId: question.learningObjectiveId,
         skillTag: question.skillTag,
         type: question.type,
         question: question.question,
-        sourceContextSpan: question.sourceContextSpan
+        sourceContextSpan: question.sourceContextSpan,
+        learningTask: question.learningTask
     });
     const learningObjectiveId = canonical.objectiveId;
     const attemptKind = attemptKindForQuestion(source, question, supportLevel);
@@ -170,7 +172,12 @@ export const buildImmediateRepairQuestion = (
         attemptKind: 'practice',
         causeTag: question.causeTag,
         isImmediateRepair: true,
-        sourceContextSpan: repairSourceContextSpan(question)
+        sourceContextSpan: repairSourceContextSpan(question),
+        // A repair re-asks the same construct with more support; keep the
+        // contract so a practice-only form task cannot leak into mastery here.
+        learningTask: question.learningTask
+            ? { ...question.learningTask, encounterRole: 'repair' }
+            : undefined
     }, index);
 };
 
@@ -267,6 +274,54 @@ export function computeSkillPriority(
     return masteryScore + accuracyPressure + reviewRisk + recentMistakes + difficultyWeight;
 }
 
+const sameTargetFamily = (a: Monster, b: Monster): boolean =>
+    Boolean(a.learningTask && b.learningTask && a.itemFamilyId && a.itemFamilyId === b.itemFamilyId);
+
+/**
+ * After priority sorting, two items of the same contract-carrying target can
+ * end up adjacent (same skill tag sorts together), including across the
+ * answered-head boundary. Move the later item to the first conflict-free
+ * slot. Only applies to questions that carry a task contract, so legacy
+ * question ordering is unchanged.
+ */
+function spreadAdjacentSameTarget(tail: Monster[], preceding?: Monster): Monster[] {
+    const next = [...tail];
+    const conflictAt = (index: number): boolean => {
+        const left = index === 0 ? preceding : next[index - 1];
+        return Boolean(left && next[index] && sameTargetFamily(left, next[index]));
+    };
+
+    let index = 0;
+    while (index < next.length) {
+        if (!conflictAt(index)) {
+            index += 1;
+            continue;
+        }
+        const family = next[index].itemFamilyId as string;
+        const [moved] = next.splice(index, 1);
+        let insertAt = -1;
+        for (let p = index; p <= next.length; p += 1) {
+            const leftOk = p === 0
+                ? (!preceding || preceding.itemFamilyId !== family)
+                : next[p - 1].itemFamilyId !== family;
+            const rightOk = p === next.length || next[p].itemFamilyId !== family;
+            if (leftOk && rightOk) {
+                insertAt = p;
+                break;
+            }
+        }
+        if (insertAt === -1) {
+            // No conflict-free slot exists; keep the original adjacency.
+            next.splice(index, 0, moved);
+            index += 1;
+        } else {
+            next.splice(insertAt, 0, moved);
+            // Stay at this index: the item that slid into it may also conflict.
+        }
+    }
+    return next;
+}
+
 export const reorderQuestionsBySkill = (
     questions: Monster[],
     currentIndex: number,
@@ -280,7 +335,7 @@ export const reorderQuestionsBySkill = (
     const tail = [...questions.slice(currentIndex + 1)];
     tail.sort((a, b) => computeSkillPriority(b, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill) -
         computeSkillPriority(a, stats, masteryBySkill, reviewRiskBySkill, recentMistakeBySkill));
-    return [...head, ...tail];
+    return [...head, ...spreadAdjacentSameTarget(tail, head[head.length - 1])];
 };
 
 const hasSameLearningTarget = (candidate: Monster, source: Monster) => {

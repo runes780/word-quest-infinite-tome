@@ -67,7 +67,8 @@ import {
 } from '@/store/modules/sessionRecovery';
 import {
     buildAnswerLearningEvidence,
-    buildUserAnswer
+    buildUserAnswer,
+    priorAnswerForSameTarget
 } from '@/store/modules/answerLearningEvidence';
 import {
     planLearningProgressReward,
@@ -86,6 +87,8 @@ import type {
     RetentionProbeStage,
     TransferDistance
 } from '@/lib/data/learningEvidenceContract';
+import type { LearningTaskContract } from '@/lib/data/learningTaskContract';
+import { applyTaskContractToEvidenceStrength } from '@/lib/data/learningTaskContract';
 import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
 import { evidenceStrengthForAttempt } from '@/lib/data/learningEvidenceContract';
 import { createCombatSlice } from '@/store/slices/combatSlice';
@@ -165,6 +168,9 @@ export interface Monster {
     questionMode: QuestionMode; // Productive recall mode
     correctAnswer: string; // For typing/fill-blank questions
     learningObjectiveId?: string;
+    // What the learner is actually asked to do; gates measurement claims.
+    // Optional so questions persisted before this field keep their behavior.
+    learningTask?: LearningTaskContract;
     objectiveConfidence?: number;
     objectiveCatalogVersion?: number;
     objectiveClassificationStatus?: ObjectiveClassificationStatus;
@@ -440,15 +446,19 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
 
         // Get active blessing effect
         const blessing = normalizeBlessingModifiers(getCurrentBlessingEffect());
-        const rewardEvidenceStrength = evidenceStrengthForAttempt({
-            learningObjectiveId: currentQuestion.learningObjectiveId,
-            objectiveClassificationStatus: currentQuestion.objectiveClassificationStatus,
-            assessmentRole: currentQuestion.assessmentRole,
-            transferDistance: currentQuestion.transferDistance,
-            reviewerStatus: currentQuestion.reviewerStatus,
-            supportLevel: currentQuestion.supportLevel,
-            hintUsed: meta?.hintUsed
-        });
+        const rewardEvidenceStrength = applyTaskContractToEvidenceStrength(
+            evidenceStrengthForAttempt({
+                learningObjectiveId: currentQuestion.learningObjectiveId,
+                objectiveClassificationStatus: currentQuestion.objectiveClassificationStatus,
+                assessmentRole: currentQuestion.assessmentRole,
+                transferDistance: currentQuestion.transferDistance,
+                reviewerStatus: currentQuestion.reviewerStatus,
+                supportLevel: currentQuestion.supportLevel,
+                hintUsed: meta?.hintUsed
+            }),
+            currentQuestion,
+            { priorAnswerForSameTarget: priorAnswerForSameTarget(currentQuestion, userAnswers) }
+        );
         const plannedProgressReward = planLearningProgressReward({
             source: sessionSource,
             questionHash,
@@ -495,7 +505,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             questionHash,
             progressReward,
             hintUsed: meta?.hintUsed,
-            scaffoldDecision
+            scaffoldDecision,
+            priorAnswers: userAnswers
         });
         set({ userAnswers: [...userAnswers, newAnswer] });
 
@@ -672,7 +683,8 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             selfConfidence: meta?.selfConfidence,
             progressReward,
             hintUsed: meta?.hintUsed,
-            scaffoldDecision
+            scaffoldDecision,
+            priorAnswers: userAnswers
         });
         if (evidence.mistake) {
             void logMistake(evidence.mistake);
@@ -683,7 +695,10 @@ export const useGameStore = create<GameState>()((set, get, store) => ({
             evidence.review.questionData
         ).catch(console.error);
         logLearningEvent(evidence.learningEvent).catch(console.error);
-        updateObjectiveMastery(evidence.objectiveMastery).catch(console.error);
+        // Practice-only form tasks stay out of the objective mastery updater.
+        if (evidence.objectiveMastery) {
+            updateObjectiveMastery(evidence.objectiveMastery).catch(console.error);
+        }
         updateSkillMastery(skillKey, evidence.masteryResult)
             .then((record) => {
                 const previousState = masteryBySkill[skillKey]?.state || 'new';

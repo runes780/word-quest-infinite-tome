@@ -24,6 +24,7 @@ import {
     resolveAssessmentRole
 } from '@/lib/data/learningEvidenceContract';
 import type { ObjectiveClassificationStatus } from '@/lib/data/learningObjectives';
+import type { LearningTaskContract } from '@/lib/data/learningTaskContract';
 
 export interface SkillStatSlice {
     correct: number;
@@ -127,6 +128,8 @@ export interface FSRSCard {
     sourceContextSpan?: string;
     questionMode?: 'choice' | 'typing' | 'fill-blank';
     correctAnswer?: string;
+    // Optional, non-indexed task-contract snapshot for evidence interpretation.
+    learningTask?: LearningTaskContract;
     // FSRS scheduling fields
     due: number;           // Next review timestamp
     stability: number;     // Memory stability
@@ -2290,6 +2293,9 @@ export async function reviewCard(
         sourceContextSpan?: string;
         questionMode?: 'choice' | 'typing' | 'fill-blank';
         correctAnswer?: string;
+        // Optional task-contract metadata (no new index; stored as-is) so a
+        // later SRS re-serve keeps practice-only items out of objective mastery.
+        learningTask?: LearningTaskContract;
     }
 ): Promise<FSRSCard> {
     const ratingMap: Record<string, Rating> = {
@@ -2314,7 +2320,8 @@ export async function reviewCard(
             learningObjectiveId: questionData.learningObjectiveId,
             sourceContextSpan: questionData.sourceContextSpan,
             questionMode: questionData.questionMode,
-            correctAnswer: questionData.correctAnswer
+            correctAnswer: questionData.correctAnswer,
+            learningTask: questionData.learningTask
         }
         : {};
 

@@ -173,7 +173,8 @@ function cardsToMonsters(cards: FSRSCard[], step?: PracticePlanStep): Monster[] 
         learningObjectiveId: card.learningObjectiveId || step?.objectiveId,
         supportLevel: step?.supportLevel,
         attemptKind: step?.attemptKind,
-        sourceContextSpan: card.sourceContextSpan || 'daily_plan'
+        sourceContextSpan: card.sourceContextSpan || 'daily_plan',
+        learningTask: card.learningTask
     }));
 }
 
