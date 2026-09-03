@@ -3,6 +3,7 @@
 An AI-assisted, game-based vocabulary learning system with SRS, mastery analytics, and teacher/guardian-facing learning evidence.
 
 [![CI](https://github.com/runes780/word-quest-infinite-tome/actions/workflows/ci.yml/badge.svg)](https://github.com/runes780/word-quest-infinite-tome/actions/workflows/ci.yml)
+[![Gitee mirror](https://img.shields.io/badge/Gitee-同步镜像-C71D23?logo=gitee&logoColor=fff)](https://gitee.com/runes2026/word-quest-infinite-tome)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=fff)](https://www.typescriptlang.org/)
