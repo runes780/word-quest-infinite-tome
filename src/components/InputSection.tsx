@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useGameStore, Monster } from '@/store/gameStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -50,6 +50,9 @@ import {
 import { DailyFlameCard } from './DailyFlameCard';
 import type { AIProvider } from '@/lib/ai/modelOptions';
 import { recognizeImageText } from '@/lib/ocr/tesseractOcr';
+import { analyzeLocalMaterial, planLocalQuest } from '@/lib/data/localMaterialPlanner';
+import { buildLocalQuest } from '@/lib/data/localQuestionTemplates';
+import { LocalMaterialBrief, localMaterialStatusHint } from './LocalMaterialBrief';
 
 // Store blessing effect for the current run (passed to game state)
 let currentBlessingEffect: BlessingEffect | null = null;
@@ -79,15 +82,9 @@ const MATERIAL_ACCEPT = [
     '.md',
     '.markdown',
     '.csv',
-    '.pdf',
-    '.doc',
-    '.docx',
     'text/plain',
     'text/markdown',
-    'text/csv',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'text/csv'
 ].join(',');
 
 const createAttachmentId = () => {
@@ -107,6 +104,8 @@ const materialKindFor = (file: File): AttachmentKind => {
     if (file.type.startsWith('image/')) return 'image';
     if (file.type.startsWith('text/')) return 'text';
     if (['txt', 'md', 'markdown', 'csv'].includes(extension)) return 'text';
+    // PDF/DOC/DOCX cannot be reliably parsed in the browser yet; they must not
+    // be presented as prepared content. Real parsing is future work.
     if (file.type === 'application/pdf' || extension === 'pdf') return 'document';
     if (
         file.type === 'application/msword' ||
@@ -144,8 +143,6 @@ const removeInsertedText = (current: string, inserted: string) => {
 
     return current;
 };
-
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const readFileAsText = (file: File) => {
     if (typeof file.text === 'function') {
@@ -329,6 +326,37 @@ export function InputSection() {
         startStarterPlan(practicePlan?.steps[0]);
     };
 
+    // Local material analysis is pure and deterministic; it re-runs as the
+    // learner edits the composer and never contacts an AI provider.
+    const materialAnalysis = useMemo(
+        () => (input.trim() ? analyzeLocalMaterial(input) : null),
+        [input]
+    );
+    const [showMaterialBrief, setShowMaterialBrief] = useState(false);
+    const [localQuestError, setLocalQuestError] = useState('');
+
+    const handleStartMaterialQuest = (selectedTargetIds: string[]) => {
+        if (!materialAnalysis) return;
+        const plan = planLocalQuest(materialAnalysis, selectedTargetIds);
+        if (plan.status !== 'ready') {
+            setLocalQuestError(t.input.localQuestBuildError);
+            return;
+        }
+        const built = buildLocalQuest(materialAnalysis.material, plan.items);
+        if (built.status !== 'ready' || built.sanitizedMonsters.length === 0) {
+            setLocalQuestError(t.input.localQuestBuildError);
+            return;
+        }
+        setLocalQuestError('');
+        setShowMaterialBrief(false);
+        currentBlessingEffect = null;
+        startGame(
+            built.sanitizedMonsters,
+            `Local Material Quest\n${materialAnalysis.material.slice(0, 60)}`,
+            'battle'
+        );
+    };
+
     const handleBlessingSelected = (blessing: Blessing) => {
         if (!pendingQuestions) return;
 
@@ -380,10 +408,6 @@ export function InputSection() {
             const text = await recognizeImageText(file);
             return `${t.input.imageStubText}: ${file.name}\n${text}`;
         }
-        if (kind === 'document') {
-            await delay(600);
-            return `${t.input.documentStubText}: ${file.name}\n${t.input.documentDemoNotice}`;
-        }
         throw new Error(t.input.attachmentUnsupported);
     };
 
@@ -395,6 +419,13 @@ export function InputSection() {
             const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined;
             if (previewUrl) previewUrlsRef.current.add(previewUrl);
 
+            // PDF/DOC/DOCX stay explicitly unsupported until real local parsing
+            // exists; no demo placeholder text is inserted into the material.
+            const rejected = kind === 'unsupported' || kind === 'document';
+            const rejectionMessage = kind === 'document'
+                ? t.input.attachmentDocumentUnsupported
+                : t.input.attachmentUnsupported;
+
             const attachment: MaterialAttachment = {
                 id: createAttachmentId(),
                 name: file.name,
@@ -402,14 +433,14 @@ export function InputSection() {
                 mimeType: file.type || 'unknown',
                 source,
                 kind,
-                status: kind === 'unsupported' ? 'unsupported' : 'extracting',
+                status: rejected ? 'unsupported' : 'extracting',
                 previewUrl,
-                error: kind === 'unsupported' ? t.input.attachmentUnsupported : undefined
+                error: rejected ? rejectionMessage : undefined
             };
 
             setAttachments((prev) => [...prev, attachment]);
 
-            if (kind === 'unsupported') continue;
+            if (rejected) continue;
 
             void extractAttachmentText(file, kind)
                 .then((text) => {
@@ -489,7 +520,7 @@ export function InputSection() {
     const attachmentStatusLabel = (attachment: MaterialAttachment) => {
         if (attachment.status === 'extracting') return t.input.attachmentExtracting;
         if (attachment.status === 'ready') return t.input.attachmentReady;
-        if (attachment.status === 'unsupported') return t.input.attachmentUnsupported;
+        if (attachment.status === 'unsupported') return attachment.error || t.input.attachmentUnsupported;
         return attachment.error || t.input.attachmentError;
     };
 
@@ -647,6 +678,41 @@ export function InputSection() {
                         )}
                     </section>
 
+                    {materialAnalysis && !showMaterialBrief && materialAnalysis.status === 'ready' && (
+                        <section className="mb-6 rounded-2xl border border-primary/40 bg-primary/10 p-4" aria-label={t.input.localMaterialTitle}>
+                            <button
+                                type="button"
+                                onClick={() => setShowMaterialBrief(true)}
+                                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 sm:w-auto"
+                            >
+                                <PlayCircle className="h-5 w-5" />
+                                {t.input.localMaterialStart}
+                            </button>
+                            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t.input.localMaterialHint}</p>
+                        </section>
+                    )}
+
+                    {materialAnalysis && materialAnalysis.status !== 'ready' && (
+                        <p className="mb-4 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                            {localMaterialStatusHint(materialAnalysis, language === 'zh')}
+                        </p>
+                    )}
+
+                    {showMaterialBrief && materialAnalysis?.status === 'ready' && (
+                        <LocalMaterialBrief
+                            analysis={materialAnalysis}
+                            onDismiss={() => setShowMaterialBrief(false)}
+                            onStart={handleStartMaterialQuest}
+                        />
+                    )}
+
+                    {localQuestError && (
+                        <div role="alert" className="mb-4 flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-lg">
+                            <AlertCircle className="w-5 h-5" />
+                            <p className="text-sm font-medium">{localQuestError}</p>
+                        </div>
+                    )}
+
                     {error && (
                         <div className="space-y-3 mb-4">
                             <div role="alert" aria-live="assertive" className="flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-lg">
@@ -741,6 +807,9 @@ export function InputSection() {
                                 )}
                             </button>
                         </div>
+                    )}
+                    {apiKey && (
+                        <p className="mt-2 text-center text-xs text-muted-foreground">{t.input.aiOptionalHint}</p>
                     )}
                     {(isLoading || (Boolean(apiKey) && model.endsWith(':free'))) && (
                         <p className="text-xs text-muted-foreground mt-3 text-center">

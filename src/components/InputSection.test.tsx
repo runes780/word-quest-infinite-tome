@@ -124,7 +124,7 @@ describe('InputSection material intake', () => {
 
         expect(await screen.findByText('Today\'s Learning Path')).toBeInTheDocument();
         expect(screen.getByLabelText('Learning material composer')).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...')).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('Paste text, screenshots, or notes here...')).toBeInTheDocument();
         expect(screen.getByText('Paste, drag, or upload screenshots and notes. Image OCR runs locally; extracted text stays editable.')).toBeInTheDocument();
         expect(screen.queryByText('Or snap a photo of your textbook')).not.toBeInTheDocument();
     });
@@ -186,7 +186,7 @@ describe('InputSection material intake', () => {
             generateQuestionPackMock.mockClear();
 
             const renderResult = render(<InputSection />);
-            const composer = await screen.findByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...');
+            const composer = await screen.findByPlaceholderText('Paste text, screenshots, or notes here...');
             fireEvent.change(composer, { target: { value: 'The fox runs under the pine tree because it is shy.' } });
             fireEvent.click(screen.getByRole('button', { name: 'Initialize Mission' }));
 
@@ -241,7 +241,7 @@ describe('InputSection material intake', () => {
         await waitFor(() => {
             expect(within(attachment as HTMLElement).getByText('Could not extract text')).toBeInTheDocument();
         });
-        expect(screen.getByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...')).toHaveValue('');
+        expect(screen.getByPlaceholderText('Paste text, screenshots, or notes here...')).toHaveValue('');
     });
 
     test('accepts dropped text files and appends their contents to the editable material', async () => {
@@ -276,7 +276,7 @@ describe('InputSection material intake', () => {
         const attachment = row.closest('li');
         expect(attachment).not.toBeNull();
         expect(within(attachment as HTMLElement).getByText('Unsupported file type')).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...')).toHaveValue('');
+        expect(screen.getByPlaceholderText('Paste text, screenshots, or notes here...')).toHaveValue('');
     });
 
     test('removes an attachment and its extracted text from the material', async () => {
@@ -297,6 +297,101 @@ describe('InputSection material intake', () => {
         fireEvent.click(screen.getByLabelText('Remove weather.txt'));
 
         expect(screen.queryByText('weather.txt')).not.toBeInTheDocument();
-        expect(screen.getByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...')).toHaveValue('');
+        expect(screen.getByPlaceholderText('Paste text, screenshots, or notes here...')).toHaveValue('');
+    });
+
+    test('rejects PDF and Word documents instead of inserting demo placeholder text', async () => {
+        render(<InputSection />);
+        const composer = await screen.findByPlaceholderText('Paste text, screenshots, or notes here...');
+        const pdf = new File(['%PDF-1.4 fake'], 'lesson.pdf', { type: 'application/pdf' });
+
+        await act(async () => {
+            fireEvent.drop(composer, { dataTransfer: { files: [pdf] } });
+        });
+
+        const row = await screen.findByText('lesson.pdf');
+        const attachment = row.closest('li');
+        expect(attachment).not.toBeNull();
+        await waitFor(() => {
+            expect(within(attachment as HTMLElement).getByText(/PDF and Word files are not supported yet/i)).toBeInTheDocument();
+        });
+        expect(screen.getByPlaceholderText('Paste text, screenshots, or notes here...')).toHaveValue('');
+    });
+});
+
+const LOCAL_QUEST_MATERIAL =
+    'Yesterday was Sunday. Mia went to the park with her friends. ' +
+    'They played football under a big tree. The weather was sunny and warm. ' +
+    'She shared her sandwiches because everyone was hungry. ' +
+    'Later they walked beside the river and watched the birds.';
+
+describe('InputSection local material quest', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockApiKey = 'test-key';
+    });
+
+    const openBrief = async () => {
+        render(<InputSection />);
+        const composer = await screen.findByPlaceholderText('Paste text, screenshots, or notes here...');
+        fireEvent.change(composer, { target: { value: LOCAL_QUEST_MATERIAL } });
+
+        const cta = await screen.findByRole('button', { name: 'Start local quest from this material' });
+        expect(screen.getByText(/Runs entirely on this device/i)).toBeInTheDocument();
+        fireEvent.click(cta);
+
+        return screen.findByRole('group', { name: 'Learning brief' });
+    };
+
+    test('offers a key-free local quest from pasted material and starts a grounded battle', async () => {
+        mockApiKey = '';
+        const brief = await openBrief();
+
+        // The AI connection stays available as a separate, optional action.
+        expect(screen.getByRole('button', { name: 'Connect AI' })).toBeInTheDocument();
+
+        fireEvent.click(within(brief).getByRole('button', { name: 'Start quest' }));
+
+        await waitFor(() => {
+            expect(startGame).toHaveBeenCalledTimes(1);
+        });
+        const [monsters, context] = startGame.mock.calls[0];
+        expect(context).toContain('Local Material Quest');
+        expect(monsters.length).toBeGreaterThanOrEqual(6);
+        expect(monsters.length).toBeLessThanOrEqual(8);
+        for (const monster of monsters) {
+            expect(LOCAL_QUEST_MATERIAL).toContain(monster.sourceContextSpan);
+            expect(monster.learningObjectiveId).toBeTruthy();
+        }
+    });
+
+    test('a removed candidate target never appears in the started quest', async () => {
+        const brief = await openBrief();
+
+        // Remove one removable target; its word must not be tested.
+        const removeButtons = within(brief).getAllByRole('button', { name: 'Remove target' });
+        expect(removeButtons.length).toBeGreaterThanOrEqual(3);
+        const removedRow = removeButtons[0].closest('li') as HTMLElement;
+        const removedWord = within(removedRow).getAllByText(/^[A-Za-z]+$/)[0].textContent as string;
+
+        fireEvent.click(removeButtons[0]);
+        fireEvent.click(within(brief).getByRole('button', { name: 'Start quest' }));
+
+        await waitFor(() => {
+            expect(startGame).toHaveBeenCalledTimes(1);
+        });
+        const monsters = startGame.mock.calls[0][0];
+        for (const monster of monsters) {
+            expect(monster.correctAnswer.toLowerCase()).not.toBe(removedWord.toLowerCase());
+        }
+    });
+
+    test('insufficient material explains how to improve instead of offering the quest', async () => {
+        render(<InputSection />);
+        const composer = await screen.findByPlaceholderText('Paste text, screenshots, or notes here...');
+        fireEvent.change(composer, { target: { value: 'The cat sat.' } });
+
+        expect(await screen.findByText(/Paste a few more full English sentences/i)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Start local quest from this material' })).not.toBeInTheDocument();
     });
 });
