@@ -285,8 +285,10 @@ export function InputSection() {
         setFallbackLevel(null);
 
         try {
-            const profile = await getPlayerProfile();
-            const data = await fetchMissionWithRetry(input, apiKey, model, apiProvider, profile.globalLevel);
+            // Game level (globalLevel) is progression, not English proficiency.
+            // Mission difficulty comes from the material profile; do not pass a
+            // learner level derived from XP here.
+            const data = await fetchMissionWithRetry(input, apiKey, model, apiProvider);
             if (!data.monsters || !Array.isArray(data.monsters)) {
                 throw new Error('Invalid data format received from AI');
             }

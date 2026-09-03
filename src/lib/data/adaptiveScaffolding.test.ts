@@ -103,8 +103,8 @@ describe('adaptive scaffolding', () => {
             answer({ supportLevel: 3, hintUsed: true }),
             answer({ supportLevel: 2, scaffoldTransition: 'fade', scaffoldReason: 'stable-success' }),
             answer({ supportLevel: 1 }),
-            answer({ supportLevel: 0, attemptKind: 'transfer', scaffoldReason: 'transfer-confirmed' }),
-            answer({ supportLevel: 0, attemptKind: 'transfer', isCorrect: false, result: 'wrong', scaffoldTransition: 'repair' })
+            answer({ supportLevel: 0, attemptKind: 'transfer', evidenceStrength: 'transfer-independent', scaffoldReason: 'transfer-confirmed' }),
+            answer({ supportLevel: 0, attemptKind: 'transfer', evidenceStrength: 'transfer-independent', isCorrect: false, result: 'wrong', scaffoldTransition: 'repair' })
         ]);
 
         expect(summary).toEqual(expect.objectContaining({
@@ -119,5 +119,18 @@ describe('adaptive scaffolding', () => {
             transferCorrect: 1,
             transferAccuracy: 0.5
         }));
+    });
+
+    test('transfer evidence summary counts only transfer-independent strength, not support level 0', () => {
+        const summary = buildScaffoldFadingSummary([
+            answer({ supportLevel: 0, attemptKind: 'practice', evidenceStrength: 'independent' }),
+            answer({ supportLevel: 0, attemptKind: 'practice' }),
+            answer({ supportLevel: 0, attemptKind: 'transfer', evidenceStrength: 'no-credit' }),
+            answer({ supportLevel: 0, attemptKind: 'transfer', evidenceStrength: 'transfer-independent' })
+        ]);
+
+        expect(summary.transferAttempts).toBe(1);
+        expect(summary.transferCorrect).toBe(1);
+        expect(summary.independentAttempts).toBe(2);
     });
 });

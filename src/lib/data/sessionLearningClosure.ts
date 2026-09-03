@@ -1,4 +1,5 @@
 import { objectiveTitle, type AttemptKind, type SupportLevel, type UiLanguage } from './learningObjectives';
+import type { EvidenceStrength } from './learningEvidenceContract';
 
 export interface SessionAnswerEvidence {
     questionId: number;
@@ -10,6 +11,7 @@ export interface SessionAnswerEvidence {
     attemptKind?: AttemptKind;
     supportLevel?: SupportLevel;
     causeTag?: string;
+    evidenceStrength?: EvidenceStrength;
 }
 
 export type SessionObjectiveEvidenceState = 'secured' | 'transfer-ready' | 'needs-repair' | 'practice';
@@ -60,7 +62,10 @@ export function buildSessionLearningClosure(
         };
         row.total += 1;
         row.correct += answer.isCorrect ? 1 : 0;
-        if (answer.attemptKind === 'transfer' || answer.supportLevel === 0) {
+        // Transfer evidence requires the reviewed transfer-independent strength from
+        // the learning evidence contract. A no-hint answer (supportLevel 0) or an
+        // unreviewed/same-context transfer attempt is not transfer evidence.
+        if (answer.evidenceStrength === 'transfer-independent') {
             row.transferAttempts += 1;
             row.transferCorrect += answer.isCorrect ? 1 : 0;
         }

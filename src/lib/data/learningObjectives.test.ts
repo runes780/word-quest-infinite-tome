@@ -131,6 +131,10 @@ describe('learning objective catalog', () => {
         expect(objectiveTitle('pronoun_reference', 'zh')).toBe('代词指代');
         expect(supportLevelLabel(2, 'en')).toBe('scaffolded');
         expect(supportLevelLabel(2, 'zh')).toBe('支架练习');
+        // Level 0 only means the answer was produced without hints; it must not
+        // be labeled as transfer, which requires reviewed transfer evidence.
+        expect(supportLevelLabel(0, 'en')).toBe('independent, no hints');
+        expect(supportLevelLabel(0, 'zh')).toBe('无提示独立作答');
     });
 
     test('localizes common skill and cause tags by UI language', async () => {

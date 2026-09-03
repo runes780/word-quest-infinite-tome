@@ -13,7 +13,6 @@ interface UseEndlessWaveParams {
     context: string;
     currentIndex: number;
     questionsLength: number;
-    playerLevel: number;
     addQuestions: (questions: Monster[]) => void;
 }
 
@@ -107,7 +106,6 @@ export function useEndlessWave({
     context,
     currentIndex,
     questionsLength,
-    playerLevel,
     addQuestions
 }: UseEndlessWaveParams) {
     const [isGeneratingMore, setIsGeneratingMore] = useState(false);
@@ -126,7 +124,9 @@ export function useEndlessWave({
 
             try {
                 const client = createAIClient({ apiKey, model, provider: apiProvider });
-                const prompt = generateLevelPrompt(context, { learnerLevel: playerLevel });
+                // Difficulty follows the material profile; game level is not an
+                // English-proficiency signal, so no learner level is passed.
+                const prompt = generateLevelPrompt(context);
                 const jsonStr = await client.generate(prompt, LEVEL_GENERATOR_SYSTEM_PROMPT);
                 const data = extractJsonObject(jsonStr);
 
@@ -181,7 +181,7 @@ export function useEndlessWave({
         };
 
         generateMoreQuestions();
-    }, [enabled, currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions, playerLevel]);
+    }, [enabled, currentIndex, questionsLength, isGeneratingMore, context, apiKey, apiProvider, model, addQuestions]);
 
     return { isGeneratingMore };
 }

@@ -14,8 +14,7 @@ import {
     formatLearningLabel,
     objectiveTitle,
     practicePlanStepRationale,
-    practicePlanStepTitle,
-    supportLevelLabel
+    practicePlanStepTitle
 } from '@/lib/data/learningObjectives';
 import {
     currentPracticePlanStep,
@@ -637,7 +636,9 @@ function buildLearningClosure(
         const row = byObjective.get(objectiveId) || { total: 0, correct: 0, transfer: 0, supportLevels: [] };
         row.total += 1;
         row.correct += answer.isCorrect ? 1 : 0;
-        row.transfer += answer.isCorrect && answer.attemptKind === 'transfer' ? 1 : 0;
+        // Only reviewed transfer-independent answers count as transfer evidence;
+        // a no-hint answer or an unreviewed transfer attempt does not.
+        row.transfer += answer.isCorrect && answer.evidenceStrength === 'transfer-independent' ? 1 : 0;
         if (typeof answer.supportLevel === 'number') row.supportLevels.push(answer.supportLevel);
         byObjective.set(objectiveId, row);
 
@@ -665,8 +666,8 @@ function buildLearningClosure(
         : (language === 'zh' ? '还在收集证据' : 'Collecting evidence');
     const masteredDetail = mastered
         ? (language === 'zh'
-            ? `正确率 ${Math.round(mastered.accuracy * 100)}%${mastered.row.transfer > 0 ? ` · ${supportLevelLabel(0, language)}` : ''}`
-            : `${Math.round(mastered.accuracy * 100)}% accuracy${mastered.row.transfer > 0 ? ` · ${supportLevelLabel(0, language)}` : ''}`)
+            ? `正确率 ${Math.round(mastered.accuracy * 100)}%${mastered.row.transfer > 0 ? ` · 迁移证据 ${mastered.row.transfer}` : ''}`
+            : `${Math.round(mastered.accuracy * 100)}% accuracy${mastered.row.transfer > 0 ? ` · transfer evidence ${mastered.row.transfer}` : ''}`)
         : (language === 'zh' ? '完成更多题后会显示稳定掌握目标。' : 'Complete more answers to identify a stable objective.');
 
     const bottleneckLabel = bottleneck
