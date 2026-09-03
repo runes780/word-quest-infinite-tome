@@ -1,6 +1,9 @@
 import {
     analyzeLocalMaterial,
+    hasAdjacentSameTarget,
+    localTargetFacetLabel,
     planLocalQuest,
+    spanDisambiguatesPreposition,
     MIN_LOCAL_TARGETS,
     normalizeMaterialForAnalysis
 } from './localMaterialPlanner';
@@ -10,6 +13,12 @@ const SYNTHETIC_MATERIAL =
     'They played football under a big tree. The weather was sunny and warm. ' +
     'She shared her sandwiches because everyone was hungry. ' +
     'Later they walked beside the river and watched the birds.';
+
+const DISAMBIGUATED_MATERIAL =
+    'Yesterday was Monday. Mia went to school on Tuesday. ' +
+    'The class starts at nine o\'clock every morning. ' +
+    'She found her notebook and opened it quietly. ' +
+    'Her teacher smiled because everyone was happy that day.';
 
 describe('local material analysis', () => {
     test('finds 3-8 grounded targets with source spans for English material', () => {
@@ -150,6 +159,89 @@ describe('local quest planning', () => {
         for (const target of analysis.targets) {
             expect(material.includes(target.sourceSpan)).toBe(true);
         }
+    });
+});
+
+describe('local quest task constructs', () => {
+    test('targets carry honest form facets: word and pronoun blanks are practice-only', () => {
+        const analysis = analyzeLocalMaterial(SYNTHETIC_MATERIAL);
+
+        for (const target of analysis.targets) {
+            if (target.targetKind === 'word') {
+                expect(target.taskFacet).toBe('vocab-form');
+                expect(target.measurementEligibility).toBe('practice-only');
+            } else if (target.targetKind === 'reference') {
+                expect(target.taskFacet).toBe('pronoun-form');
+                expect(target.measurementEligibility).toBe('practice-only');
+            } else if (target.learningObjectiveId === 'past_tense_basic') {
+                expect(target.taskFacet).toBe('grammar-form');
+                expect(target.measurementEligibility).toBe('objective-evidence');
+            } else {
+                expect(target.taskFacet).toBe('grammar-form');
+            }
+        }
+    });
+
+    test('a cue-disambiguated preposition can carry objective evidence; a bare one cannot', () => {
+        expect(spanDisambiguatesPreposition('at', 'The class starts at nine o\'clock every morning.')).toBe(true);
+        expect(spanDisambiguatesPreposition('on', 'Mia went to school on Tuesday.')).toBe(true);
+        expect(spanDisambiguatesPreposition('under', 'They played football under a big tree.')).toBe(false);
+        expect(spanDisambiguatesPreposition('near', 'Later they walked near the river.')).toBe(false);
+
+        const analysis = analyzeLocalMaterial(DISAMBIGUATED_MATERIAL);
+        const clockAt = analysis.targets.find((target) => target.target.toLowerCase() === 'at');
+        expect(clockAt).toBeDefined();
+        expect(clockAt!.targetKind).toBe('grammar_form');
+        expect(clockAt!.taskFacet).toBe('grammar-form');
+        expect(clockAt!.measurementEligibility).toBe('objective-evidence');
+    });
+
+    test('plan items carry a coherent same-source task contract', () => {
+        const analysis = analyzeLocalMaterial(SYNTHETIC_MATERIAL);
+        const plan = planLocalQuest(analysis, analysis.targets.map((target) => target.targetId));
+
+        expect(plan.status).toBe('ready');
+        for (const item of plan.items) {
+            expect(item.learningTask.schemaVersion).toBe(1);
+            expect(item.learningTask.contextRelation).toBe('same-source');
+            expect(item.learningTask.encounterRole).toBe('skirmish');
+            expect(['recognize-form', 'retrieve-form']).toContain(item.learningTask.cognitiveAction);
+
+            const target = analysis.targets.find((entry) => entry.targetId === item.targetId);
+            expect(target).toBeDefined();
+            expect(item.learningTask.targetFacet).toBe(target!.taskFacet);
+            expect(item.learningTask.measurementEligibility).toBe(target!.measurementEligibility);
+        }
+    });
+
+    test('two items for the same target are never adjacent in the plan', () => {
+        for (const material of [SYNTHETIC_MATERIAL, DISAMBIGUATED_MATERIAL]) {
+            const analysis = analyzeLocalMaterial(material);
+            const plan = planLocalQuest(analysis, analysis.targets.map((target) => target.targetId));
+            expect(plan.status).toBe('ready');
+            expect(hasAdjacentSameTarget(plan.items)).toBe(false);
+            // Every repeated target is separated by at least one other target.
+            for (let index = 2; index < plan.items.length; index += 1) {
+                expect(plan.items[index - 2].targetId === plan.items[index].targetId).toBe(false);
+            }
+        }
+    });
+
+    test('facet labels name the practiced form instead of the discovered objective', () => {
+        const analysis = analyzeLocalMaterial(SYNTHETIC_MATERIAL);
+        const word = analysis.targets.find((target) => target.targetKind === 'word');
+        const pronoun = analysis.targets.find((target) => target.targetKind === 'reference');
+        const past = analysis.targets.find((target) => target.learningObjectiveId === 'past_tense_basic');
+
+        expect(word).toBeDefined();
+        expect(pronoun).toBeDefined();
+        expect(past).toBeDefined();
+        expect(localTargetFacetLabel(word!, 'en')).toBe('word form');
+        expect(localTargetFacetLabel(word!, 'zh')).toBe('词形练习');
+        expect(localTargetFacetLabel(pronoun!, 'en')).toBe('pronoun form');
+        expect(localTargetFacetLabel(pronoun!, 'zh')).toBe('代词形式练习');
+        expect(localTargetFacetLabel(past!, 'en')).toBe('past-tense form');
+        expect(localTargetFacetLabel(past!, 'zh')).toBe('过去时形式练习');
     });
 });
 

@@ -2,12 +2,14 @@ import { analyzeMaterialProfile, type MaterialDifficulty } from '@/lib/ai/materi
 import { COMMON_WORD_SET } from './commonWords';
 import { normalizeWord } from './textNormalize';
 import { hasSameSlotDistractors } from './localQuestionTemplates';
+import type { LearningTaskContract, MeasurementEligibility, TargetFacet } from './learningTaskContract';
+import { LEARNING_TASK_CONTRACT_SCHEMA_VERSION } from './learningTaskContract';
 
 /**
  * Deterministic, offline analysis of learner-provided material.
  *
- * The analyzer picks candidate learning targets directly from the material so a
- * quest can be built with no AI provider call. Everything here is pure and
+ * The analyzer picks candidate practice targets directly from the material so
+ * a quest can be built with no AI provider call. Everything here is pure and
  * deterministic: the same material always produces the same targets, plan item
  * IDs, and questions.
  */
@@ -40,6 +42,14 @@ export interface LocalMaterialTarget {
     learningObjectiveId: LocalLearningObjectiveId;
     sourceSpan: string;
     difficulty: MaterialDifficulty;
+    /**
+     * What restoring this target in its own sentence actually measures.
+     * Word and pronoun blanks are form practice, so they never claim the
+     * meaning/reference objective they were discovered under.
+     */
+    taskFacet: TargetFacet;
+    /** Whether aligned answers may update the objective's qualified mastery. */
+    measurementEligibility: MeasurementEligibility;
 }
 
 export type LocalMaterialAnalysisReason =
@@ -71,6 +81,8 @@ export interface LocalPlanItem {
     targetKind: LocalTargetKind;
     supportLevel: 0 | 1 | 2 | 3;
     difficulty: MaterialDifficulty;
+    /** Task construct carried onto the rendered question. */
+    learningTask: LearningTaskContract;
 }
 
 export interface LocalQuestPlanResult {
@@ -111,6 +123,45 @@ const ED_ADJECTIVE_BLOCKLIST = new Set([
     'worried', 'pleased', 'sacred', 'bare', 'learned'
 ]);
 
+/**
+ * High-confidence context cues that force exactly one preposition. A blanked
+ * preposition can only carry objective evidence when the surrounding sentence
+ * disambiguates the rule; otherwise restoring it is practice on recall of the
+ * original text, not rule knowledge.
+ */
+const PREPOSITION_DISAMBIGUATION_CUES: Record<string, RegExp[]> = {
+    at: [
+        /\bo'?clock\b/i,
+        /\bnoon\b/i,
+        /\bmidnight\b/i,
+        /\b\d{1,2}:\d{2}\b/,
+        /\b\d{1,2}\s*(?:a\.m\.|p\.m\.|am|pm)\b/i
+    ],
+    on: [
+        /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i
+    ],
+    in: [
+        /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+        /\b(?:19|20)\d{2}\b/,
+        /\b(?:morning|afternoon|evening)\b/i,
+        /\b(?:spring|summer|autumn|fall|winter)\b/i
+    ],
+    between: [
+        /\b\w+\s+and\s+\w+\b/i
+    ]
+};
+
+/**
+ * Whether the source span forces the target preposition through an explicit
+ * time/place cue. Deterministic and conservative: spans without a listed cue
+ * stay practice-only.
+ */
+export function spanDisambiguatesPreposition(target: string, sourceSpan: string): boolean {
+    const cues = PREPOSITION_DISAMBIGUATION_CUES[target.toLowerCase()];
+    if (!cues) return false;
+    return cues.some((cue) => cue.test(sourceSpan));
+}
+
 const CJK_REGEX = /[\u3400-\u9FFF]/;
 
 export function normalizeMaterialForAnalysis(text: string): string {
@@ -142,6 +193,35 @@ interface CandidateTarget {
     kind: LocalTargetKind;
     domain: LocalDomain;
     objectiveId: LocalLearningObjectiveId;
+}
+
+/**
+ * Honest construct mapping for a local target. Restoring the exact source
+ * token in its own sentence is form practice, so:
+ * - word blanks are vocab-form tasks and never measure the meaning objective;
+ * - pronoun blanks are pronoun-form tasks and never measure reference;
+ * - past-tense blanks align with the past-tense form objective;
+ * - preposition blanks align only when the span disambiguates the rule.
+ */
+function taskConstructForCandidate(
+    candidate: CandidateTarget,
+    sourceSpan: string
+): { taskFacet: TargetFacet; measurementEligibility: MeasurementEligibility } {
+    if (candidate.kind === 'word') {
+        return { taskFacet: 'vocab-form', measurementEligibility: 'practice-only' };
+    }
+    if (candidate.kind === 'reference') {
+        return { taskFacet: 'pronoun-form', measurementEligibility: 'practice-only' };
+    }
+    if (candidate.objectiveId === 'preposition_place_time') {
+        return {
+            taskFacet: 'grammar-form',
+            measurementEligibility: spanDisambiguatesPreposition(candidate.surface, sourceSpan)
+                ? 'objective-evidence'
+                : 'practice-only'
+        };
+    }
+    return { taskFacet: 'grammar-form', measurementEligibility: 'objective-evidence' };
 }
 
 function classifyTargetCandidate(token: string): CandidateTarget | null {
@@ -217,7 +297,8 @@ export function analyzeLocalMaterial(text: string): LocalMaterialAnalysis {
                 domain: candidate.domain,
                 learningObjectiveId: candidate.objectiveId,
                 sourceSpan: sentence,
-                difficulty: profile.difficulty
+                difficulty: profile.difficulty,
+                ...taskConstructForCandidate(candidate, sentence)
             });
         }
     }
@@ -233,6 +314,40 @@ const TEMPLATE_BY_ACTION: Record<LocalCognitiveAction, LocalTemplateKind> = {
     'retrieve-form-cloze': 'context-cloze',
     'retrieve-form-typed': 'typed-recall'
 };
+
+const TASK_ACTION_BY_PLAN_ACTION: Record<LocalCognitiveAction, 'recognize-form' | 'retrieve-form'> = {
+    'recognize-in-context': 'recognize-form',
+    'retrieve-form-cloze': 'retrieve-form',
+    'retrieve-form-typed': 'retrieve-form'
+};
+
+/**
+ * Emits one item per target per round (round-robin over targets) so two items
+ * for the same target are never adjacent: each repetition is separated by the
+ * other targets' items, keeping later same-source appearances honest
+ * supported practice instead of back-to-back exposure.
+ */
+function interleaveByTarget(items: LocalPlanItem[]): LocalPlanItem[] {
+    const groups = new Map<string, LocalPlanItem[]>();
+    for (const item of items) {
+        const group = groups.get(item.targetId) || [];
+        group.push(item);
+        groups.set(item.targetId, group);
+    }
+    const ordered: LocalPlanItem[] = [];
+    const queues = Array.from(groups.values());
+    let remaining = items.length;
+    while (remaining > 0) {
+        for (const queue of queues) {
+            const next = queue.shift();
+            if (next) {
+                ordered.push(next);
+                remaining -= 1;
+            }
+        }
+    }
+    return ordered;
+}
 
 function templatesForTarget(target: LocalMaterialTarget, material: string): LocalCognitiveAction[] {
     // A recognition item needs three same-slot distractors. When the material
@@ -283,7 +398,15 @@ export function planLocalQuest(
         target: target.target,
         targetKind: target.targetKind,
         supportLevel: action === 'retrieve-form-typed' ? 1 : 2,
-        difficulty: target.difficulty
+        difficulty: target.difficulty,
+        learningTask: {
+            schemaVersion: LEARNING_TASK_CONTRACT_SCHEMA_VERSION,
+            targetFacet: target.taskFacet,
+            cognitiveAction: TASK_ACTION_BY_PLAN_ACTION[action],
+            contextRelation: 'same-source',
+            measurementEligibility: target.measurementEligibility,
+            encounterRole: 'skirmish'
+        }
     });
 
     const byTarget = new Map(selected.map((target) => [target.targetId, {
@@ -334,5 +457,35 @@ export function planLocalQuest(
     if (items.length < MIN_LOCAL_QUEST_QUESTIONS) {
         return { status: 'insufficient', reason: 'insufficient-local-items', items };
     }
-    return { status: 'ready', items };
+    return { status: 'ready', items: interleaveByTarget(items) };
+}
+
+/** True when two adjacent plan items test the same target. Pure; used by tests. */
+export function hasAdjacentSameTarget(items: LocalPlanItem[]): boolean {
+    return items.some((item, index) => index > 0 && items[index - 1].targetId === item.targetId);
+}
+
+/**
+ * Honest learner-facing label for what a local item actually practices: the
+ * tasks restore a word/grammar/pronoun form inside the original sentence, so
+ * the label names the form instead of the meaning/reference objective the
+ * target was discovered under.
+ */
+export function localTargetFacetLabel(
+    target: Pick<LocalMaterialTarget, 'taskFacet' | 'learningObjectiveId'>,
+    language: 'en' | 'zh' = 'en'
+): string {
+    if (target.taskFacet === 'vocab-form') {
+        return language === 'zh' ? '词形练习' : 'word form';
+    }
+    if (target.taskFacet === 'pronoun-form') {
+        return language === 'zh' ? '代词形式练习' : 'pronoun form';
+    }
+    if (target.taskFacet === 'grammar-form') {
+        if (target.learningObjectiveId === 'preposition_place_time') {
+            return language === 'zh' ? '介词形式练习' : 'preposition form';
+        }
+        return language === 'zh' ? '过去时形式练习' : 'past-tense form';
+    }
+    return language === 'zh' ? '语法形式练习' : 'grammar form';
 }

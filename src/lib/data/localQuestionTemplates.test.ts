@@ -12,6 +12,7 @@ import {
 } from './localQuestionTemplates';
 import { FALLBACK_QUESTIONS } from './fallbackQuestions';
 import { assessQuestionQuality } from './questionQuality';
+import { canUpdateObjectiveMastery, validateLearningTaskContract } from './learningTaskContract';
 
 const SYNTHETIC_MATERIAL =
     'Yesterday was Sunday. Mia went to the park with her friends. ' +
@@ -184,5 +185,76 @@ describe('buildLocalQuest', () => {
         expect(result.status).toBe('insufficient');
         expect(result.reason).toBe('insufficient-local-items');
         expect(result.questions).toEqual([]);
+    });
+});
+
+describe('local quest task contracts', () => {
+    test('delivered monsters carry the plan construct and pass the contract validator', () => {
+        const { built, plan } = builtQuestFor();
+
+        for (const question of built.questions) {
+            const item = plan.items.find((planItem) => planItem.planItemId === question.planItemId)!;
+            expect(question.monster.learningTask).toEqual(item.learningTask);
+            expect(validateLearningTaskContract(question.monster).accepted).toBe(true);
+        }
+    });
+
+    test('vocabulary and pronoun blanks are form practice that cannot update mastery', () => {
+        const { built } = builtQuestFor();
+
+        const vocabQuestions = built.questions.filter((question) => question.monster.type === 'vocab');
+        const pronounQuestions = built.questions.filter(
+            (question) => question.monster.learningObjectiveId === 'pronoun_reference'
+        );
+        expect(vocabQuestions.length).toBeGreaterThan(0);
+        expect(pronounQuestions.length).toBeGreaterThan(0);
+
+        for (const question of [...vocabQuestions, ...pronounQuestions]) {
+            expect(question.monster.learningTask!.measurementEligibility).toBe('practice-only');
+            expect(canUpdateObjectiveMastery(question.monster)).toBe(false);
+        }
+    });
+
+    test('past-tense form items keep objective-evidence eligibility', () => {
+        const { built } = builtQuestFor();
+        const pastQuestions = built.questions.filter(
+            (question) => question.monster.learningObjectiveId === 'past_tense_basic'
+        );
+
+        expect(pastQuestions.length).toBeGreaterThan(0);
+        for (const question of pastQuestions) {
+            expect(question.monster.learningTask).toEqual(expect.objectContaining({
+                targetFacet: 'grammar-form',
+                measurementEligibility: 'objective-evidence'
+            }));
+            expect(canUpdateObjectiveMastery(question.monster)).toBe(true);
+        }
+    });
+
+    test('all templates of one target share an item family so exposure is detectable', () => {
+        const { built, plan } = builtQuestFor();
+        const familyByTarget = new Map<string, string>();
+
+        for (const question of built.questions) {
+            const item = plan.items.find((planItem) => planItem.planItemId === question.planItemId)!;
+            const known = familyByTarget.get(item.targetId);
+            if (known) {
+                expect(question.monster.itemFamilyId).toBe(known);
+            } else {
+                familyByTarget.set(item.targetId, question.monster.itemFamilyId!);
+            }
+        }
+        // Different targets use different families.
+        expect(new Set(familyByTarget.values()).size).toBe(familyByTarget.size);
+    });
+
+    test('the local quest remains deterministic and grounded after contract stamping', () => {
+        const first = builtQuestFor();
+        const second = builtQuestFor();
+
+        expect(first.built).toEqual(second.built);
+        for (const question of first.built.questions) {
+            expect(validateLearningTaskContract(question.monster).accepted).toBe(true);
+        }
     });
 });

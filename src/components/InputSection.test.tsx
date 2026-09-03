@@ -365,11 +365,11 @@ describe('InputSection local material quest', () => {
         }
     });
 
-    test('a removed candidate target never appears in the started quest', async () => {
+    test('a removed suggested practice item never appears in the started quest', async () => {
         const brief = await openBrief();
 
-        // Remove one removable target; its word must not be tested.
-        const removeButtons = within(brief).getAllByRole('button', { name: 'Remove target' });
+        // Remove one removable item; its word must not be tested.
+        const removeButtons = within(brief).getAllByRole('button', { name: 'Remove item' });
         expect(removeButtons.length).toBeGreaterThanOrEqual(3);
         const removedRow = removeButtons[0].closest('li') as HTMLElement;
         const removedWord = within(removedRow).getAllByText(/^[A-Za-z]+$/)[0].textContent as string;
