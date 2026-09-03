@@ -204,6 +204,7 @@ describe('guardian scaffold fading evidence', () => {
                 result: 'correct',
                 supportLevel: 0,
                 attemptKind: 'transfer',
+                evidenceStrength: 'transfer-independent',
                 scaffoldReason: 'transfer-confirmed',
                 scaffoldTransition: 'hold'
             })
@@ -241,6 +242,7 @@ describe('guardian scaffold fading evidence', () => {
                 result: 'correct',
                 supportLevel: 0,
                 attemptKind: 'transfer',
+                evidenceStrength: 'transfer-independent',
                 scaffoldReason: 'transfer-confirmed',
                 scaffoldTransition: 'hold'
             })

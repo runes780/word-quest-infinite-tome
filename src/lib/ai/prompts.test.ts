@@ -144,6 +144,45 @@ The fox runs under the pine tree.
         expect(prompt).toContain('Total Questions: 10');
     });
 
+    test('generateReportPrompt counts transfer evidence only from transfer-independent answers', () => {
+        const prompt = generateReportPrompt(30, 3, [
+            {
+                questionId: 1,
+                questionText: 'Choose the meaning of bright.',
+                userChoice: 'clear',
+                correctChoice: 'clear',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'practice',
+                supportLevel: 0,
+                evidenceStrength: 'independent'
+            },
+            {
+                questionId: 2,
+                questionText: 'Use bright in a new sentence.',
+                userChoice: 'bright',
+                correctChoice: 'bright',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'transfer',
+                supportLevel: 0
+            },
+            {
+                questionId: 3,
+                questionText: 'Use bright in another new context.',
+                userChoice: 'bright',
+                correctChoice: 'bright',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'transfer',
+                supportLevel: 0,
+                evidenceStrength: 'transfer-independent'
+            }
+        ]);
+
+        expect(prompt).toContain('- vocab_context_meaning: 3/3 correct (100%), transfer evidence 1, guided attempts 0');
+    });
+
     test('generateReportPrompt keeps analysis payload compact for large sessions', () => {
         const history = Array.from({ length: 60 }, (_, index) => ({
             questionId: index + 1,

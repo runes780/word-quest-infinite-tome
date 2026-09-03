@@ -1,4 +1,5 @@
 import { buildSessionLearningClosure } from './sessionLearningClosure';
+import { supportLevelLabel } from './learningObjectives';
 
 describe('session learning closure evidence', () => {
     test('summarizes objective evidence with transfer and next action signals', () => {
@@ -22,7 +23,8 @@ describe('session learning closure evidence', () => {
                 isCorrect: true,
                 learningObjectiveId: 'vocab_context_meaning',
                 attemptKind: 'transfer',
-                supportLevel: 0
+                supportLevel: 0,
+                evidenceStrength: 'transfer-independent'
             },
             {
                 questionId: 3,
@@ -56,5 +58,69 @@ describe('session learning closure evidence', () => {
         }));
         expect(closure.headline).toBe('1 objective secured with transfer evidence');
         expect(closure.followUp).toBe('Repair Reading Inference, then continue today\'s path.');
+    });
+
+    test('does not infer transfer evidence from a no-hint answer without transfer-independent strength', () => {
+        const closure = buildSessionLearningClosure([
+            {
+                questionId: 1,
+                questionText: 'Choose the meaning of bright.',
+                userChoice: 'clear',
+                correctChoice: 'clear',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'practice',
+                supportLevel: 0,
+                evidenceStrength: 'independent'
+            },
+            {
+                questionId: 2,
+                questionText: 'Fill the blank: the box was ___ (empty).',
+                userChoice: 'empty',
+                correctChoice: 'empty',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'practice',
+                supportLevel: 0
+            }
+        ], 'zh');
+
+        const objective = closure.objectiveEvidence[0];
+        expect(objective.transferAttempts).toBe(0);
+        expect(objective.transferCorrect).toBe(0);
+        expect(objective.state).not.toBe('transfer-ready');
+        expect(supportLevelLabel(0, 'zh')).toBe('无提示独立作答');
+        expect(supportLevelLabel(0, 'en')).toBe('independent, no hints');
+    });
+
+    test('an unreviewed or same-context transfer attempt is not counted as transfer evidence', () => {
+        const closure = buildSessionLearningClosure([
+            {
+                questionId: 1,
+                questionText: 'Use bright in a new sentence.',
+                userChoice: 'bright',
+                correctChoice: 'bright',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'transfer',
+                supportLevel: 0
+            },
+            {
+                questionId: 2,
+                questionText: 'Use bright in another new sentence.',
+                userChoice: 'bright',
+                correctChoice: 'bright',
+                isCorrect: true,
+                learningObjectiveId: 'vocab_context_meaning',
+                attemptKind: 'transfer',
+                supportLevel: 0,
+                evidenceStrength: 'no-credit'
+            }
+        ], 'en');
+
+        const objective = closure.objectiveEvidence[0];
+        expect(objective.transferAttempts).toBe(0);
+        expect(objective.transferCorrect).toBe(0);
+        expect(objective.state).not.toBe('transfer-ready');
     });
 });

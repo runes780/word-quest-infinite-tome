@@ -526,7 +526,9 @@ function summarizeByObjective(history: UserAnswer[]): string {
     const row = rows.get(key) || { total: 0, correct: 0, transfer: 0, guided: 0 };
     row.total += 1;
     row.correct += answer.isCorrect ? 1 : 0;
-    row.transfer += answer.attemptKind === 'transfer' || answer.supportLevel === 0 ? 1 : 0;
+    // Only reviewed, new-context transfer evidence counts. A no-hint answer
+    // (supportLevel 0) is independent practice, not transfer.
+    row.transfer += answer.evidenceStrength === 'transfer-independent' ? 1 : 0;
     row.guided += typeof answer.supportLevel === 'number' && answer.supportLevel >= 2 ? 1 : 0;
     rows.set(key, row);
   });
@@ -536,7 +538,7 @@ function summarizeByObjective(history: UserAnswer[]): string {
     .slice(0, 8)
     .map(([objectiveId, row]) => {
       const accuracy = row.total > 0 ? Math.round((row.correct / row.total) * 100) : 0;
-      return `- ${objectiveId}: ${row.correct}/${row.total} correct (${accuracy}%), transfer attempts ${row.transfer}, guided attempts ${row.guided}`;
+      return `- ${objectiveId}: ${row.correct}/${row.total} correct (${accuracy}%), transfer evidence ${row.transfer}, guided attempts ${row.guided}`;
     });
 
   return lines.join('\n') || '- No objective evidence yet.';

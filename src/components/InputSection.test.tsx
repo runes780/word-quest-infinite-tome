@@ -52,6 +52,16 @@ jest.mock('@/lib/ocr/tesseractOcr', () => ({
     recognizeImageText: (...args: unknown[]) => mockRecognizeImageText(...args)
 }));
 
+const generateQuestionPackMock = jest.fn();
+
+jest.mock('@/lib/ai/questionPipeline', () => ({
+    generateQuestionPack: (...args: unknown[]) => generateQuestionPackMock(...args)
+}));
+
+jest.mock('./BlessingSelection', () => ({
+    BlessingSelection: () => null
+}));
+
 jest.mock('@/db/db', () => ({
     getPlayerProfile: jest.fn(async () => ({
         dailyStreak: 1,
@@ -144,6 +154,52 @@ describe('InputSection material intake', () => {
 
         expect(setSettingsOpen).toHaveBeenCalledWith(true);
         expect(startGame).not.toHaveBeenCalled();
+    });
+
+    test('does not send the game level to the mission pipeline as a learner level', async () => {
+        // The player's game level is progression, not English proficiency: raising
+        // globalLevel must not raise any learner-level input to the AI pipeline.
+        const { getPlayerProfile } = jest.requireMock('@/db/db') as { getPlayerProfile: jest.Mock };
+        generateQuestionPackMock.mockResolvedValue({
+            monsters: Array.from({ length: 5 }, (_, index) => ({
+                id: index + 1,
+                type: 'vocab',
+                skillTag: 'vocab_context_meaning',
+                question: `Synthetic question ${index + 1}`,
+                options: ['alpha', 'beta', 'gamma', 'delta'],
+                correct_index: 0,
+                hint: 'Look at the sentence.',
+                explanation: 'The sentence states the answer.'
+            })),
+            plan: { levelTitle: 'Synthetic Mission' },
+            degradedPath: 'none'
+        });
+
+        for (const globalLevel of [1, 42]) {
+            getPlayerProfile.mockResolvedValue({
+                dailyStreak: 1,
+                dailyXpGoal: 50,
+                dailyXpEarned: 10,
+                lastActiveDate: new Date().toISOString().slice(0, 10),
+                globalLevel
+            });
+            generateQuestionPackMock.mockClear();
+
+            const renderResult = render(<InputSection />);
+            const composer = await screen.findByPlaceholderText('Paste text, screenshots, PDFs, Word docs, or notes here...');
+            fireEvent.change(composer, { target: { value: 'The fox runs under the pine tree because it is shy.' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Initialize Mission' }));
+
+            await waitFor(() => {
+                expect(generateQuestionPackMock).toHaveBeenCalledTimes(1);
+            });
+
+            const options = generateQuestionPackMock.mock.calls[0][1] as Record<string, unknown>;
+            expect(options.learnerLevel).toBeUndefined();
+            expect(options.criticEnabled).toBe(true);
+            expect(options.material).toContain('The fox runs under the pine tree');
+            renderResult.unmount();
+        }
     });
 
     test('accepts pasted image files and appends OCR text to the editable material', async () => {
